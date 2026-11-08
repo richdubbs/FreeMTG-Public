@@ -17,11 +17,17 @@ export function filterNames(options: readonly string[], query: string): string[]
 
 /** std-rx28 (CR 201.3): a land card name or a nonland card name only (ChooseNameDecision.cardKind); a face says it by its type line or its types. */
 /** edh-next-146 (CR 201.3): or a creature card name only ('creature', Psychic Paper). */
-export type CardKind = 'land' | 'nonland' | 'creature';
+export type CardKind = 'land' | 'nonland' | 'creature' | 'artifact' | 'nonartifactNonland'; // edh-e-8: the last two (Dispossess, Lost Legacy)
+/** The words of a kind for the search label: "a creature card name", "an artifact card name", "a nonartifact, nonland card name" (as types/card.ts#cardNameKindWords in the engine). */
+export function cardKindLabel(kind: CardKind): string {
+  const adj = kind === 'nonartifactNonland' ? 'nonartifact, nonland' : kind;
+  return `${/^[aeiou]/.test(adj) ? 'an' : 'a'} ${adj} card name`;
+}
 type NameFace = { name: string; typeLine?: string; types?: readonly string[] };
 const isLandFace = (f: NameFace): boolean => (f.types !== undefined ? f.types.includes('Land') : /\bLand\b/.test(f.typeLine ?? ''));
 const isCreatureFace = (f: NameFace): boolean => (f.types !== undefined ? f.types.includes('Creature') : /\bCreature\b/.test(f.typeLine ?? ''));
-const fitsKind = (f: NameFace, kind?: CardKind): boolean => kind === undefined || (kind === 'creature' ? isCreatureFace(f) : isLandFace(f) === (kind === 'land'));
+const isArtifactFace = (f: NameFace): boolean => (f.types !== undefined ? f.types.includes('Artifact') : /\bArtifact\b/.test(f.typeLine ?? ''));
+const fitsKind = (f: NameFace, kind?: CardKind): boolean => kind === undefined || (kind === 'creature' ? isCreatureFace(f) : kind === 'artifact' ? isArtifactFace(f) : kind === 'nonartifactNonland' ? !isArtifactFace(f) && !isLandFace(f) : isLandFace(f) === (kind === 'land'));
 
 /** The names a card can be named by: each face's name when it has several faces ("Fire", "Ice"; never "Fire // Ice"), else its name; of `kind` only, when given. */
 export function nameableNames(card: { name: string; faces: readonly NameFace[] }, kind?: CardKind): string[] {

@@ -58,6 +58,7 @@ describe('capability table (design 5.2)', () => {
       'startingLife', // FAST5 T60 (CR 103.4)
       'playersLost', // edhn95 (CR 104.3)
       'resolvedThisTurn', // FAST5X E17 (CR 608.2, 400.7)
+      'graveyardUsesThisTurn', // edh-d-108 (Laboratory Drudge): spells cast from and abilities activated from a graveyard this turn
       'descendedThisTurn', // FAST5X E22 (CR 700.11)
       'attacksThisTurn', // edh-combat-5 (CR 508.1)
       'lifeLost', 'votes', 'votesFor' /* edhd27 */, 'opponentsAttacked', // M12-3 (CR 119.3, 701.38, 702.121a)

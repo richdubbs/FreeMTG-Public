@@ -300,11 +300,28 @@ func add_chips(parent: Node, ids: Array, on_click: Callable, labels: Dictionary 
 		b.toggle_mode = true
 		b.text = str(names_by_id.get(sid, sid))
 		b.pressed.connect(on_click.bind(sid))
+		zoom_on_hover(b, sid)
 		row.add_child(b)
 		chip_buttons[sid] = b
 		_chip_labels[sid] = b.text
 	parent.add_child(row)
 	return row
+
+
+## Pointing at `control` shows object `id` in the table's zoom, as pointing at the card on the board does (a player's id shows
+## nothing). The zoom closes when the pointer leaves or the control goes away.
+func zoom_on_hover(control: Control, id: String) -> void:
+	control.mouse_entered.connect(_zoom.bind(id, true))
+	control.mouse_exited.connect(_zoom.bind(id, false))
+	control.tree_exiting.connect(_zoom.bind(id, false))
+
+
+func _zoom(id: String, inside: bool) -> void:
+	if not is_inside_tree():
+		return
+	var table := get_tree().current_scene
+	if table != null and table.has_method("show_zoom"):
+		table.call("show_zoom", id, inside)
 
 
 func update_chip(id: String, selected: bool, mark: String = "", disabled: bool = false) -> void:

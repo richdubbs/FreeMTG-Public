@@ -24,10 +24,10 @@ extends Node2D
 const HOME_SCENE: String = "res://scenes/Home.tscn"
 const SIDE_SCENE: PackedScene = preload("res://scenes/Side.tscn")
 const CARD_SCENE: PackedScene = preload("res://scenes/Card.tscn")
-const BOARD_WIDTH: float = 1320.0
-const TOP_AREA: Rect2 = Rect2(0, 82, 1320, 380)
-const BOTTOM_AREA: Rect2 = Rect2(0, 470, 1320, 430)
-const ZOOM_SCALE: float = 2.0
+const BOARD_WIDTH: float = 1600.0
+const TOP_AREA: Rect2 = Rect2(0, 82, 1600, 380)
+const BOTTOM_AREA: Rect2 = Rect2(0, 470, 1600, 430)
+const ZOOM_SCALE: float = 4.0
 ## The longest one change may animate before it is shown anyway (seconds at normal speed; PacedConnection's deadline).
 const CHANGE_DEADLINE_S: float = 9.0
 
@@ -106,10 +106,6 @@ func _ready() -> void:
 	_over.home_pressed.connect(_on_leave)
 	# The game bar (GameBar.gd) replaces the old corner buttons.
 	$UI/TopRight.visible = false
-	# Room for the bar's two ends: the phase bar moves a little left and narrows.
-	var phases := $UI/PhaseBar as Control
-	phases.offset_left = -568.0
-	phases.offset_right = 498.0
 	_bar = GameBar.new()
 	_bar.name = "GameBar"
 	$UI.add_child(_bar)
@@ -180,11 +176,14 @@ func _ready() -> void:
 	_zoom_other.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_zoom.add_child(_zoom_other)
 	_zoom_info = VBoxContainer.new()
-	_zoom_info.position = Vector2(0.0, CardView.SIZE.y * ZOOM_SCALE + 6.0)
-	_zoom_info.custom_minimum_size = Vector2(CardView.SIZE.x * ZOOM_SCALE * 1.6, 0)
+	# Beside the card (below it would leave the screen at this size); _zoom_extras moves it past the other side when shown.
+	_zoom_info.position = Vector2(CardView.SIZE.x * ZOOM_SCALE + 10.0, 0.0)
+	_zoom_info.custom_minimum_size = Vector2(320.0, 0)
 	_zoom_info.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_zoom_info.add_theme_constant_override("separation", 4)
 	_zoom.add_child(_zoom_info)
+	# The artist is known once the picture's lookup answers, which can be after the zoom opened.
+	Pictures.picture_ready.connect(_on_zoom_picture)
 	_stack.visible = false
 	_animator = get_node_or_null("Animator") as Animator
 	if _animator != null:
@@ -208,7 +207,7 @@ func _exit_tree() -> void:
 	# Nothing reaches this closing table any more (the next screen may already be listening: a replay and back).
 	for pair: Array in [[GameClient.view_changed, _on_view_changed], [GameClient.result, _on_result], [GameClient.notice, _on_notice],
 			[GameClient.replied, _on_replied], [GameClient.disconnected, _on_disconnected], [GameClient.connected, _on_connected],
-			[GameClient.changes_waiting, _on_changes_waiting], [Settings.changed, _on_setting_changed], [Pictures.pictures_changed, _redraw],
+			[GameClient.changes_waiting, _on_changes_waiting], [Settings.changed, _on_setting_changed], [Pictures.pictures_changed, _redraw], [Pictures.picture_ready, _on_zoom_picture],
 			[GameClient.status_changed, _on_status_changed]]:
 		var sig: Signal = pair[0]
 		if sig.is_connected(pair[1]):
@@ -590,9 +589,13 @@ func _apply_track() -> void:
 func _process(delta: float) -> void:
 	if _top_track == null or _track_spread <= 0.0 or not Settings.camera_follow or Settings.reduced_motion:
 		return
-	# The camera follows the mouse across the opponents' row.
+	# The camera follows the mouse across the opponents' row, only while the mouse is over their half of the battlefield: on
+	# the player's own half (the hand, the prompt) it stays where it is.
+	var mouse := get_viewport().get_mouse_position()
+	if mouse.y > (TOP_AREA.end.y + BOTTOM_AREA.position.y) / 2.0:
+		return
 	var w := get_viewport().get_visible_rect().size.x
-	var k := clampf(get_viewport().get_mouse_position().x / maxf(1.0, w), 0.0, 1.0)
+	var k := clampf(mouse.x / maxf(1.0, w), 0.0, 1.0)
 	var target := lerpf(_track_spread, -_track_spread, k)
 	var before := _track_pan
 	_track_pan = lerpf(_track_pan, target, minf(1.0, delta * 4.0))
@@ -797,6 +800,13 @@ func _on_card_hovered(id: String, inside: bool) -> void:
 	_zoom.visible = true
 
 
+func _on_zoom_picture(key: String, _texture: Texture2D) -> void:
+	if _zoom.visible and hovered_id != "" and key == _zoom_card.picture_key:
+		var obj := View.object(GameClient.view, hovered_id)
+		if not obj.is_empty():
+			_zoom_extras(GameClient.view, obj)
+
+
 func _zoom_extras(view: Dictionary, obj: Dictionary) -> void:
 	for c: Node in _zoom_info.get_children():
 		c.queue_free()
@@ -814,6 +824,10 @@ func _zoom_extras(view: Dictionary, obj: Dictionary) -> void:
 			faces.append(summary)
 		_zoom_other.card = {"name": Val.text(def, "name"), "layout": Val.text(def, "layout"), "faces": faces, "colors": Val.list(def, "colors")}
 		_zoom_other.face = 1 - face
+	var info_x: float = CardView.SIZE.x * ZOOM_SCALE + 10.0
+	if _zoom_other.visible:
+		info_x += CardView.SIZE.x * ZOOM_SCALE + 8.0
+	_zoom_info.position = Vector2(info_x, 0.0)
 	var lines: Array = []
 	var artist := Pictures.artist_of(_zoom_card.picture_key)
 	if artist != "":

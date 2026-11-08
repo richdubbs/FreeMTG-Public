@@ -131,15 +131,16 @@ describe('deckbuilder: search', () => {
   });
 
   it('CR 903.3, 702.139a: commander formats get a commander slot; the companion slot holds one card and a second replaces the first', async () => {
-    const { store } = renderBuilder(deckFixture({ format: 'commander', main: [], sideboard: [] }), { search: () => page(['Grizzly Bears', 'Lurrus of the Dream-Den', 'Jegantha, the Wellspring']) });
+    const { store } = renderBuilder(deckFixture({ format: 'commander', main: [], sideboard: [] }), { search: () => page(['Krenko, Mob Boss', 'Lurrus of the Dream-Den', 'Jegantha, the Wellspring']) });
     await screen.findByDisplayValue('Gruul Test');
     expect(section(/Commander/).textContent).toMatch(/Empty/);
     fireEvent.click(within(searchRegion()).getByRole('button', { name: 'Search' }));
     await within(searchRegion()).findByRole('list', { name: 'Search results' });
-    fireEvent.click(screen.getByRole('button', { name: 'Set Grizzly Bears as commander' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Set Grizzly Bears as commander' }));
-    expect(within(section(/Commander/)).getByRole('listitem', { name: '1 Grizzly Bears' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Set Grizzly Bears as companion' })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Set Krenko, Mob Boss as commander' }));
+    expect(within(section(/Commander/)).getByRole('listitem', { name: '1 Krenko, Mob Boss' })).toBeTruthy();
+    // Already the commander: not offered again (deck-art-1).
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Set Krenko, Mob Boss as commander' })).toBeNull());
+    expect(screen.queryByRole('button', { name: 'Set Krenko, Mob Boss as companion' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Set Lurrus of the Dream-Den as companion' }));
     expect(within(section(/Companion/)).getByRole('listitem', { name: '1 Lurrus of the Dream-Den' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Set Jegantha, the Wellspring as companion' }));

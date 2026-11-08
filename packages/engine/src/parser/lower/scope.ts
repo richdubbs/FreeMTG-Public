@@ -163,8 +163,12 @@ function castTargetsGroup(on: readonly EventPattern[]): ObjectFilter | null {
 }
 
 /** The mentions a trigger's events give the effect (design 6.4: "event roles of the trigger"). */
-export function eventMentions(on: readonly EventPattern[], batch: boolean, selfHeads: string[], whole = false): Mention[] {
+export function eventMentions(on: readonly EventPattern[], batchArg: boolean, selfHeads: string[], whole = false): Mention[] {
   if (on.length === 0) return [];
+  // edh-e-19 (CR 509.3c, 603.2c; Hedron Blade): "Whenever equipped creature becomes blocked by one or more colorless creatures, it gains ...": one occurrence per declaration, but its subject is the ONE
+  // creature itself ("it" / "equipped creature"); the blockers are a group no "that creature" names, so the blocker and object roles give no mention
+  const groupBlockers = batchArg && !whole && on.length === 1 && on[0]!.ev === 'becomesBlocked' && on[0]!.by !== undefined && (on[0]!.attacker?.attachedToSource === true || on[0]!.attacker?.self === true);
+  const batch = batchArg && !groupBlockers;
   const out: Mention[] = [];
   const roles = EVENT_ROLES[on[0]!.ev] ?? [];
   // T3 (push wave): "attacker" and "blocker" name the trigger's own creature in one combat event and the OTHER creature in another ("Whenever ~ attacks or
@@ -188,6 +192,7 @@ export function eventMentions(on: readonly EventPattern[], batch: boolean, selfH
     // FAST3 T14: the other combatant (`object` of "blocks" / "becomes blocked") is the attacker or blocker role of a lone pattern, never a second candidate
     // beside it; it is named only for the disjunction below
     if (role === 'object' && on.every((p) => p.ev === 'blocks' || p.ev === 'becomesBlocked')) continue;
+    if (groupBlockers && (role === 'blocker' || role === 'object')) continue; // edh-e-19
     if (silentRole(on, role)) continue; // PUSH1 T2: a role the event never fills, or one the clause does not name (model/lint-roles.ts)
     // FAST5X E20: "When ~ enters and whenever you expend 4": the expend event has no subject, so the entering object is no role of every pattern
     if (role === 'subject' && entersAndPlayerAction(on)) continue;
@@ -281,6 +286,9 @@ export function eventMentions(on: readonly EventPattern[], batch: boolean, selfH
       out.push({ sort: 'player', number: 'singular', heads: attackerUnrestricted ? ['player'] : ['player', 'opponent'], ref: { ref: 'event', role }, origin: 'event', unit: -1 });
       continue;
     }
+    // edh-e-25 (CR 509.1, 608.2c; Shield of the Righteous): "Whenever equipped creature blocks a creature, ... that creature": the creature blocked is named once, by the other-party mention below
+    // (`object`, otherPartyThat); its `attacker` role is the same creature, a second candidate for the same words
+    if (role === 'attacker' && !batch && on.every((p) => p.ev === 'blocks' && p.blocker?.attachedToSource === true && p.attacker !== undefined && p.attacker.self !== true)) continue;
     const objs = on.map((p) => roleObject(p, role, selfHeads));
     if (objs.some((o) => o === null)) continue;
     const heads = [...new Set(objs.flatMap((o) => o!.heads))];
@@ -290,7 +298,7 @@ export function eventMentions(on: readonly EventPattern[], batch: boolean, selfH
     // FAST2 T10: the object itself in an event that leaves it where it is (Mention.selfObject: never "that creature")
     // edh-d-25 (CR 201.5, 509.1; Barrow-Blade): and the attached creature of a combat event ("Whenever equipped creature blocks or becomes blocked by a creature, that creature ...") is named
     // "equipped creature" or "it", never "that creature": that is the other party (Mention.otherPartyThat)
-    const attachedCombatSubject = role === 'subject' && !batch && on.every((p) => (p.ev === 'blocks' ? p.blocker?.attachedToSource === true : p.ev === 'becomesBlocked' ? p.attacker?.attachedToSource === true : false));
+    const attachedCombatSubject = (role === 'subject' || (role === 'blocker' && on.every((p) => p.ev === 'blocks'))) && !batch && on.every((p) => (p.ev === 'blocks' ? p.blocker?.attachedToSource === true : p.ev === 'becomesBlocked' ? p.attacker?.attachedToSource === true : false));
     const selfObject = !batch && (on.every((p) => onlySelf(staticRoleFilter(p, role))) || attachedCombatSubject);
     // MX5: the object of its own "enters" trigger, which has not moved since it entered (CR 603.6a): Oracle names it "~", "this creature" or "it", so a
     // demonstrative ("that creature") means it only when nothing else can be meant ("When ~ enters, tap target creature an opponent controls. That creature

@@ -1,0 +1,463 @@
+[
+  {
+    "id": "trg.edhd109.self.blocksTwoOrMore",
+    "kind": "trigger",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 509.1a",
+      "CR 509.3a",
+      "CR 603.2c"
+    ],
+    "pattern": "whenever ~ blocks two or more creatures",
+    "build": {
+      "on": [
+        {
+          "ev": "blocks",
+          "blocker": {
+            "self": true
+          },
+          "attackerAtLeast": 2
+        }
+      ]
+    },
+    "consumes": [
+      "whenever",
+      "or more"
+    ],
+    "examples": [
+      {
+        "text": "Whenever ~ blocks two or more creatures, it gets +2/+2 until end of turn."
+      },
+      {
+        "text": "Whenever ~ blocks two or more creatures, you gain 3 life."
+      }
+    ],
+    "counterExamples": [
+      "Whenever ~ blocks two creatures, you gain 3 life.",
+      "Whenever ~ blocks three or more creatures, you gain 3 life.",
+      "Whenever ~ becomes blocked by two or more creatures, you gain 3 life."
+    ]
+  },
+  {
+    "id": "trg.edhd109.selfAndAtLeastTwo.attack",
+    "kind": "trigger",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 508.1",
+      "CR 508.3a",
+      "CR 603.2c"
+    ],
+    "pattern": "whenever ~ and at least two {f:Filter} attack",
+    "build": {
+      "on": [
+        {
+          "ev": "attacks",
+          "attacker": {
+            "self": true
+          },
+          "withOther": "$f",
+          "withOtherAtLeast": 2
+        }
+      ]
+    },
+    "consumes": [
+      "whenever",
+      "at least"
+    ],
+    "examples": [
+      {
+        "text": "Whenever ~ and at least two Goblins attack, ~ gets +2/+0 until end of turn."
+      },
+      {
+        "text": "Whenever ~ and at least two other Knights attack, you gain 2 life."
+      }
+    ],
+    "counterExamples": [
+      "Whenever ~ and at least three Goblins attack, ~ gets +2/+0 until end of turn.",
+      "Whenever ~ and at least two Goblins block, ~ gets +2/+0 until end of turn.",
+      "Whenever ~ and two Goblins attack, ~ gets +2/+0 until end of turn.",
+      "Whenever ~ and at least two other creatures attack, you gain 2 life."
+    ],
+    "weak": 1
+  },
+  {
+    "id": "eff.edhd109.instructionChoice.damageOrDamage",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 608.2d",
+      "CR 120.3"
+    ],
+    "pattern": "^ ~ deals {n:Qty} damage to {a:Recipient} or ~ deals {m:Qty} damage to {b:Recipient}",
+    "build": [
+      {
+        "op": "chooseValue",
+        "who": {
+          "ref": "you"
+        },
+        "what": "option",
+        "options": [
+          "first",
+          "second"
+        ],
+        "as": "instructionChoice",
+        "link": "instructionChoice"
+      },
+      {
+        "op": "if",
+        "cond": {
+          "cond": "chosen",
+          "link": "instructionChoice",
+          "equals": "first"
+        },
+        "then": [
+          {
+            "op": "damage",
+            "source": {
+              "ref": "self"
+            },
+            "to": "$a",
+            "amount": "$n"
+          }
+        ]
+      },
+      {
+        "op": "if",
+        "cond": {
+          "cond": "chosen",
+          "link": "instructionChoice",
+          "equals": "second"
+        },
+        "then": [
+          {
+            "op": "damage",
+            "source": {
+              "ref": "self"
+            },
+            "to": "$b",
+            "amount": "$m"
+          }
+        ]
+      }
+    ],
+    "subject": "none",
+    "examples": [
+      {
+        "text": "~ deals 3 damage to each attacking creature or ~ deals 3 damage to each blocking creature."
+      },
+      {
+        "text": "~ deals 1 damage to each creature with flying or ~ deals 2 damage to each player."
+      }
+    ],
+    "counterExamples": [
+      "~ deals 3 damage to each attacking creature and ~ deals 3 damage to each blocking creature.",
+      "~ deals 3 damage to each attacking creature or each blocking creature.",
+      "~ deals 3 damage to each attacking creature. ~ deals 3 damage to each blocking creature."
+    ]
+  },
+  {
+    "id": "sta.edhd109.attackingLastChosenPlayer.have",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 607.2d",
+      "CR 508.1b",
+      "CR 613.1f"
+    ],
+    "pattern": "creatures attacking the last chosen player have {a:Abilities}",
+    "build": {
+      "kind": "static",
+      "effects": [
+        {
+          "s": "continuous",
+          "affects": {
+            "ref": "each",
+            "filter": {
+              "types": [
+                "Creature"
+              ],
+              "attacking": {
+                "defender": {
+                  "ref": "linked",
+                  "link": "lastChosenPlayer"
+                }
+              }
+            }
+          },
+          "mods": [
+            {
+              "layer": 6,
+              "add": "$a"
+            }
+          ]
+        }
+      ]
+    },
+    "consumes": [
+      "chosen"
+    ],
+    "examples": [
+      {
+        "text": "At the beginning of combat on your turn, choose an opponent.\nCreatures attacking the last chosen player have trample."
+      },
+      {
+        "text": "At the beginning of your upkeep, choose an opponent.\nCreatures attacking the last chosen player have first strike."
+      }
+    ],
+    "counterExamples": [
+      "At the beginning of combat on your turn, choose an opponent.\nCreatures attacking the chosen player have trample.",
+      "At the beginning of combat on your turn, choose an opponent.\nCreatures attacking the last chosen player lose trample.",
+      "Creatures attacking the last chosen player have trample."
+    ]
+  },
+  {
+    "id": "sta.edhd109.attackingLastChosenPlayer.get",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 607.2d",
+      "CR 508.1b",
+      "CR 613.4c"
+    ],
+    "pattern": "creatures attacking the last chosen player get {pt:PT}",
+    "build": {
+      "kind": "static",
+      "effects": [
+        {
+          "s": "continuous",
+          "affects": {
+            "ref": "each",
+            "filter": {
+              "types": [
+                "Creature"
+              ],
+              "attacking": {
+                "defender": {
+                  "ref": "linked",
+                  "link": "lastChosenPlayer"
+                }
+              }
+            }
+          },
+          "mods": [
+            {
+              "layer": "7c",
+              "power": "$pt.p",
+              "toughness": "$pt.t"
+            }
+          ]
+        }
+      ]
+    },
+    "consumes": [
+      "chosen"
+    ],
+    "examples": [
+      {
+        "text": "At the beginning of combat on your turn, choose an opponent.\nCreatures attacking the last chosen player get +2/+0."
+      },
+      {
+        "text": "At the beginning of your upkeep, choose an opponent.\nCreatures attacking the last chosen player get +1/+1."
+      }
+    ],
+    "counterExamples": [
+      "At the beginning of combat on your turn, choose an opponent.\nCreatures attacking the chosen player get +2/+0.",
+      "At the beginning of combat on your turn, choose an opponent.\nCreatures blocking the last chosen player get +2/+0.",
+      "Creatures attacking the last chosen player get +2/+0."
+    ]
+  },
+  {
+    "id": "sta.edhd109.self.cantBeBlockedBy.asLongDefendingControls",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 509.1b",
+      "CR 506.2",
+      "CR 604.1"
+    ],
+    "pattern": "~ can't be blocked by {f:Filter} as long as defending player controls ( a | an ) {g:Filter}",
+    "build": {
+      "s": "restrict",
+      "subject": {
+        "ref": "self"
+      },
+      "mode": "cant",
+      "action": "beBlockedBy",
+      "other": "$f",
+      "when": {
+        "cond": "exists",
+        "of": {
+          "ref": "each",
+          "filter": {
+            "controller": {
+              "ref": "defending"
+            },
+            "anyOf": [
+              "$g"
+            ]
+          }
+        }
+      }
+    },
+    "consumes": [
+      "can't",
+      "as long as"
+    ],
+    "examples": [
+      {
+        "text": "~ can't be blocked by creatures with power 3 or greater as long as defending player controls a Forest."
+      },
+      {
+        "text": "~ can't be blocked by artifact creatures as long as defending player controls an enchantment."
+      }
+    ],
+    "counterExamples": [
+      "~ can't be blocked by creatures with power 3 or greater as long as you control a Forest.",
+      "~ can block creatures with power 3 or greater as long as defending player controls a Forest.",
+      "~ can't be blocked by creatures with power 3 or greater unless defending player controls a Forest."
+    ]
+  },
+  {
+    "id": "sta.edhd109.self.cantAttack.ifAttackedYourLastTurn",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 508.1c",
+      "CR 500.1",
+      "CR 400.7"
+    ],
+    "pattern": "~ can't attack if ( it | ~ ) attacked during your last turn",
+    "build": {
+      "s": "restrict",
+      "subject": {
+        "ref": "self"
+      },
+      "mode": "cant",
+      "action": "attack",
+      "when": {
+        "cond": "happened",
+        "event": {
+          "ev": "attacks",
+          "attacker": {
+            "self": true
+          }
+        },
+        "scope": "yourLastTurn"
+      }
+    },
+    "consumes": [
+      "can't",
+      "if",
+      "last",
+      "during"
+    ],
+    "examples": [
+      {
+        "text": "~ can't attack if ~ attacked during your last turn."
+      },
+      {
+        "text": "Whenever ~ blocks, you gain 7 life.\n~ can't attack if ~ attacked during your last turn."
+      }
+    ],
+    "counterExamples": [
+      "~ can't block if it attacked during your last turn.",
+      "~ can't attack if it attacked this turn.",
+      "~ can't attack if it blocked during your last turn."
+    ]
+  },
+  {
+    "id": "trg.edhd109.creatureDealsCombatDamageToItsOwner",
+    "kind": "trigger",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 120.1",
+      "CR 108.3",
+      "CR 510.2",
+      "CR 603.2"
+    ],
+    "pattern": "whenever a creature deals combat damage to its owner",
+    "build": {
+      "on": [
+        {
+          "ev": "damage",
+          "combat": true,
+          "source": {
+            "types": [
+              "Creature"
+            ]
+          },
+          "recipient": {
+            "player": "any"
+          },
+          "toSourceOwner": true
+        }
+      ]
+    },
+    "consumes": [
+      "whenever"
+    ],
+    "examples": [
+      {
+        "text": "Whenever a creature deals combat damage to its owner, you draw a card."
+      },
+      {
+        "text": "Whenever a creature deals combat damage to its owner, untap ~."
+      }
+    ],
+    "counterExamples": [
+      "Whenever a creature deals combat damage to its controller, you draw a card.",
+      "Whenever a creature deals combat damage to a player, you draw a card.",
+      "Whenever a creature deals damage to its owner, you draw a card."
+    ]
+  },
+  {
+    "id": "trg.edhd109.selfAndAnother.attackDifferentPlayers",
+    "kind": "trigger",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 508.1b",
+      "CR 506.2",
+      "CR 603.2c"
+    ],
+    "pattern": "whenever ~ and another {f:Filter} attack different players",
+    "build": {
+      "on": [
+        {
+          "ev": "attacks",
+          "attacker": {
+            "self": true
+          },
+          "withOther": "$f",
+          "withOtherDifferentPlayer": true
+        }
+      ]
+    },
+    "consumes": [
+      "whenever",
+      "another",
+      "different"
+    ],
+    "examples": [
+      {
+        "text": "Whenever ~ and another creature attack different players, draw a card."
+      },
+      {
+        "text": "Whenever ~ and another Pirate attack different players, ~ gets +1/+1 until end of turn."
+      }
+    ],
+    "counterExamples": [
+      "Whenever ~ and another creature attack the same player, draw a card.",
+      "Whenever ~ and another creature block, draw a card.",
+      "Whenever ~ and another creature attack, draw a card."
+    ]
+  }
+]

@@ -140,7 +140,6 @@ describe('CR 701.26a, 608.2d, 118.12: "you may tap it" is impossible for a tappe
 
 describe('design 6.7 T2, CR 508.4: a manual "the token(s) enter(s) tapped and attacking" after the step that created the token makes the whole program manual', () => {
   const riders: [string, string][] = [
-    ['populate', 'Whenever this creature attacks, you gain 1 life, then populate. The token enters tapped and attacking.'],
     ['createToken', 'Whenever this creature attacks, create a 2/2 black Zombie creature token. That token enters tapped and attacking.'],
   ];
   for (const [maker, text] of riders) {
@@ -152,6 +151,19 @@ describe('design 6.7 T2, CR 508.4: a manual "the token(s) enter(s) tapped and at
       expect(f.diagnostics.some((d) => d.code === 'contagion' && d.level === 'manual'), JSON.stringify(f.diagnostics)).toBe(true);
     });
   }
+  // edh-d-105 (CR 701.36a, 508.4; Ghired, Conclave Exile): after a populate the rider is understood now (rid.edhpm10.copy.token.entersTappedAttacking, "@byOp" action): the populate step
+  // itself carries tapped and attacking, so nothing creates the token untapped and not attacking (this was the manual negative case before)
+  it('populate then the rider: the populate step is automated with the token entering tapped and attacking (edh-d-105)', () => {
+    const f = faceOf('Creature — Test', 'Whenever this creature attacks, populate. The token enters tapped and attacking.');
+    const trig = f.abilities.find((a) => a.kind === 'triggered') as { effect: { steps: { op: string; tapped?: boolean; attacking?: boolean }[] } } | undefined;
+    expect(trig?.effect.steps.map((x) => x.op)).toEqual(['action']);
+    expect(trig?.effect.steps[0]).toMatchObject({ tapped: true, attacking: true });
+  });
+  it('populate inside a "then" sentence, then the rider: still no automated step (the earlier negative, edh-d-105: every step manual)', () => {
+    const f = faceOf('Creature — Test', 'Whenever this creature attacks, you gain 1 life, then populate. The token enters tapped and attacking.');
+    const trig = f.abilities.find((a) => a.kind === 'triggered') as { effect: { steps: { op: string }[] } } | undefined;
+    expect(trig!.effect.steps.every((x) => x.op === 'manual'), JSON.stringify(trig)).toBe(true);
+  });
   it('the same sentence with no token made before it stays a manual step of its own (Frost Breath rule): the step before it is still automated', () => {
     const f = faceOf('Creature — Test', 'Whenever this creature attacks, you gain 1 life. The token enters tapped and attacking.');
     const trig = f.abilities.find((a) => a.kind === 'triggered') as { effect: { steps: { op: string }[] } } | undefined;

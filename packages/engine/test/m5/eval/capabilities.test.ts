@@ -27,10 +27,12 @@ const CONDITIONS: Record<Condition['cond'], boolean> = {
   firstCombat: true, // Standard round 4, r4-trig (CR 500.8, 505.1a)
   firstTime: true, someMatch: true, // Standard round 5, r5-trig (CR 603.4, 603.2c)
   prime: true, // std-rx1
+  graveyardPos: true, // edhe7
   share: true, // std-cardcopy-1 (CR 205.2a, 105.2)
   firstSpellCast: true, // trek-2 (CR 601.2i, 707.10)
   putBySource: true, // edh-perms-9 (CR 608.2, 603.4): "if it wasn't put onto the battlefield with this ability"
   playerIs: true, // edh-players-18 (CR 102.3): "if the player is your opponent"
+  hasPlayer: true, // edh-e-62 (CR 603.4): "if a player has more life than each other player"
   otherOpponentNotAttacked: true, // edh-next-53 (CR 506.2, 508.1b): "that player has another opponent who isn't being attacked"
   attackedYouLastTurn: true, // edh-d-45 (CR 506.1, 508.1): "a player attacked you during their last turn"
   eventDied: true, // edh-next-97 (CR 700.4): "if it didn't die" after a leave-the-battlefield trigger
@@ -67,6 +69,7 @@ const QUANTITIES: Record<Exclude<Quantity, number>['q'], boolean> = {
   resolvedThisTurn: true, // FAST5X E17 (CR 608.2, 400.7)
   activatedThisTurn: true, // edh-c-89 (CR 602.5b)
   descendedThisTurn: true, // FAST5X E22 (CR 700.11)
+  graveyardUsesThisTurn: true, // edh-d-108 (CR 601.2, 602.2, 404.1): Laboratory Drudge
   attacksThisTurn: true, // edh-combat-5 (CR 508.1)
   lifeLost: true, // M12-3 (CR 119.3, 608.2c)
   votes: true, // M12-3 (CR 701.38a-b)
@@ -127,6 +130,8 @@ const REFS: Record<ObjRef['ref'] | PlayerRef['ref'], true> = {
   initiative: true, // edh-next-82: "the player who has the initiative" (CR 726.1)
   costUnattached: true, // edh-next-141 (CR 701.3d): what an unattach cost unattached
   mostLife: true, // edh-d-85
+  extremePlayer: true, // edh-e-62
+  coinSide: true, // edh-e-62
   grantCaster: true, // edh-next-146: "the player who cast ¤" (CR 601.2a, 611.2c), fixed by effects/handlers/lasting.ts as a spell's effect is created
 };
 
@@ -142,7 +147,7 @@ describe('the capability tables cover the model', () => {
   });
   it('durations are WP15\'s: every form of Duration but asLongAs is advertised, as core/durations.ts ends it (test/m5/lasting/ pins each one)', () => {
     // not asLongAs: design 3.7 wants it judged live, the build judges it at priority checks (effects/eval.ts, WP15 review)
-    expect(Object.keys(DUR_EVALUATORS).sort()).toEqual(['duringNextCombat' /* edh-d-88: "during that player's next combat" (Razorfield Ripper's reselection, CR 506.1) */, 'duringNextTurn' /* std-control-1: "during that turn" of the next turn, CR 611.2a */, 'endOfCombat', 'endOfNextTurn' /* FAST5X E29 */, 'endOfTurn', 'permanent', 'remainsExiled' /* FAST5X E29 */, 'throughNextUntap' /* MX5 */, 'until', 'untilExiledWith' /* r5-dig */, 'untilNextStep', 'untilNextTurn', 'whileObject' /* std-rx32 */, 'whileSource']);
+    expect(Object.keys(DUR_EVALUATORS).sort()).toEqual(['duringNextCombat' /* edh-d-88: "during that player's next combat" (Razorfield Ripper's reselection, CR 506.1) */, 'duringNextTurn' /* std-control-1: "during that turn" of the next turn, CR 611.2a */, 'endOfCombat', 'endOfCombatNextTurn' /* edh-d-104: until end of combat on your next turn (CR 611.2a, 500.5a) */, 'endOfNextTurn' /* FAST5X E29 */, 'endOfTurn', 'permanent', 'remainsExiled' /* FAST5X E29 */, 'throughNextUntap' /* MX5 */, 'until', 'untilExiledWith' /* r5-dig */, 'untilNextStep', 'untilNextTurn', 'whileObject' /* std-rx32 */, 'whileSource']);
   });
 });
 

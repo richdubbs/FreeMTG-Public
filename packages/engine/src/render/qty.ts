@@ -68,7 +68,7 @@ export function excessRecipient(to: ObjRef, st: RenderState): string {
 
 /** The words of a history scope (M6-0: `lastTurn`, "last turn"). */
 export const scopeWords = (scope: Extract<Quantity, { q: 'happenedCount' }>['scope']): string =>
-  scope === 'turn' ? 'this turn' : scope === 'combat' ? 'this combat' : scope === 'lastTurn' ? 'last turn' : scope === 'sinceYourLastTurn' ? 'since your last turn' : 'this game';
+  scope === 'turn' ? 'this turn' : scope === 'combat' ? 'this combat' : scope === 'lastTurn' ? 'last turn' : scope === 'yourLastTurn' ? 'during your last turn' : scope === 'sinceYourLastTurn' ? 'since your last turn' : 'this game';
 
 /**
  * edh-players-9 (rules/history.ts#happenedPlayersOf): the players of a `happenedPlayers` count with their history of this turn, as the pattern reads from each player's
@@ -111,6 +111,14 @@ function happened(q: Extract<Quantity, { q: 'happenedCount' }>, st: RenderState)
   const scope = before ? 'before it this turn' : scopeWords(q.scope);
   // M6-0: the per-player maximum has a wording only in a comparison ("if a player cast two or more spells last turn", render/cond.ts#compareIdiom)
   if (q.per === 'player') throw new NoRenderer('happenedCount.per outside a comparison');
+  // edh-d-106 (CR 120.1, 510.2, 400.7, 608.2h; Excess, eff.edhd106.createForEach.creatureDealtCombatDamageToPlayer): the different creatures of a controller (as each was as it dealt the
+  // damage) that dealt combat damage to a player this turn, "for each creature you controlled that dealt combat damage to a player this turn": one per source, however often it dealt it
+  if (q.per === 'source') {
+    const src = ev.ev === 'damage' ? ev.source : undefined;
+    if (ev.ev !== 'damage' || q.sum !== undefined || q.scope !== 'turn' || before || q.by !== undefined || ev.combat !== true || JSON.stringify(ev.recipient) !== '{"player":"any"}' || Object.keys(ev).sort().join() !== 'combat,ev,recipient,source'
+      || JSON.stringify(src) !== '{"types":["Creature"],"controller":"you"}') throw new NoRenderer('a count of the sources of a history other than the creatures you controlled that dealt combat damage to a player this turn');
+    return { plural: 'creatures you controlled that dealt combat damage to a player this turn', singular: 'creature you controlled that dealt combat damage to a player this turn' };
+  }
   if (ev.ev !== 'cast' && q.by !== undefined && q.by !== 'any') throw new NoRenderer('happenedCount.by on an event that is not a cast');
   // edh-next-68 (CR 400.7, 404.1; Welcome the Dead): the cards put into your graveyard from your hand or library this turn
   if (ev.ev === 'zoneChange' && JSON.stringify(ev.from) === '["hand","library"]' && ev.to === 'graveyard' && JSON.stringify(ev.subject) === '{"isCard":true,"owner":"you"}' && q.scope === 'turn' && !before && q.by === undefined && Object.keys(ev).sort().join() === 'ev,from,subject,to') {
@@ -140,8 +148,9 @@ function happened(q: Extract<Quantity, { q: 'happenedCount' }>, st: RenderState)
       // std-rc (CR 700.4, 603.10a; parser/holes/qty.ts#historyCounts): an opponent's too, "creatures that died under your opponents' control this turn"
       const under = ev.subject.controller === 'you' ? ['your control'] : ["your opponents' control", "an opponent's control"];
       return {
-        plural: alt(died.plural, ...under.map((u) => `${K.np(g, st, { det: 'none', plural: true })} that died under ${u} ${scope}`)),
-        singular: alt(died.singular, ...under.map((u) => `${K.np(g, st, { det: 'none' })} that died under ${u} ${scope}`)),
+        // edh-e-43 (CR 700.4, 603.10a; Tobias, Doomed Conqueror): also "creatures you controlled that died this turn" (past tense), the same history (one more reading of this group)
+        plural: alt(died.plural, ...under.map((u) => `${K.np(g, st, { det: 'none', plural: true })} that died under ${u} ${scope}`), ...(ev.subject.controller === 'you' ? [`${K.np(g, st, { det: 'none', plural: true })} you controlled that died ${scope}`] : [])),
+        singular: alt(died.singular, ...under.map((u) => `${K.np(g, st, { det: 'none' })} that died under ${u} ${scope}`), ...(ev.subject.controller === 'you' ? [`${K.np(g, st, { det: 'none' })} you controlled that died ${scope}`] : [])),
       };
     }
     // r5-moved (CR 700.4; parser/holes/qty.ts#historyCounts): any other permanent kind "that were put into graveyards from the battlefield this turn" (Anzrag's Rampage)
@@ -636,7 +645,9 @@ export function countParts(q: Quantity, st: RenderState): { plural: string; sing
     case 'spellManaSpent': {
       if (q.from === undefined || q.of === undefined) return null;
       const m = `mana from ${K.np(q.from, st, { det: 'a' })} spent to cast ${spentObjectText(q.of, st)}`;
-      return { plural: m, singular: m };
+      // edh-e-51 (CR 106.3, 601.2h; Spoils of the Hunt): "for each mana from a Treasure that was spent to cast this spell"
+      const was = alt(m, `mana from ${K.np(q.from, st, { det: 'a' })} that was spent to cast ${spentObjectText(q.of, st)}`);
+      return { plural: was, singular: was };
     }
     // FAST5X E19 (CR 106.4): "for each unspent mana you have", "... unspent green mana you have"
     case 'unspentMana': {
@@ -656,7 +667,7 @@ export function countParts(q: Quantity, st: RenderState): { plural: string; sing
       const noun = r?.nouns[0];
       // std-tdm (CR 701.8a; family destroyed-this-way-noun): what a destroy step destroyed is said with each of its nouns, "for each permanent destroyed this way"
       // or "for each creature destroyed this way" (render/steps-zones.ts#destroy names only the nouns that cover everything it destroys)
-      if (r?.thisWay === 'destroyed this way' && r.nouns.length > 1) {
+      if ((r?.thisWay === 'destroyed this way' || r?.thisWay === 'countered this way' /* edh-e-15 */) && r.nouns.length > 1) {
         return { plural: alt(...r.nouns.map((n) => `${pluralize(n)} ${r.thisWay}`)), singular: alt(...r.nouns.map((n) => `${n} ${r.thisWay}`)) };
       }
       return r?.thisWay !== undefined && noun !== undefined ? { plural: `${pluralize(noun)} ${r.thisWay}`, singular: `${noun} ${r.thisWay}` } : null;
@@ -1178,6 +1189,7 @@ export function qty(q: Quantity, st: RenderState, _o: QtyOpts = {}): string {
       if (st.info.get(`b:${q.step}`)?.paidTotalMana === true) return 'the total amount of mana paid this way'; // edh-top-6 (join forces)
       if (st.info.get(`b:${q.step}`)?.paidEnergy === true) return 'the amount of {E} paid this way'; // edh-next-32 (CR 107.14)
       if (st.info.get(`b:${q.step}`)?.paidTimes === true) return 'that many';
+      if (st.info.get(`b:${q.step}`)?.paidLife === true) return 'that many'; // edh-e-41 (CR 118.12, 119.4; Plunge into Darkness): "Pay any amount of life, then look at that many cards"
       if (st.info.get(`r:${q.step}`)?.xWord === true) return 'x'; // edh-d-90 (CR 107.3, 608.2h; Campsite Cuisine): the X that "you may sacrifice X Foods" defined // edhn81 (CR 118.12, 603.12; the Adversary cycle): "you may pay {M} any number of times. When you pay this cost one or more times, ... that many"
       const base = `the number of ${K.obj({ ref: 'bound', name: q.step }, st, 'object').text}`;
       // FAST4 T26: "the number of cards discarded this way" (CR 608.2c): what the step did, said by its participle (render/steps-cards.ts#discard)
@@ -1227,6 +1239,7 @@ export function qty(q: Quantity, st: RenderState, _o: QtyOpts = {}): string {
     case 'lifeGainedThisTurn': return alt("the amount of life you've gained this turn", 'the amount of life you gained this turn');
     case 'permanentsToGraveyardThisTurn': return 'the number of permanents put into a graveyard from the battlefield this turn'; // edh-d-3 (CR 702.69a)
     case 'descendedThisTurn': return 'the number of times you descended this turn'; // FAST5X E22 (CR 700.11)
+    case 'graveyardUsesThisTurn': throw new NoRenderer('a count of the graveyard spells and abilities used this turn (only its "one or more" condition has words)'); // edh-d-108
     case 'attacksThisTurn': return `the number of times ${K.obj(q.of, st, 'subject').text} has attacked this turn`; // edh-combat-5 (CR 508.1)
     case 'extraTurnsBegun': return 'the number of extra turns you have begun this game'; // trek-18 (CR 500.7); no Oracle wording names it, only render/cond.ts says the comparison with 0
     case 'turnsBegun': return 'the number of turns you have begun this game'; // std-r9 (CR 500.7); no Oracle wording names it, only render/stat.ts#castSelfFirstTurns
@@ -1322,7 +1335,7 @@ export function qty(q: Quantity, st: RenderState, _o: QtyOpts = {}): string {
       // trek-7 (CR 506.3, 508.1): the whole turn's count, "the number of opponents you attacked this turn" (Worf, Defiant Commander)
       if (q.scope === 'turn') return alt('the number of opponents you attacked this turn', "the number of opponents you've attacked this turn", 'the number of opponents you have attacked this turn');
       if (q.present === true) return 'the number of opponents being attacked'; // edh-next-98 (Dimir Strandcatcher)
-      return 'the number of opponents you attacked with a creature this combat'; // M12-3 (CR 702.121a, melee)
+      return alt('the number of opponents you attacked with a creature this combat', 'the number of players you attacked this combat', 'the number of opponents you attacked this combat'); // M12-3 (CR 702.121a, melee); edh-e-38 (Custodi Soulcaller): the same count said "players you attacked this combat"
     case 'faceUpX': return 'X'; // CR 702.37f: the X of the cost paid to turn it face up
     // M11-0 (m11 design 4.5), CR 903.8: the casts of the controller's commander(s) from the command zone
     // CMDF: "a commander" (Jirina Kudro, Font of Magic) counts the same casts (equivalence a-commander-casts)

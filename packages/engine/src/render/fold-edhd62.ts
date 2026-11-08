@@ -17,6 +17,7 @@
  */
 import type { EffectStep, ObjRef } from '../types/ability';
 import { plain } from './clause';
+import { alt } from './text';
 import type { Folded } from './fold';
 import { K } from './kernel';
 import { cloneState, type RenderState } from './state';
@@ -77,7 +78,9 @@ function putsCardOfTheirChoiceUnderYourControl(list: EffectStep[], i: number, st
   if (Object.keys(kind).length !== 1 || (kind.types === undefined && kind.subtypes === undefined)) return null;
   const who = K.player(c.who, st, 'subject');
   const noun = K.np(kind, st, { det: 'none' });
-  return { clauses: [plain(`${who.text} puts a ${noun} card of their choice from their graveyard onto the battlefield under your control`, { standalone: true })], consumed: 2 };
+  // edh-e-37 (CR 608.2d, 110.2; Scrounge): "Target opponent chooses an artifact card in their graveyard. Put that card onto the battlefield under your control." says the same two steps.
+  const one = `a ${noun} card`;
+  return { clauses: [plain(`${who.text} ${alt(`puts ${one} of their choice from their graveyard onto the battlefield under your control`, `chooses ${one} in their graveyard. put that card onto the battlefield under your control`)}`, { standalone: true })], consumed: 2 };
 }
 
 /** The folds of edh-d-62 (render/fold.ts#foldAt). */

@@ -21,6 +21,11 @@ export const CLAUSES_R3MECH = {
     const named = s.filter !== undefined && Object.keys(s.filter).length === 1 && s.filter.name !== undefined;
     const card = s.filter === undefined || named ? 'a card' : K.np(s.filter, st, { det: 'a', head: 'card' });
     const owned = `${card} you own${named ? ` named ${s.filter!.name!}` : ''}`;
+    // edh-e-41 (CR 400.11b, 401.4; The Raven's Warning): on top of your library (never revealed)
+    if (s.top === true) {
+      if (s.reveal) throw new NoRenderer('a revealed card from outside the game put on top of a library');
+      return plain(`put ${owned} from outside the game on top of your library`);
+    }
     return plain(s.reveal ? `reveal ${owned} from outside the game and put it into your hand` : `put ${owned} from outside the game into your hand`);
   },
 };

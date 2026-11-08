@@ -211,6 +211,8 @@ export function historyEntry(s: GameState, e: SemEvent, combat: number, turn: nu
       break;
     case 'dieRoll':
       put('result', typeof e.data['result'] === 'number' ? e.data['result'] : undefined);
+      put('nth', typeof e.data['nth'] === 'number' ? e.data['nth'] : undefined); // edhe34
+      put('visit', e.data['visit'] === true ? true : undefined); // edhe34 (CR 701.52a)
       put('natural', typeof e.data['natural'] === 'number' ? e.data['natural'] : undefined); // edh-next-55 (CR 706.2): a die's highest natural result
       put('sides', typeof e.data['sides'] === 'number' ? e.data['sides'] : undefined);
       break;

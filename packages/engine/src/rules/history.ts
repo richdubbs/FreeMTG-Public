@@ -58,8 +58,8 @@ const unsupported = (what: string): never => {
 export const HISTORY_WRITTEN = true;
 
 /** The `ObjectFilter` fields that read `GameState.history`. */
-export const HISTORY_FILTER_FIELDS: readonly string[] = ['foughtThisTurn' /* edh-next-139 */, 'enteredThisTurn', 'enteredUnderYourControl' /* edh-next-109 */, 'dealtDamageThisTurn', 'attackedThisTurn', 'blockedThisTurn', 'wasBlockedThisTurn' /* edh-c-18 */, 'dealtDamageBySourceThisTurn', 'dealtDamageByAttachedThisTurn' /* edh-c-113 */, 'controllerDealtCombatDamageBySourceThisTurn',
-  'dealtDamageAsSourceThisTurn' /* std-mkm */, 'dealtDamageToYouThisTurn' /* edh-players-9 */, 'dealtDamageByYourSourceThisTurn' /* edh-c-48 */, 'putThereThisTurn' /* r3-choose */, 'putThereThisCombat' /* edh-next-116 */, 'crewedBySourceThisTurn' /* r5-trig */, 'enteredFrom' /* r5-trig */, 'putThereFrom' /* r5-fxz */, 'countersPutThisTurn' /* std-rx12 */, 'dealtExcessDamageThisTurn' /* edh-d-38 */, 'controllerDealtCombatDamageBy' /* edh-next-134 */, 'dealtDamageThisTurnBy' /* edh-next-130 */];
+export const HISTORY_FILTER_FIELDS: readonly string[] = ['foughtThisTurn' /* edh-next-139 */, 'enteredThisTurn', 'enteredUnderYourControl' /* edh-next-109 */, 'dealtDamageThisTurn', 'attackedThisTurn', 'blockedThisTurn', 'wasBlockedThisTurn' /* edh-c-18 */, 'blockedWithThisTurn' /* edh-e-20 */, 'dealtDamageBySourceThisTurn', 'dealtDamageByAttachedThisTurn' /* edh-c-113 */, 'controllerDealtCombatDamageBySourceThisTurn',
+  'dealtDamageAsSourceThisTurn' /* std-mkm */, 'dealtDamageToYouThisTurn' /* edh-players-9 */, 'dealtDamageByYourSourceThisTurn' /* edh-c-48 */, 'putThereThisTurn' /* r3-choose */, 'putThereThisCombat' /* edh-next-116 */, 'crewedBySourceThisTurn' /* r5-trig */, 'enteredFrom' /* r5-trig */, 'putThereFrom' /* r5-fxz */, 'countersPutThisTurn' /* std-rx12 */, 'dealtExcessDamageThisTurn' /* edh-d-38 */, 'dealtNoncombatDamageThisTurn' /* edh-e-50 */, 'controllerDealtCombatDamageBy' /* edh-next-134 */, 'dealtDamageThisTurnBy' /* edh-next-130 */, 'enteredSinceYourLastTurn' /* edh-e-27 */];
 
 /** Every capability name that needs the history to exist (they are in `ENGINE_CAPABILITIES` exactly when `HISTORY_WRITTEN` is). */
 export const HISTORY_CAPABILITIES: readonly string[] = [...HISTORY_FILTER_FIELDS.map((f) => `filter:${f}`), 'cond:happened', 'q:happenedCount'];
@@ -119,6 +119,14 @@ export function historyInScope(s: GameState, scope: HistoryScope, you?: PlayerId
     const last = mineNow ? p.previousTurnStarted ?? 0 : p.lastTurnStarted;
     return s.history.filter((e) => e.turn > last);
   }
+  // edh-d-109 (CR 500.1; Giant Turtle): `yourLastTurn`, the entries of that player's most recent turn before this one (none before they had one)
+  if (scope === 'yourLastTurn') {
+    const p = you === undefined ? undefined : s.players.find((x) => x.id === you);
+    if (p === undefined) return unsupported('"your last turn" with no player it belongs to');
+    const mineNow = s.turn.activePlayer === p.id && p.lastTurnStarted === turn;
+    const last = mineNow ? p.previousTurnStarted : p.lastTurnStarted;
+    return last === undefined || last <= 0 || last >= turn ? [] : s.history.filter((e) => e.turn === last);
+  }
   if (scope === 'turn') return s.history.filter((e) => e.turn === turn);
   if (scope === 'lastTurn') return s.history.filter((e) => e.turn === turn - 1); // M6-0: the previous turn (CR 500.1)
   if (!s.combat) return [];
@@ -134,8 +142,16 @@ const thisTurn = (s: GameState, id: ObjectId, ev: HistoryEntry['ev']): HistoryEn
 export const enteredUnderControlOfThisTurn = (s: GameState, id: ObjectId, player: PlayerId): boolean => thisTurn(s, id, 'zoneChange').some((e) => e.facts['to'] === 'battlefield' && e.facts['enteredController'] === player);
 /** `enteredThisTurn`: the object entered the battlefield this turn (as this object: a later zone change makes it a new object, CR 400.7). */
 export const enteredThisTurn = (s: GameState, id: ObjectId): boolean => thisTurn(s, id, 'zoneChange').some((e) => e.facts['to'] === 'battlefield');
+/**
+ * edh-e-27, `enteredSinceYourLastTurn` (CR 400.7, 500.1; Premature Burial): the object entered the battlefield, as this object, after the end of `player`'s most recent turn
+ * that ended (historyInScope's `sinceYourLastTurn`; a player with no turn that ended yet reads the whole game).
+ */
+export const enteredSinceYourLastTurn = (s: GameState, id: ObjectId, player: PlayerId): boolean =>
+  historyInScope(s, 'sinceYourLastTurn', player).some((e) => e.ev === 'zoneChange' && e.subject === id && e.facts['to'] === 'battlefield');
 /** edh-d-38, `dealtExcessDamageThisTurn` (CR 120.10): this object was dealt excess damage this turn (the `excess` fact of a damage entry written to it). */
 export const dealtExcessDamageThisTurn = (s: GameState, id: ObjectId): boolean => thisTurn(s, id, 'damage').some((e) => typeof e.facts['excess'] === 'number' && e.facts['excess'] > 0);
+/** edh-e-50, `dealtNoncombatDamageThisTurn` (CR 120.1, 510.2): this object was dealt damage that was not combat damage this turn (the `combat` fact of a damage entry written to it; an amount of 0 is no event, CR 120.8). */
+export const dealtNoncombatDamageThisTurn = (s: GameState, id: ObjectId): boolean => thisTurn(s, id, 'damage').some((e) => e.facts['amount'] !== 0 && e.facts['combat'] !== true);
 /** `dealtDamageThisTurn`: this object was dealt damage this turn (an amount of 0 is no event, CR 614.7a). */
 export const dealtDamageThisTurn = (s: GameState, id: ObjectId): boolean => thisTurn(s, id, 'damage').some((e) => e.facts['amount'] !== 0);
 /**
@@ -243,6 +259,20 @@ export const exertedThisTurn = (s: GameState, id: ObjectId): boolean => thisTurn
 export const blockedThisTurn = (s: GameState, id: ObjectId): boolean => thisTurn(s, id, 'blocks').length > 0;
 /** edh-c-18 (CR 509.1h), `wasBlockedThisTurn`: this creature became blocked this turn (a `becomesBlocked` entry whose subject is the attacker). */
 export const wasBlockedThisTurn = (s: GameState, id: ObjectId): boolean => thisTurn(s, id, 'becomesBlocked').length > 0;
+
+/**
+ * edh-e-20 (CR 509.1g-h, 506.4, 400.7), `blockedWithThisTurn`: this creature was in a blocker-attacker pair with the other side this turn (a `blocks` entry per pair: the subject is the
+ * blocker, the `attacker.*` facts the attacker). `blocker`: it blocked one of them; `blocked`: one of them blocked it; `either`. The other side is a set of objects (their ids, and the ids
+ * they had before, CR 400.7) or a description matched on the facts as they were when the pair formed ("a legendary creature", ruling 2023-06-16: it only has to have been one then).
+ */
+export function blockedWithThisTurn(s: GameState, id: ObjectId, role: 'blocker' | 'blocked' | 'either', other: { ids: readonly ObjectId[] } | { filter: ObjectFilter }, combat: boolean, env: FactsEnv): boolean {
+  const now = currentCombatNumber(s);
+  const ids = 'ids' in other ? other.ids.flatMap((x) => [x, ...formerIds(s, x)]) : [];
+  const side = (e: HistoryEntry, prefix: string, objectId: unknown): boolean => 'ids' in other ? typeof objectId === 'string' && ids.includes(objectId) : factsMatchFilter(e.facts, prefix, other.filter, env);
+  return s.history.some((e) => e.turn === s.turn.number && e.ev === 'blocks' && (!combat || (now !== 0 && e.combat === now)) && (
+    ((role === 'blocker' || role === 'either') && e.subject === id && side(e, 'attacker.', e.facts['attacker.id'])) ||
+    ((role === 'blocked' || role === 'either') && e.facts['attacker.id'] === id && e.subject !== undefined && side(e, '', e.subject))));
+}
 
 /** std-copy-4 (CR 400.7): the ids `id` had before, newest first, by the `newId` links of last known information (a spell that became this permanent, ...). */
 /** edh-c-53 (CR 400.7, 601.2i): the spell `id` resolved from, when it is a permanent that was a spell on the stack just before; none otherwise (an earlier cast of the same card is another object). */
@@ -479,11 +509,14 @@ export function historyMatches(e: HistoryEntry, p: EventPattern, env: FactsEnv):
     }
     // CR 509.3a: "blocked" is once per blocker however many attackers it blocks (only the first pair counts); CR 509.3b: "blocked a creature" is once per
     // attacker (every pair whose attacker matches). An entry written before `first` existed counts as a first pair.
-    case 'blocks': return (p.attacker !== undefined || f['first'] !== false) && subject(p.blocker) && other('attacker.', p.attacker);
+    case 'blocks':
+      if (p.attackerAtLeast !== undefined) return unsupported('how many attackers a blocker blocked in a history pattern'); // edh-d-109: the facts keep no count per blocker (feature:ev.blocks.attackerAtLeast is no history form)
+      return (p.attacker !== undefined || f['first'] !== false) && subject(p.blocker) && other('attacker.', p.attacker);
     // CR 509.3c: "became blocked" is once per attacker however many creatures block it (only the first pair counts); CR 509.3d: "became blocked by a creature"
     // is once per blocker (every pair whose blocker matches). An entry written before `first` existed counts as a first pair.
     case 'becomesBlocked': return p.byAtLeast === undefined /* edh-c-48: a count of blockers is not recorded (CR 509.3e), never matched here */ && (p.by !== undefined || f['first'] !== false) && subject(p.attacker) && other('by.', p.by);
     case 'damage': {
+      if (p.toSourceOwner !== undefined) return unsupported('the owner of a damage source in a history pattern'); // edh-d-109: no fact keeps the source's owner (feature:ev.damage.toSourceOwner is no history form)
       if (p.combat !== undefined && (f['combat'] === true) !== p.combat) return false;
       if (p.excess === true && !(typeof f['excess'] === 'number' && f['excess'] > 0)) return false; // edh-next-110 (CR 120.10): only the damage entries with an excess part (an entry that does not know it never matches)
       if (!cmpOk(p.amount, f['amount'], env) || !other('source.', p.source)) return false;
@@ -513,7 +546,7 @@ export function historyMatches(e: HistoryEntry, p: EventPattern, env: FactsEnv):
       && (p.searched === undefined || (f['zone'] === 'library' && f['zoneOwner'] === e.actor)) /* edh-next-58 (CR 701.23a): the actor searched their OWN library */
       && (p.by === undefined || (p.verb === 'destroy' && typeof f['by'] === 'string' && playerOk(p.by, f['by'], env))); // std-lci: an explore's revealed card; edh-c-85 (CR 701.8a, 109.5): who controlled the spell or ability that destroyed it (an entry without the fact never matches)
     case 'createToken': return playerOk(p.player, e.actor, env) && subject(p.token);
-    case 'dieRoll': return playerOk(p.player, e.actor, env) && cmpOk(p.result, f['result'], env) && (p.natural === undefined || (typeof f['natural'] === 'number' && f['natural'] === p.natural)) && (p.highest !== true || (typeof f['natural'] === 'number' && f['natural'] === f['sides'])); // edh-next-55
+    case 'dieRoll': return playerOk(p.player, e.actor, env) && (p.nth === undefined || f['nth'] === p.nth) && (p.visit !== true || f['visit'] === true) && cmpOk(p.result, f['result'], env) && (p.natural === undefined || (typeof f['natural'] === 'number' && f['natural'] === p.natural)) && (p.highest !== true || (typeof f['natural'] === 'number' && f['natural'] === f['sides'])); // edh-next-55
     case 'coinFlip': return playerOk(p.player, e.actor, env) && (p.won === undefined || f['won'] === p.won); // cloud r3-mech (CR 705.2)
     case 'beginTurn': return playerOk(p.whose, e.actor, env) && (p.extra === undefined || (f['extra'] === true) === p.extra);
     case 'resolves': return subject(p.what);
@@ -701,6 +734,20 @@ export function maxHistoryPerSource(s: GameState, pattern: EventPattern, scope: 
     }
     return best;
   }
+  // edh-e-16 (CR 120.1, 603.4; Inferno Trap): no `sum` is the number of different sources that dealt matching damage ("dealt damage by two or more creatures this turn"):
+  // a source that dealt damage twice is one, damage of 0 is not damage (CR 120.8), a source that changed zones is another object (CR 400.7)
+  if (sum === undefined && pattern.ev === 'damage') {
+    const ids = new Set<string>();
+    for (const e of historyInScope(s, scope, env.you)) {
+      if (by !== undefined && !playerOk(by, e.actor, env)) continue;
+      if (!historyMatches(e, pattern, env)) continue;
+      const id = e.facts['source.id'];
+      const amount = e.facts['amount'];
+      if (typeof id !== 'string' || typeof amount !== 'number' || amount === 0) continue;
+      ids.add(id);
+    }
+    return ids.size;
+  }
   if (sum !== 'amount' || pattern.ev !== 'damage') return unsupported('a per-source total of anything but damage amounts');
   const per = new Map<string, number>();
   for (const e of historyInScope(s, scope, env.you)) {
@@ -719,6 +766,14 @@ export function happenedCountOf(s: GameState, q: { event: EventPattern; scope: H
   if (q.per === 'source') return maxHistoryPerSource(s, q.event, q.scope, q.by, env, q.sum); // edh-next-82
   if (q.sum !== undefined && q.per !== 'player') return sumHistory(s, q.event, q.scope, q.by, env, q.sum);
   return q.per === 'player' ? maxHistoryPerPlayer(s, q.event, q.scope, q.by, env, q.sum) : countHistory(s, q.event, q.scope, q.by, env);
+}
+
+/**
+ * edh-e-16 (CR 506.3, 508.1, 601.2f; Astral Confrontation): the different opponents of `controller` that creatures of theirs are attacking in the combat under way ("for each opponent you're
+ * attacking"): 0 outside combat, a planeswalker or battle attacked is not its player. Same count as actions/announce-cond.ts's `opponentsAttacked` without a scope.
+ */
+export function opponentsAttackedNow(s: GameState, controller: PlayerId): number {
+  return new Set((s.combat?.attackers ?? []).filter((x) => s.objects[x.id]?.controller === controller && x.defender === x.defendingPlayer && x.defendingPlayer !== controller).map((x) => x.defendingPlayer)).size;
 }
 
 /**

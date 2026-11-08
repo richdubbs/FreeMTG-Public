@@ -35,7 +35,7 @@ type ActionStep = Extract<EffectStep, { op: 'action' }>;
 type Holder = ObjHandle | PlayerId;
 
 /** Capability names (`feature:action.native.<name>`): the native actions of this module. */
-export const COUNTER_FEATURES: readonly string[] = ['action.native.proliferate', 'action.native.bolster', 'action.native.monstrosity', 'action.native.renown' /* std-ry8 */, 'action.native.doubleEachKind' /* cloud std-spm */, 'action.native.anotherOfEachKind' /* r5-refs */, 'action.native.timeTravel' /* edh-next-3 */];
+export const COUNTER_FEATURES: readonly string[] = ['action.native.proliferate', 'action.native.bolster', 'action.native.monstrosity', 'action.native.renown' /* std-ry8 */, 'action.native.doubleEachKind' /* cloud std-spm */, 'action.native.anotherOfEachKind' /* r5-refs */, 'action.native.addOrRemoveEachKind' /* edh-e-67 */, 'action.native.timeTravel' /* edh-next-3 */];
 
 const textOf = (st: ActionStep, fallback: string): string => st.span ?? fallback;
 
@@ -258,6 +258,50 @@ const doubleEachKind: StepHandler<ActionStep> = (cx, st) => eachKind(cx, st, 'do
  */
 const anotherOfEachKind: StepHandler<ActionStep> = (cx, st) => eachKind(cx, st, 'another');
 
+/**
+ * edh-e-67 (CR 122.1, 122.6; Dramatist's Puppet, Quarry Hauler): "For each kind of counter on target permanent, put another counter of that kind on it or remove one from it." The
+ * controller (`who`) makes every choice first, one per kind the holder has now (the kinds read before any change), to add one or to remove one; the changes then happen, each one
+ * proposed (CR 122.6) so a replacement that changes counters applies. A holder that left meanwhile is skipped (CR 400.7); a kind with no counter left is not removed from.
+ * Step: `{op:'action', action:'addOrRemoveEachKind', subject, who}`. Fail closed: no subject is resolved by hand; the template always makes the controller choose.
+ */
+const addOrRemoveEachKind: StepHandler<ActionStep> = (cx, st) => {
+  const g = cx.g;
+  const text = textOf(st, 'For each kind of counter, put another counter of that kind on it or remove one from it.');
+  if (st.subject === undefined) return askManual(cx, text, 'the step does not say whose counters (CR 122.1)');
+  const player = firstPlayer(cx, st.who);
+  if (player === undefined) return NOTHING;
+  const r = resolveRecipients(cx, st.subject);
+  const current = (h: Holder): boolean => (typeof h === 'string' ? !g.player(h).hasLost : isCurrent(cx, h));
+  const plan: { on: Holder; kind: string; pick: 'add' | 'remove' }[] = [];
+  for (const on of [...r.objects, ...r.players]) {
+    if (!current(on)) continue;
+    for (const kind of Object.keys(countersOn(cx, on))) {
+      spend(cx, 1);
+      const name = holderName(cx, on);
+      const ans = g.choose({
+        kind: 'chooseOption', player, min: 1, max: 1, rules: ['CR 122.1'],
+        prompt: `${text} ${name}: ${kind} counters: put another one on it or remove one.`,
+        options: [{ id: 'add', label: `Put another ${kind} counter on ${name}` }, { id: 'remove', label: `Remove a ${kind} counter from ${name}` }],
+      });
+      plan.push({ on, kind, pick: ans.ids[0] === 'remove' ? 'remove' : 'add' });
+    }
+  }
+  let changed = 0;
+  for (const { on, kind, pick } of plan) {
+    spend(cx, 1);
+    if (!current(on)) continue; // it left meanwhile (CR 400.7)
+    const name = holderName(cx, on);
+    if (pick === 'add') {
+      const put = proposeMeasured(cx, { ev: 'counters', change: 'put', on, kind, count: 1, by: player });
+      if (put > 0) { changed++; g.log(`${name} gets another ${kind} counter.`, { rules: ['CR 122.1', 'CR 122.6'], level: 'action' }); }
+    } else if ((countersOn(cx, on)[kind] ?? 0) > 0) {
+      const took = proposeMeasured(cx, { ev: 'counters', change: 'removed', on, kind, count: 1, by: player });
+      if (took > 0) { changed++; g.log(`A ${kind} counter is removed from ${name}.`, { rules: ['CR 122.1', 'CR 122.6'], level: 'action' }); }
+    }
+  }
+  return did(changed);
+};
+
 /** doubleEachKind and anotherOfEachKind: as many more of each kind as the holder has (`double`), or one more (`another`). */
 function eachKind(cx: ExecCtx, st: ActionStep, how: 'double' | 'another'): ReturnType<StepHandler<ActionStep>> {
   const g = cx.g;
@@ -336,4 +380,4 @@ const timeTravel: StepHandler<ActionStep> = (cx, st) => {
 
 
 /** The native actions of this module by `ActionMacro.native` name (keywords/actions/native.ts). */
-export const COUNTER_NATIVES: Readonly<Record<string, StepHandler<ActionStep>>> = { proliferate, bolster, monstrosity, renown, doubleEachKind, anotherOfEachKind, timeTravel };
+export const COUNTER_NATIVES: Readonly<Record<string, StepHandler<ActionStep>>> = { proliferate, bolster, monstrosity, renown, doubleEachKind, anotherOfEachKind, addOrRemoveEachKind, timeTravel };

@@ -300,6 +300,25 @@ describe('CR 603.12, 118.12a, 608.2h: "When you do, ~ deals damage equal to the 
     expect(dmg(s, named(s, 'Test Bruiser')[0]!)).toBe(0);
     expect(quest(declare(board(), false, {}))).toBe(0);
   });
+  // edh-d-86-fix (CR 603.12, 122.6; ruling 2024-06-07): "the reflexive triggered ability will trigger once for every two quest counters placed on Craig Boone this way"
+  const SEASON = card('Test Season', 'Enchantment', 'If an effect would put one or more counters on a permanent you control, it puts twice that many of those counters on that permanent instead.');
+  const doubled = (): GameState => mpScenario({ defs: [GUARD, MULE, BRUISER, SEASON], zones: { p1: { battlefield: ['Test Guard', 'Test Mule', 'Test Season'] }, p2: { battlefield: ['Test Bruiser'] } } });
+  it('with a counter doubler: four quest counters, so the reflexive ability triggers twice; the controller takes it both times (4 + 4 life)', () => {
+    const s0 = doubled();
+    const b = named(s0, 'Test Bruiser')[0]!;
+    const s = declare(s0, true, { targets: [[{ kind: 'object', id: b }], [{ kind: 'object', id: b }]], yes: [true, true] });
+    expect(quest(s)).toBe(4);
+    expect(lifeOf(s, 'p2')).toBe(12);
+    expect(dmg(s, b)).toBe(0);
+  });
+  it('with a counter doubler: declined both times, the 1/5 is dealt 4 damage twice and dies', () => {
+    const s0 = doubled();
+    const b = named(s0, 'Test Bruiser')[0]!;
+    const s = declare(s0, true, { targets: [[{ kind: 'object', id: b }], [{ kind: 'object', id: b }]], yes: [false, false] });
+    expect(quest(s)).toBe(4);
+    expect(lifeOf(s, 'p2')).toBe(20);
+    expect(named(s, 'Test Bruiser').length).toBe(0);
+  });
 });
 
 // ---- Azra Oddsmaker ----------------------------------------------------------------------------------------------------------------------------------------------------------

@@ -413,7 +413,7 @@
         "free": true,
         "@into": true,
         "@require": {
-          "what.ref": "bound",
+          "what.ref": { "@oneOf": ["bound", "linked"] },
           "result": "spell",
           "count": null,
           "newTargets": null,

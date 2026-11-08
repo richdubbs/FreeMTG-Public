@@ -409,7 +409,7 @@
     "id": "sta.edhn144.rule.revealFirstDraw.eachTurn",
     "kind": "static",
     "since": 9,
-    "status": "experimental",
+    "status": "stable",
     "cr": [
       "CR 701.20a",
       "CR 121.2",

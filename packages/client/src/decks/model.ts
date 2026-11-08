@@ -2,9 +2,9 @@
  * The saved deck (docs/design/decks-and-formats.md "Deck library"): name, format, main deck, sideboard, commander and companion slots, notes, dates and
  * an optional cover card. Cards are referenced by Oracle name and Oracle id so decks survive card-data refreshes. Pure helpers only: no storage here.
  */
-import type { DeckEntry, DeckList, DeckSection } from '@openmtg/server/api';
+import type { DeckEntry, DeckList, DeckSection, PrintingRef, TokenPrinting } from '@openmtg/server/api';
 
-export type { DeckEntry, DeckSection };
+export type { DeckEntry, DeckSection, PrintingRef, TokenPrinting };
 
 export interface Deck {
   id: string;
@@ -21,6 +21,60 @@ export interface Deck {
   updatedAt: string;
   /** Oracle name of the card shown for the deck in the library. */
   cover?: string;
+  /**
+   * deck-art-1 (additive): the printings chosen for the tokens the deck's cards make, by token image slot key. Not cards of the deck: not counted,
+   * checked or exported as cards.
+   */
+  tokens?: Record<string, TokenPrinting>;
+}
+
+/** "(M10) 146": a printing as decklists write it. */
+export function printingLabel(p: PrintingRef): string {
+  if (typeof p?.set !== 'string') return '';
+  return `(${p.set.toUpperCase()})${typeof p.number === 'string' && p.number ? ` ${p.number}` : ''}`;
+}
+
+/** Same printing (set codes compare in any case). */
+export function samePrinting(a: PrintingRef | undefined, b: PrintingRef | undefined): boolean {
+  if (!a || !b) return a === b;
+  return a.set.toLowerCase() === b.set.toLowerCase() && a.number === b.number;
+}
+
+/** The printing chosen for a card: its first entry with one, sections in SECTIONS order (a game shows one picture per card name). */
+export function printingOf(deck: Pick<Deck, 'main' | 'sideboard' | 'commander' | 'companion'>, name: string): PrintingRef | undefined {
+  for (const s of SECTIONS) {
+    const p = deck[s].find((e) => e.name === name && e.printing)?.printing;
+    // A damaged saved record (not a printing) counts as none.
+    if (p && typeof p.set === 'string' && p.set !== '' && typeof p.number === 'string') return p;
+  }
+  return undefined;
+}
+
+/** Choose a card's printing (null: the default) in every section that has the card, so the card shows one picture. Same deck when nothing changes. */
+export function setPrinting(deck: Deck, name: string, printing: PrintingRef | null): Deck {
+  let changed = false;
+  const next = { ...deck };
+  for (const s of SECTIONS) {
+    if (!deck[s].some((e) => e.name === name && !samePrinting(e.printing, printing ?? undefined))) continue;
+    changed = true;
+    next[s] = deck[s].map((e) => {
+      if (e.name !== name) return e;
+      const { printing: _old, ...rest } = e;
+      return printing ? { ...rest, printing: { set: printing.set.toLowerCase(), number: printing.number } } : rest;
+    });
+  }
+  return changed ? next : deck;
+}
+
+/** Choose a token's printing (null: the default). */
+export function setTokenPrinting(deck: Deck, key: string, token: TokenPrinting | null): Deck {
+  const cur = deck.tokens?.[key];
+  if (token ? cur && cur.oracleId === token.oracleId && samePrinting(cur.printing, token.printing) : !cur) return deck;
+  const tokens = { ...(deck.tokens ?? {}) };
+  if (token) tokens[key] = { oracleId: token.oracleId, name: token.name, printing: { set: token.printing.set.toLowerCase(), number: token.printing.number } };
+  else delete tokens[key];
+  const { tokens: _old, ...rest } = deck;
+  return Object.keys(tokens).length ? { ...rest, tokens } : rest;
 }
 
 export const SECTIONS: readonly DeckSection[] = ['commander', 'companion', 'main', 'sideboard'];
@@ -57,13 +111,15 @@ export function countOf(deck: Deck, section: DeckSection, name: string): number 
  * Add `delta` copies (negative removes) of a card to a section; entries at 0 disappear. Returns a new deck (the input is not changed). The section keeps
  * its insertion order so the list does not jump around while building.
  */
-export function addCard(deck: Deck, section: DeckSection, card: { name: string; oracleId?: string }, delta = 1): Deck {
+export function addCard(deck: Deck, section: DeckSection, card: { name: string; oracleId?: string; printing?: PrintingRef }, delta = 1): Deck {
   const list = deck[section];
   const i = list.findIndex((e) => e.name === card.name);
   let next: DeckEntry[];
   if (i < 0) {
     if (delta <= 0) return deck;
-    next = [...list, { name: card.name, count: delta, ...(card.oracleId ? { oracleId: card.oracleId } : {}) }];
+    // A new entry takes the printing given, else the one the card already has elsewhere in the deck (one picture per card).
+    const printing = card.printing ?? printingOf(deck, card.name);
+    next = [...list, { name: card.name, count: delta, ...(card.oracleId ? { oracleId: card.oracleId } : {}), ...(printing ? { printing } : {}) }];
   } else {
     const old = list[i]!;
     const count = old.count + delta;
@@ -79,7 +135,7 @@ export function moveCard(deck: Deck, from: DeckSection, to: DeckSection, name: s
   const entry = deck[from].find((e) => e.name === name);
   if (!entry) return deck;
   const n = Math.min(count ?? entry.count, entry.count);
-  const card = { name, ...(entry.oracleId ? { oracleId: entry.oracleId } : {}) };
+  const card = { name, ...(entry.oracleId ? { oracleId: entry.oracleId } : {}), ...(entry.printing ? { printing: entry.printing } : {}) };
   return addCard(addCard(deck, from, card, -n), to, card, n);
 }
 
@@ -91,6 +147,7 @@ export function mergeEntries(entries: readonly DeckEntry[]): DeckEntry[] {
     if (prev) {
       prev.count += e.count;
       if (!prev.oracleId && e.oracleId) prev.oracleId = e.oracleId;
+      if (!prev.printing && e.printing) prev.printing = e.printing;
     } else out.push({ ...e });
   }
   return out;
@@ -101,6 +158,7 @@ export function toDeckList(deck: Deck): DeckList {
   const list: DeckList = { main: deck.main, sideboard: deck.sideboard };
   if (deck.commander.length) list.commander = deck.commander;
   if (deck.companion.length) list.companion = deck.companion;
+  if (deck.tokens && Object.keys(deck.tokens).length) list.tokens = deck.tokens;
   return list;
 }
 
@@ -118,8 +176,8 @@ export function duplicateDeck(deck: Deck, now: string, id: string = newDeckId())
 }
 
 function structuredCloneDeck(deck: Deck): Deck {
-  const clone = (l: DeckEntry[]) => l.map((e) => ({ ...e }));
-  return { ...deck, main: clone(deck.main), sideboard: clone(deck.sideboard), commander: clone(deck.commander), companion: clone(deck.companion) };
+  const clone = (l: DeckEntry[]) => l.map((e) => ({ ...e, ...(e.printing ? { printing: { ...e.printing } } : {}) }));
+  return { ...deck, ...(deck.tokens ? { tokens: { ...deck.tokens } } : {}), main: clone(deck.main), sideboard: clone(deck.sideboard), commander: clone(deck.commander), companion: clone(deck.companion) };
 }
 
 /** Check that a value read back from storage looks like a deck (old or damaged records are skipped, never half-loaded). */

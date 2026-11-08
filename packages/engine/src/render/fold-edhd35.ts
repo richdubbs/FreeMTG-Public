@@ -10,8 +10,9 @@ import { K } from './kernel';
 import { movedInfo } from './moved';
 import { AMBIGUOUS, groupPool, restOfGroup } from './refs';
 import { cloneState } from './state';
-import { alt } from './text';
+import { alt, pluralize } from './text';
 import type { RenderState } from './state';
+import { bind } from './steps-util'; // edh-d-111
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 const plainMove = (s: EffectStep | undefined): s is Extract<EffectStep, { op: 'move' }> =>
@@ -116,6 +117,10 @@ function tapAnyNumber(list: EffectStep[], i: number, st: RenderState): Folded | 
   if (!same(b.what, { ref: 'bound', name: a.as }) || Object.keys(b).some((k) => !['op', 'what'].includes(k) && (b as unknown as Record<string, unknown>)[k] !== undefined)) return null;
   if (list.slice(i + 2).some((x) => JSON.stringify(x).includes(`"name":"${a.as}"`))) return null;
   const text = `tap any number of ${K.np(a.from.filter, cloneState(st), { det: 'none', plural: true })}`;
+  // edh-d-111 (CR 608.2c; Urge to Feed): the chosen permanents are a group a later instruction of an enclosing list may read ("You may tap any number of untapped Vampire creatures you
+  // control. If you do, put a +1/+1 counter on each of those Vampires."), "those Vampires": the nouns of the description, and its one subtype alone
+  const sub = a.from.filter.subtypes?.length === 1 ? [`those ${pluralize(a.from.filter.subtypes[0]!.toLowerCase())}`] : [];
+  bind(st, a.as, { nouns: K.nounsOf(a.from.filter), plural: true, ...(sub.length > 0 ? { alts: sub } : {}) });
   return { clauses: [acting('you', text, `you ${text}`)], consumed: 2 };
 }
 

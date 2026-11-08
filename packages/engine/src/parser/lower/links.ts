@@ -13,7 +13,7 @@
  */
 import type { Draft, Rec, Unit } from './types';
 import { THAT_COLOR_QUALITY } from '../holes/core';
-import { cloneDraft, isRec, MANA_COLOR_MARKER, QUOTED_LINK, rewrite, sequences } from './util';
+import { CHOSEN_LINK_MARKER, cloneDraft, isRec, MANA_COLOR_MARKER, QUOTED_LINK, rewrite, sequences } from './util';
 
 /** The kinds "that type" may name (CR 205.3, 205.2a, 205.3i). */
 const TYPE_KINDS: ReadonlySet<string> = new Set(['creatureType', 'cardType', 'landType', 'planeswalkerType' /* edh-d-94: CR 205.3j */]);
@@ -44,7 +44,7 @@ function resolveIn(step: Rec, producers: readonly Producer[]): Rec {
       return links.length === 1 ? { ...n, quality: `chosen:${links[0]}` } : undefined;
     }
     const c = n['chosen'];
-    if (!isRec(c) || c['link'] !== '$link' || typeof c['quality'] !== 'string') return undefined;
+    if (!isRec(c) || (c['link'] !== '$link' && c['link'] !== CHOSEN_LINK_MARKER /* edh-d-103 */) || typeof c['quality'] !== 'string') return undefined;
     const q = c['quality'];
     // CLOUD C5 (CR 607.2d): "the chosen type" (`'$chosenType'`) is whichever type the linked choice chose: creature type ("choose a creature type"), card type
     // (Umori, "choose a card type") or land type
@@ -147,7 +147,7 @@ export function resolveFaceChoices<T>(value: T, choices: readonly Producer[] | u
       return objs.length === 1 ? { ref: 'linked', link: objs[0]!.link } : undefined;
     }
     const c = n['chosen'];
-    if (!isRec(c) || c['link'] !== '$link' || c['quality'] === '$type') return undefined;
+    if (!isRec(c) || (c['link'] !== '$link' && c['link'] !== CHOSEN_LINK_MARKER /* edh-d-103 */) || c['quality'] === '$type') return undefined;
     return resolveIn(n, choices);
   }) as T;
 }

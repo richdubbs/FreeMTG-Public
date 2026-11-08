@@ -197,8 +197,12 @@ describe('CR 701.13a, 404.1, 608.2d: "Mill N cards. At the beginning of the next
 });
 
 describe('CR 609.3, 608.2d, 205.1a: the same "exile N cards" reading beside "If you can\'t" and a creature type', () => {
-  it('negative (Egon ruling 2021-02-05): "exile two cards from your graveyard. If you can\'t, sacrifice ~ and draw a card." is not fully automated (one card left exiles nothing and sacrifices; the reading would exile it)', () => {
-    expect(full(card('Test Grave God', 'Creature — God', "At the beginning of your upkeep, exile two cards from your graveyard. If you can't, sacrifice ~ and draw a card.", ['3', '3']))).toBe(false);
+  // edh-d-107: the choice is now all or none beside "If you can't" (chooseObjects.allOrNone, parser/lower/conditions.ts), so one card left exiles nothing and sacrifices, as the
+  // ruling says; the card is full and played in packages/engine/test/cloud/edh-d-107/edh-d-107-scenarios.test.ts
+  it('edh-d-107 (Egon ruling 2021-02-05): "exile two cards from your graveyard. If you can\'t, sacrifice ~ and draw a card." reads the choice as all or none', () => {
+    const d = card('Test Grave God', 'Creature — God', "At the beginning of your upkeep, exile two cards from your graveyard. If you can't, sacrifice ~ and draw a card.", ['3', '3']);
+    expect(full(d)).toBe(true);
+    expect(JSON.stringify(d)).toContain('"allOrNone":true');
   });
   it('"target creature becomes a Coward" replaces only creature types (ruling 2024-11-08)', () => {
     const CURSE = card('Test Shame Rite', 'Creature — Shaman', '{T}: Target creature becomes a Coward.', ['1', '1']);

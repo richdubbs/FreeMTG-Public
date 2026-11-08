@@ -14,6 +14,7 @@ import path from 'node:path';
 import { ScryfallClient, ScryfallHttpError } from '@openmtg/cards';
 import type { SetSummary } from './api';
 import type { ServerContext } from './context';
+import { scryfallClientOf } from './printings';
 import { fold } from './search-query';
 
 const API = 'https://api.scryfall.com';
@@ -151,7 +152,7 @@ export function setLists(ctx: ServerContext): SetLists {
   const dir = path.join(path.dirname(ctx.cacheDir), 'scryfall-sets');
   let lists = bySetsDir.get(dir);
   if (!lists) {
-    lists = new SetLists(dir, ctx.scryfall ?? new ScryfallClient());
+    lists = new SetLists(dir, scryfallClientOf(ctx));
     // A client injected by a test is that test's own: do not keep it for the next context.
     if (!ctx.scryfall) bySetsDir.set(dir, lists);
   }

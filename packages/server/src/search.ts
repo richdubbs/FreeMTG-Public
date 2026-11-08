@@ -12,7 +12,7 @@ import { COMPILER_VERSION, type CardDef } from '@openmtg/engine';
 import type { CardDetailResponse, ManualCategory, ManualPart } from './api';
 import { cardStore, storeError, type CardStore } from './cache';
 import { badRequest, type Handler, type ServerContext } from './context';
-import { parseSearch, searchRow, type SearchRow } from './search-query';
+import { colorsOutside, parseSearch, searchRow, type SearchRow } from './search-query';
 import { findSet, setLists, SetsUnavailableError, setsNamed } from './sets';
 import { cardSummary, wantsImages } from './summary';
 
@@ -84,8 +84,16 @@ export const searchCards: Handler<'GET /api/cards/search'> = async (req, ctx) =>
     tests.every((t) => t(r)) || (inSet !== null && bareTests !== null && r.card.oracle_id !== undefined && inSet.has(r.card.oracle_id) && bareTests.every((t) => t(r)));
   const filtered = rows(store).filter((r) => matchesRow(r) && (!level || store.automation.peek(r.card) === level));
   const rank = parsed.rank;
-  // Relevance first when the query names a card; the sort is stable, so Oracle-name order is kept within each tier.
-  const matches = rank ? filtered.map((r) => ({ r, t: rank(r) })).sort((a, b) => a.t - b.t).map((x) => x.r) : filtered;
+  // With colors chosen, the cards of just those colors first, then those with one more color, and so on; then relevance when the query names a card.
+  // The sort is stable, so Oracle-name order is kept within each tier.
+  const outside = req.query.colors ? colorsOutside(req.query.colors) : null;
+  const matches =
+    rank || outside
+      ? filtered
+          .map((r) => ({ r, o: outside ? outside(r.colors) : 0, t: rank ? rank(r) : 0 }))
+          .sort((a, b) => a.o - b.o || a.t - b.t)
+          .map((x) => x.r)
+      : filtered;
   const start = (parsed.page - 1) * parsed.pageSize;
   const cards = matches.slice(start, start + parsed.pageSize).map((r) => cardSummary(r.card, store.automation.levelOf(r.card), parsed.images));
   return { status: 200, body: { cards, page: parsed.page, pageSize: parsed.pageSize, total: matches.length } };

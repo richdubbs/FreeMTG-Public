@@ -23,12 +23,12 @@ import { cost, discardDesc } from './cost';
 import { dur } from './dur';
 import { castSpell, event } from './event';
 import { chosenOf, filter } from './filter';
-import { abilities, basePT, cardTypes, choiceKind, color, counterKind, keyword, manaCost, coloredManaCost, manaSym, manaUnits, name, pt, subtypes, typeChoices } from './misc';
+import { abilities, basePT, basePTSaid, cardTypes, choiceKind, color, counterKind, keyword, manaCost, coloredManaCost, manaSym, manaUnits, name, pt, subtypes, typeChoices } from './misc';
 import { exiledTop } from './object'; // edh-players-11
 import { itsPoss } from './object'; // edh-c-39
 import { loyaltySym } from './edhn142'; // edh-next-142
 import { thatCreature, thatToken } from './object'; // edh-top-1; edh-mana-keywords-10
-import { anyOppTarget, poisonOppTarget, anyTarget, chosenCard, countersOf, handCardBare, handCardPlural, group, handCard, impulse, found, impulses, itIs, theyAre, milled, obj, objs, oppTarget, otherTargets, playerTarget, pair, recipient, rest, seen, seenInHand, targetPhrases, them, they, typedThose } from './object';
+import { anyOppTarget, poisonOppTarget, anyTarget, chosenCard, countersOf, handCardBare, handCardPlural, group, handCard, impulse, found, impulses, itIs, theyAre, milled, obj, objs, oppTarget, otherTargets, playerTarget, pair, recipient, rest, seen, seenInHand, pileLooked, targetPhrases, them, they, typedThose } from './object';
 import { objPlayer, player, whoCant } from './player';
 import { milledThisWay } from './object'; // std-tla
 import { revealedThisWay } from './object'; // std-ro
@@ -37,7 +37,7 @@ import { namedToken, tokenDesc } from './token';
 import type { Tok } from './tok';
 import { vocabOf } from './vocab';
 import { lib, zone } from './zone';
-import { noVotesReceived, thatManyVotes, voteCount, voteOpp, voteThey, voteWords, voteYou, votedCreature } from './vote';
+import { noVotesReceived, thatManyVotes, votedColors, voteCount, voteOpp, voteThey, voteWords, voteYou, votedCreature } from './vote';
 import { choiceWord, choiceWords, chosenAll } from './choicewords'; // edh-players-13
 import { manaSpend, spellsCastHole } from './spend';
 import { cardsOfTemplateZone, listedCounterKind, notSameNameCard } from './stddsk';
@@ -49,6 +49,7 @@ import { siegeWord } from './r3mech';
 import { pluralSubtype } from './r4mech';
 import { controlledMoved, notMoved, surveilledCard } from './moved'; // r4-moved, r5-moved
 import { fewerDiscarded, itNotSource } from './edhv73'; // edh-c-73
+import { sameForCards } from './edhd107'; // edh-d-107
 import { countersMoved, fewerPut } from './edhd93'; // edh-d-93
 import { cardsDesc, searchDesc } from './r4dig';
 import { keptOnTop } from './r5fxz';
@@ -61,6 +62,7 @@ import { enchantedCard, enchantGraveyardQuote, enchantLinkedQuote } from './edhp
 import { batExiledReturnQuote } from './edhd91'; // edh-d-91
 import { adjCard } from './edhz12'; // edh-zones-12
 import { listedCard, subtypeList } from './edhb1'; // edh-b-1
+import { colorOrTypeCard } from './edhd111'; // edh-d-111
 import { charStat } from './edhpm8'; // edh-perms-8
 
 export const OWNER = 'WP6' as const;
@@ -71,7 +73,7 @@ fixGrammarWords(GRAMMAR_WORD_LIST);
 export const HOLES: Readonly<Partial<Record<HoleType, HoleFn>>> = {
   Filter: filter, Obj: obj, Objs: objs, Player: player, Recipient: recipient, Qty: qty, Count: count, Cost: cost, Cond: cond, Dur: dur, Event: event,
   TokenDesc: tokenDesc, Abilities: abilities, Keyword: keyword, Zone: zone, Color: color, CounterKind: counterKind, ManaCost: manaCost, PT: pt, Name: name,
-  ChoiceKind: choiceKind, Lib: lib, BasePT: basePT, Subtypes: subtypes, AnyTarget: anyTarget, ManaUnits: manaUnits, ManaSym: manaSym,
+  ChoiceKind: choiceKind, Lib: lib, BasePT: basePT, BasePTSaid: basePTSaid /* edh-d-105 */, Subtypes: subtypes, AnyTarget: anyTarget, ManaUnits: manaUnits, ManaSym: manaSym,
   Group: group, // FAST3 T18
   CardTypes: cardTypes, // FAST5 T60
   Pair: pair, // MX2
@@ -85,6 +87,7 @@ export const HOLES: Readonly<Partial<Record<HoleType, HoleFn>>> = {
   Rest: rest, // FAST5 T43
   Seen: seen, // FAST5 T43
   SeenInHand: seenInHand, // edh-cast-10
+  PileLooked: pileLooked, // edhe35
   MilledThisWay: milledThisWay, // std-tla
   RevealedThisWay: revealedThisWay, // std-ro
   CastSpell: castSpell, // FAST5 T45
@@ -96,6 +99,7 @@ export const HOLES: Readonly<Partial<Record<HoleType, HoleFn>>> = {
   CountersOf: countersOf, // FAST5X E21
   ManaSpend: manaSpend, SpellsCast: spellsCastHole, // FAST5X E23 (CR 106.6)
   VoteWords: voteWords, // M12-3 (CR 701.38b)
+  VotedColors: votedColors, // edhe35 (CR 701.38a-b, 702.16a)
   VoteCount: voteCount, // edh-players-13
   VoteYou: voteYou, VoteThey: voteThey, VoteOpp: voteOpp, VotedCreature: votedCreature, ThatManyVotes: thatManyVotes, NoVotesReceived: noVotesReceived, // edhd27 (CR 701.38a-b)
   ChoiceWords: choiceWords, ChoiceWord: choiceWord, ChosenAll: chosenAll, // edh-players-13 (CR 608.2d)
@@ -103,6 +107,7 @@ export const HOLES: Readonly<Partial<Record<HoleType, HoleFn>>> = {
   DiscardDesc: discardDesc, // FAST5 T56
   AdjCard: adjCard, // edh-zones-12
   ListedCard: listedCard, SubtypeList: subtypeList, // edh-b-1
+  ColorOrTypeCard: colorOrTypeCard, // edh-d-111
   Impulse: impulse, Impulses: impulses, // FAST5 T70
   ExiledTop: exiledTop, // edh-players-11
   Milled: milled, Found: found, // FAST5 T75
@@ -137,6 +142,7 @@ export const HOLES: Readonly<Partial<Record<HoleType, HoleFn>>> = {
   ObjPlayer: objPlayer, // edh-zones-16
   Its: itsPoss, // edh-c-39
   LoyaltySym: loyaltySym, // edh-next-142
+  SameForCards: sameForCards, // edh-d-107
 };
 
 /** Hole types the chart parser itself implements (derived from templates, not code). */

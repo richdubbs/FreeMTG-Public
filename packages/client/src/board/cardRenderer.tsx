@@ -7,7 +7,7 @@
  * below is the board's own default, for tests and for any screen that draws a board without C2.
  */
 import type { ReactNode } from 'react';
-import type { CardDef, Chars } from '@openmtg/engine';
+import type { CardDef, Chars, PlayerId } from '@openmtg/engine';
 import { CardBack as DigiDiceCardBack } from '../cards';
 import { ManaCostView } from './ManaSymbols';
 
@@ -32,6 +32,8 @@ export interface BoardCardProps {
   /** Characteristics after the layers (CR 613), when known: the frame may show the current P/T and type line. */
   chars: Chars | null;
   size: CardSize;
+  /** deck-art-1: the card's owner, when known: the picture is the printing that player's deck chose (game/boardCards.tsx). */
+  owner?: PlayerId;
 }
 
 export type CardRenderer = (props: BoardCardProps) => ReactNode;
@@ -41,7 +43,7 @@ export type CardRenderer = (props: BoardCardProps) => ReactNode;
  * artist). A React hook: the board calls it once per card on every draw, so a screen passes one function for the board's whole life (GameBoardProps
  * `useArtist`; the game screen's is game/boardCards.tsx `useBoardArtist`). The board's own text frames name no artist (`noArtist`).
  */
-export type ArtistHook = (def: CardDef | null, face: number) => string | null;
+export type ArtistHook = (def: CardDef | null, face: number, owner?: PlayerId) => string | null;
 
 export const noArtist: ArtistHook = () => null;
 

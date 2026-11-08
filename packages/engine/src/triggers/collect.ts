@@ -1,6 +1,6 @@
 /** Trigger collection: candidates, intervening if (CR 603.4), additional triggers (603.2d), limits (603.2h) (design 8.4). Owner: WP8. Contract: triggers/api.ts#CollectTriggers. */
 import type { Game } from '../core/game';
-import { diesCause, isEnterLeaveCause, leavingOf, type ChapterAbilityDef, type EventPattern, type ObjectFilter, type StaticEffect, type TriggerModDef, type TriggeredAbilityDef } from '../types/ability';
+import { diesCause, isMixedActionList, isEnterLeaveCause, leavingOf, type ChapterAbilityDef, type EventPattern, type ObjectFilter, type StaticEffect, type TriggerModDef, type TriggeredAbilityDef } from '../types/ability';
 import type { ObjectId, PlayerId } from '../types/ids';
 import type { AbilityRef, GameObject, GameState, PendingTrigger, SemEvent, ZoneKind } from '../types/state';
 import { abilitiesFromChars, type AbilityInfo } from '../rules/abilities';
@@ -14,7 +14,7 @@ import { lookBackApplies, lookBackKinds } from './lookback';
 import { isManaActivationPattern, isTriggeredManaAbility } from './forms';
 import { historyMatches, type FactsEnv } from '../rules/history';
 import { matchEvent } from './match';
-import { batchOccurrences, byAttackedCount, byPlayerTotal, bySourceController, byOccurrenceAmount, isMixedAttackList, mixedAttackOccurrences, occurrences, perEventPattern } from './occurrences';
+import { batchOccurrences, byAttackedCount, byPlayerTotal, bySourceController, byOccurrenceAmount, isMixedAttackList, mixedActionOccurrences, mixedAttackOccurrences, occurrences, perEventPattern } from './occurrences';
 import { triggersPossible } from './possible';
 import { finalChapter, hasReadAhead } from '../statics/levels';
 import { keywordRegistry } from '../keywords/registry';
@@ -492,6 +492,8 @@ function collectWith(g: Game, all: readonly SemEvent[], mode: CollectMode, histo
       const matched: SemEvent[] = [];
       // edh-players-8 (CR 603.2c; triggers/occurrences.ts#isMixedAttackList): a batch list of an attack declaration beside single events judges each pattern alone
       const mixedList = ab.def.kind === 'triggered' && ab.def.trigger.batch === true && ab.def.trigger.wholeBatch !== true && isMixedAttackList(patterns);
+      // edh-d-112 (CR 603.2c; triggers/occurrences.ts#mixedActionOccurrences): single action events beside "one or more" ones in one batch trigger, each pattern judged alone too
+      const mixedActions = ab.def.kind === 'triggered' && ab.def.trigger.batch === true && ab.def.trigger.wholeBatch !== true && !mixedList && isMixedActionList(patterns);
       const hitsOf = new Map<SemEvent, readonly EventPattern[]>();
       const lookedBack = new Set<SemEvent>(); // AF2: the events that a pattern which matched them looks back at (CR 603.10a), for the effect (contextOf)
       for (const e of batch) {
@@ -505,6 +507,10 @@ function collectWith(g: Game, all: readonly SemEvent[], mode: CollectMode, histo
             return p.ev === 'becomes' && p.what === 'phasedOut' && p.object.self === true && e.data['what'] === 'phasedOut' && r !== undefined && 'objects' in r && r.objects.some((h) => h.id === cand.id)
               && matchEvent(perEventPattern(p, patterns), e, acx);
           }
+          // edhe28 (CR 603.10a, 113.6k; Esper Sojourners: "When you cycle ~ and when ~ dies"): an ability that works on the battlefield AND in the graveyard sees the card's own death once, looking back from
+          // the battlefield (the snapshot candidate); the card now in the graveyard is not a second candidate for the very event that put it there
+          if (!cand.snapshot && cand.zone === 'graveyard' && (arrived.get(cand.id) === e || cand.onlyEvent === e) && ab.def.kind === 'triggered' && zonesOf(ab.def).includes('battlefield')
+            && p.ev === 'zoneChange' && p.subject.self === true && [p.from ?? []].flat().includes('battlefield')) return false;
           // A thing that left a zone triggers only from where it was and only for events CR 603.10 lets look back.
           // wave 6 refs review (CR 603.2, 603.6a, 400.7): a permanent that entered and left again within the batch (exiled and returned twice by one resolution,
           // Another Round) triggered on its own entering, judged right after that event while it was on the battlefield: its snapshot sees that event too
@@ -512,10 +518,10 @@ function collectWith(g: Game, all: readonly SemEvent[], mode: CollectMode, histo
           if (lookBackApplies(p, e) && arrivedNotBefore(cand, e)) return false; // CR 603.10a: it was not there just before the event
           // edh-replace-7 (CR 108.4, 603.2, 603.3a; Khârn the Betrayer, ruling 2022-10-07): "When you lose control of ~" is judged for the player who lost control, though another player controls ~ now
           const former = losesControlOfSelf(p) && typeof e.data['from'] === 'string' ? (e.data['from'] as PlayerId) : undefined;
-          return matchEvent(perEventPattern(p, mixedList ? [p] : patterns), e, former !== undefined ? { ...acx, controller: former } : acx); // std-mkm: a one-sided damage amount is the occurrence's (triggers/occurrences.ts)
+          return matchEvent(perEventPattern(p, mixedList || mixedActions ? [p] : patterns), e, former !== undefined ? { ...acx, controller: former } : acx); // std-mkm: a one-sided damage amount is the occurrence's (triggers/occurrences.ts)
         });
         const hit = hits.length > 0;
-        if (mixedList && hit) hitsOf.set(e, hits);
+        if ((mixedList || mixedActions) && hit) hitsOf.set(e, hits);
         if (hits.some((p) => lookBackApplies(p, e))) lookedBack.add(e);
         if (hit &&(ab.def.kind !== 'chapter' || chapterHits(ab.def, e, (exact ??= readAheadEnteredThisTurn(g, cand))) > 0)) matched.push(e);
       }
@@ -526,7 +532,7 @@ function collectWith(g: Game, all: readonly SemEvent[], mode: CollectMode, histo
       // CR 603.2c; PUSH1 T2: the combat damage of a step is one event for a damage trigger that names one side of it (CR 510.2, triggers/occurrences.ts)
       // ... and the counters put on ONE creature are one occurrence of "one or more counters are put on a creature" (triggers/occurrences.ts#batchOccurrences)
       // CLOUD std-misc (CR 603.2c): "one or more players discard one or more cards" is the whole batch, once (TriggerDef.wholeBatch)
-      let groups = mixedList ? mixedAttackOccurrences(patterns, matched, hitsOf) : ab.def.kind === 'triggered' && ab.def.trigger.batch ? (ab.def.trigger.wholeBatch === true ? bySourceController(patterns, matched, (e) => { const v = e.roles.source; const id = v && 'objects' in v ? v.objects[0]?.id : undefined; return id === undefined ? undefined : (g.s.objects[id] ?? e.before[id]?.object)?.controller; }) ?? [matched] : byAttackedCount(patterns, batchOccurrences(patterns, matched))) : byOccurrenceAmount(patterns, occurrences(patterns, matched));
+      let groups = mixedList ? mixedAttackOccurrences(patterns, matched, hitsOf) : mixedActions ? mixedActionOccurrences(patterns, matched, hitsOf) ?? [matched] : ab.def.kind === 'triggered' && ab.def.trigger.batch ? (ab.def.trigger.wholeBatch === true ? bySourceController(patterns, matched, (e) => { const v = e.roles.source; const id = v && 'objects' in v ? v.objects[0]?.id : undefined; return id === undefined ? undefined : (g.s.objects[id] ?? e.before[id]?.object)?.controller; }) ?? [matched] : byAttackedCount(patterns, batchOccurrences(patterns, matched))) : byOccurrenceAmount(patterns, occurrences(patterns, matched));
       const trig = ab.def.kind === 'triggered' ? ab.def.trigger : undefined;
       // FAST4 T27 (CR 603.2, 603.2c): "for the first time each turn": only the first occurrence of the turn, and none when one happened before this batch
       let firstUnknown = false;

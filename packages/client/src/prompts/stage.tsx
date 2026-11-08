@@ -81,10 +81,10 @@ export function StageCard({ id, className, children }: StageCardProps) {
       onMouseLeave={() => board.setZoom(null)}
     >
       <div className="prompt-stage-picture">
-        {board.renderCard({ def, face, chars: charsOf(board.view, o), size: 'large', faceDown: false })}
+        {board.renderCard({ def, face, chars: charsOf(board.view, o), size: 'large', faceDown: false, owner: o.owner })}
       </div>
       {/* The Scryfall picture's artist, under the picture and above the amounts */}
-      <BoardCredit def={def} face={face} className="prompt-stage-credit" />
+      <BoardCredit def={def} face={face} className="prompt-stage-credit" owner={o.owner} />
       {children}
     </div>
   );

@@ -14,12 +14,13 @@ import type { ObjectId, PlayerId } from '../../types/ids';
 import type { LastKnown, ObjHandle, ZoneKind } from '../../types/state';
 import { HIDDEN_ZONES } from '../../types/state';
 import { cantDo } from '../../rules/cant';
+import { randomIndex } from '../../rules/random'; // edhe34
 import { charsOfObject } from '../../rules/characteristics';
 import { matchesFilter } from '../../rules/filter';
 import { groupStat } from '../../rules/targets';
 import type { ExecCtx, StepResult } from '../api';
 import { evalCount } from '../eval';
-import { performAction, performShuffle } from '../perform';
+import { performAction, performReorderGraveyard, performShuffle } from '../perform';
 import { proposeResult } from '../propose';
 import { performBringIntoGame } from '../perform-direct';
 import { outsideMatches } from './outside';
@@ -35,13 +36,49 @@ type Step<K extends EffectStep['op']> = Extract<EffectStep, { op: K }>;
 const library = (g: Game, p: PlayerId): ObjectId[] => g.s.zones.library[p] ?? [];
 
 /** Ask `p` to put these cards in order, first = the one that ends up on top (CR 401.4). No question for fewer than two cards. */
-function orderOnTop(g: Game, p: PlayerId, ids: ObjectId[], rule: string): ObjectId[] {
+function orderOnTop(g: Game, p: PlayerId, ids: ObjectId[], rule: string, whose = 'your library'): ObjectId[] {
   if (ids.length < 2) return ids;
   const ans = g.choose({
-    kind: 'order', player: p, prompt: 'Put these cards on top of your library in any order (the first one ends up on top).',
+    kind: 'order', player: p, prompt: `Put these cards on top of ${whose} in any order (the first one ends up on top).`,
     items: ids.map((id) => ({ id, label: g.nameOf(id) })), rules: [rule, 'CR 401.4'],
   });
   return ans.ids;
+}
+
+/**
+ * edhe58 (CR 701.29a, Mesmeric Sliver, Spin into Myth): fateseal N. Each player of `who` picks an opponent (the only one without a question), looks at the top N cards of that
+ * opponent's library, puts any number of them on the bottom (in the order they choose) and the rest on top in any order. Only the fateseal-ing player sees the cards. It is not a scry: no
+ * "whenever you scry" trigger, no scry replacement (701.22d does not apply), and a library with fewer than N cards is looked at whole.
+ */
+function fatesealHandler(cx: ExecCtx, st: Step<'scry'>, n: number): StepResult {
+  const g = cx.g;
+  let count = 0;
+  let did = false;
+  for (const p of playersOf(cx, st.who)) {
+    const opponents = g.opponents(p).map((o) => o.id);
+    if (opponents.length === 0) continue;
+    let q = opponents[0]!;
+    if (opponents.length > 1) {
+      const ans = g.choose({ kind: 'chooseOption', player: p, prompt: 'Fateseal: choose an opponent.', min: 1, max: 1, options: opponents.map((id) => ({ id, label: g.player(id).name })), rules: ['CR 701.29a'] });
+      q = ans.ids[0] ?? q;
+    }
+    did = true;
+    const looked = library(g, q).slice(0, n);
+    showCards(g, looked, [p]); // only the player who fateseals looks
+    if (looked.length === 0) continue;
+    const bottom = g.choose({
+      kind: 'chooseObjects', player: p, options: looked, min: 0, max: looked.length, ordered: true,
+      prompt: `Fateseal ${n}: choose the cards to put on the bottom of ${playerName(g, q)}'s library, in order (the first one ends up highest).`, rules: ['CR 701.29a'],
+    }).ids;
+    const top = orderOnTop(g, p, looked.filter((id) => !bottom.includes(id)), 'CR 701.29a', `${playerName(g, q)}'s library`);
+    const named = { top: namesOf(g, top), bottom: namesOf(g, bottom) };
+    reorderLibrary(g, q, top, bottom, p);
+    count += looked.length;
+    logAction(cx, `${playerName(g, p)} fateseals ${n} (${playerName(g, q)}'s library), putting ${cardsWord(top.length)} on top and ${cardsWord(bottom.length)} on the bottom.`, ['CR 701.29a'], {
+      players: [p], text: `${playerName(g, p)} fateseals ${n}: on top ${named.top || 'nothing'}; on the bottom ${named.bottom || 'nothing'}.`,
+    });
+  }
+  return { performed: did, count };
 }
 
 /** CR 701.22a: look at the top N cards, put any number on the bottom in any order and the rest on top in any order. Scry 0 is no scry (701.22b). */
@@ -49,6 +86,7 @@ export function scryHandler(cx: ExecCtx, st: Step<'scry'>): StepResult {
   const n = cardCount(cx, st.count);
   if (n === undefined || n === 0) return NOTHING;
   const g = cx.g;
+  if (st.fateseal === true) return fatesealHandler(cx, st, n);
   // p2-replace-events-3 (CR 701.22a, 614.1a): each player's scry is proposed first, so "If you would scry a number of cards, draw that many cards instead" replaces
   // it (effects/proposal-kinds/scry.ts); replaced, that player does not scry (the replacement's instructions did instead)
   // edh-b-6 (CR 701.22a, 614.1a; Kenessos, Priest of Thassa): a `modify.count` body changes the number of cards ("scry that many cards plus one instead"): the final event's number is scried
@@ -204,7 +242,7 @@ function fewest(cx: ExecCtx, st: Step<'search'>, hidden: boolean): number {
 /** The value forms of the search op this module runs (model/cap-walk.ts emits them; model/capabilities.ts registers them). */
 export const OP_FORMS: readonly string[] = ['op:search.differentNames', 'op:search.differentPowers' /* edh-next-135 (CR 701.23a, 208.1): #pickDifferentPowers */,
   // CLOUD std-dft (CR 701.23a, 701.24a): "search your library and/or graveyard", "If you search your library this way, shuffle"
-  'op:search.alsoZones', 'op:shuffle.ifSearched',
+  'op:search.alsoZones', 'op:shuffle.ifSearched', 'op:shuffle.reorderGraveyard' /* edhe34 */, 'op:scry.fateseal' /* edhe58 (CR 701.29a) */,
   'op:search.and', // CLOUD C9: 'op:search.and'
   'op:search.allZones', // r4-refs (CR 701.23a): "search target opponent's graveyard, hand, and library", every zone listed
   'op:search.alsoOutside', // std-rx30 (CR 400.11b): "search your library and/or outside the game"
@@ -524,6 +562,27 @@ function followShuffle(cx: ExecCtx, before: readonly ObjectId[]): void {
 
 /** CR 701.24a: randomize the library (the state's random number generator). A library of 0 or 1 cards is still shuffled (701.24e). */
 export function shuffleHandler(cx: ExecCtx, st: Step<'shuffle'>): StepResult {
+  // edhe34 (CR 404.2, 701.24a; Search for Survivors, Fossil Find): "reorder your graveyard at random / as you choose": only the order of the graveyard changes (no zone change, no new object)
+  if (st.reorderGraveyard !== undefined) {
+    if (st.ifSearched === true) return NOTHING; // never built (the renderer refuses the form)
+    const done = playersOf(cx, st.who);
+    for (const p of done) {
+      const gy = cx.g.s.zones.graveyard[p] ?? [];
+      if (gy.length >= 2) {
+        let next: ObjectId[];
+        if (st.reorderGraveyard === 'random') {
+          next = [...gy];
+          for (let i = next.length - 1; i > 0; i--) { const j = randomIndex(cx.g, i + 1); [next[i], next[j]] = [next[j]!, next[i]!]; } // Fisher-Yates with the state's generator (design 8.8 rule 2)
+        } else {
+          next = cx.g.choose({ kind: 'order', player: p, prompt: 'Put your graveyard in the order you choose (the first one is the card that has been in it longest).', items: gy.map((id) => ({ id, label: cx.g.nameOf(id) })), rules: ['CR 404.2'] }).ids;
+          if (next.length !== gy.length || new Set(next).size !== gy.length || next.some((id) => !gy.includes(id))) next = [...gy];
+        }
+        performReorderGraveyard(cx.g, p, next);
+      }
+      logAction(cx, `${playerName(cx.g, p)} reorders their graveyard${st.reorderGraveyard === 'random' ? ' at random' : ''}.`, ['CR 404.2']);
+    }
+    return result(done.length);
+  }
   // CLOUD std-dft (CR 701.23a, 701.24a): "If you search your library this way, shuffle": only a library a search of this resolution searched
   const searchedLibrary = (p: PlayerId): boolean => [...cx.results.values()].some((r) => r.searched?.some((x) => x.zone === 'library' && x.owner === p) === true);
   const players = playersOf(cx, st.who).filter((p) => st.ifSearched !== true || searchedLibrary(p));

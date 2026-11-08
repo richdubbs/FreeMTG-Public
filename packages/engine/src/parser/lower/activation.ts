@@ -45,6 +45,18 @@ export const BEFORE_ATTACKERS: Condition = {
   ],
 };
 
+/**
+ * edh-e-50 (CR 602.5b, 508.1, 506.1; Norritt, Nettling Imp): "Activate only before attackers are declared" (a turn of any player) and "during an opponent's turn, before attackers are
+ * declared": the same shape as BEFORE_ATTACKERS for another turn's owner (`whose` of both the turn and the declare attackers step; without it, any player's).
+ */
+const beforeAttackersOf = (whose?: 'opponent'): Condition => ({
+  cond: 'all',
+  of: [
+    { cond: 'turnOf', whose: whose ?? 'any', step: ['upkeep', 'draw', 'main1', 'beginCombat'] },
+    { cond: 'not', of: { cond: 'happened', event: { ev: 'step', step: 'declareAttackers', ...(whose !== undefined ? { whose } : {}) }, scope: 'turn' } },
+  ],
+});
+
 /** FAST1 T4: "Activate only during your <step>" (CR 602.5b): that step of the controller's own turn. */
 const DURING_YOUR_STEP: Readonly<Record<string, Step>> = { 'during your upkeep': 'upkeep', 'during your draw step': 'draw', 'during your end step': 'end' };
 
@@ -194,6 +206,8 @@ function restrictionOf(p: Tok[], io: DriverIO, ue: UnitEnv): { fields: Restricti
     // CMD4 (CR 602.5b, 508.1, 506.1): "during your turn, before attackers are declared": your turn, up to the beginning of combat step, and not after your
     // declare attackers step began (an additional combat phase's beginning of combat comes after it)
     else if (t === 'during your turn , before attackers are declared') conds.push(BEFORE_ATTACKERS);
+    else if (t === 'before attackers are declared') conds.push(beforeAttackersOf()); // edh-e-50
+    else if (t === "during an opponent 's turn , before attackers are declared") conds.push(beforeAttackersOf('opponent')); // edh-e-50
     // FAST1 T4, CR 602.5b: "Activate only once." is once for this object (rules/timing.ts counts it on the object; a new object has its use back, CR 400.7)
     else if (t === 'once' && fields.limit === undefined) fields.limit = { per: 'game', max: 1 };
     // FAST1 T4, CR 602.5b: "during your upkeep" (draw step, end step); "during combat" is the combat phase of any turn (CR 506.1)
@@ -327,6 +341,15 @@ export function activationLimits(pieces: Tok[][], io: DriverIO, ue: UnitEnv, opt
     const pw = p.map((t) => t.norm).join(' ').replace(/ \.$/, '');
     if (rest.length > 0 && fields.xIs === undefined && (pw === 'x is the mana value of that card' || pw === 'x is the mana value of the exiled card') && rest.some((q) => q.map((t) => t.norm).join(' ').includes('the exiled card'))) {
       fields.xIs = { q: 'stat', stat: 'manaValue', of: { ref: 'linked', link: 'exiled' } };
+      texts.push(io.text(p));
+      io.claim(span(p), 'consumed', 'activation-x-defined');
+      continue;
+    }
+    // edh-d-111 (CR 107.3c, 122.1; Voodoo Doll): "X is the number of pin counters on ~." after the effect of an ability with X in its mana cost: the counters of that kind on the source as the
+    // ability is activated. Only that sentence, last, one word for the kind (the engine reads it only where the cost announces an X, actions/activate.ts#definedX)
+    const counted = /^x is the number of ([a-z+\-/0-9]+) counters on ~$/.exec(pw);
+    if (rest.length > 0 && fields.xIs === undefined && counted !== null) {
+      fields.xIs = { q: 'counters', kind: counted[1]!, on: { ref: 'self' } };
       texts.push(io.text(p));
       io.claim(span(p), 'consumed', 'activation-x-defined');
       continue;

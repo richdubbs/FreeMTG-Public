@@ -1,0 +1,695 @@
+[
+  {
+    "id": "eff.edhd103.preventNext.player.thenDamage",
+    "kind": "effect",
+    "cr": [
+      "CR 615.1a",
+      "CR 615.5",
+      "CR 615.7",
+      "CR 120.3",
+      "CR 608.2h"
+    ],
+    "pattern": "prevent the next {n:Qty} damage that would be dealt to you {d:Dur} . if damage is prevented this way , ~ deals that much damage to {t:Recipient}",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "recipient": {
+              "player": "you"
+            }
+          },
+          "body": {
+            "b": "prevent",
+            "amount": "$n",
+            "then": [
+              {
+                "op": "damage",
+                "source": {
+                  "ref": "self"
+                },
+                "to": "$t",
+                "amount": {
+                  "q": "preventedAmount"
+                }
+              }
+            ]
+          },
+          "shield": {
+            "uses": "all"
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "prevent",
+      "next",
+      "would",
+      "this way",
+      "if",
+      "that much"
+    ],
+    "examples": [
+      {
+        "text": "{X}{W}: Prevent the next X damage that would be dealt to you this turn. If damage is prevented this way, ~ deals that much damage to any target."
+      },
+      {
+        "text": "Prevent the next 4 damage that would be dealt to you this turn. If damage is prevented this way, ~ deals that much damage to target creature or planeswalker."
+      }
+    ],
+    "counterExamples": [
+      "Prevent the next 4 damage that would be dealt to you this turn. ~ deals 4 damage to any target.",
+      "Prevent the next 4 damage that would be dealt to you. If damage is prevented this way, ~ deals that much damage to any target.",
+      "Prevent the next 4 damage that would be dealt to you this turn. If damage is prevented this way, ~ deals 2 damage to any target.",
+      "Prevent the next 4 damage that would be dealt to each opponent this turn. If damage is prevented this way, ~ deals that much damage to any target."
+    ],
+    "status": "stable",
+    "since": 8
+  },
+  {
+    "id": "eff.edhd103.nextSourceOfChoice.anyTarget.prevent.colorSourceBack",
+    "kind": "effect",
+    "cr": [
+      "CR 609.7a",
+      "CR 615.1a",
+      "CR 615.5",
+      "CR 615.7",
+      "CR 615.8",
+      "CR 105.2",
+      "CR 120.3"
+    ],
+    "pattern": "the next time a source of your choice would deal damage to {r:AnyTarget} {d:Dur} , prevent that damage . if damage from ( a | an ) {c:Color} source is prevented this way , ~ deals that much damage to the source 's controller",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "zone": [
+              "battlefield",
+              "stack",
+              "command"
+            ]
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "damageSource": true,
+        "as": "damageSource"
+      },
+      {
+        "op": "effect",
+        "duration": "$d",
+        "effects": [
+          {
+            "s": "replace",
+            "replaces": {
+              "ev": "damage",
+              "source": {
+                "is": {
+                  "ref": "bound",
+                  "name": "damageSource"
+                }
+              },
+              "recipient": {
+                "object": {
+                  "is": "$r"
+                },
+                "player": "$r"
+              }
+            },
+            "body": {
+              "b": "prevent",
+              "amount": "all",
+              "then": [
+                {
+                  "op": "if",
+                  "cond": {
+                    "cond": "matches",
+                    "object": {
+                      "ref": "event",
+                      "role": "source"
+                    },
+                    "filter": {
+                      "colors": [
+                        "$c"
+                      ]
+                    }
+                  },
+                  "then": [
+                    {
+                      "op": "damage",
+                      "source": {
+                        "ref": "self"
+                      },
+                      "to": {
+                        "ref": "controllerOf",
+                        "object": {
+                          "ref": "event",
+                          "role": "source"
+                        }
+                      },
+                      "amount": {
+                        "q": "preventedAmount"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "shield": {
+              "uses": 1
+            }
+          }
+        ]
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "would",
+      "next",
+      "choice",
+      "if",
+      "this way",
+      "that much"
+    ],
+    "examples": [
+      {
+        "text": "{2}{W}: The next time a source of your choice would deal damage to any target this turn, prevent that damage. If damage from a green source is prevented this way, ~ deals that much damage to the source's controller."
+      },
+      {
+        "text": "The next time a source of your choice would deal damage to any target this turn, prevent that damage. If damage from a black source is prevented this way, ~ deals that much damage to the source's controller."
+      }
+    ],
+    "counterExamples": [
+      "The next time a source of your choice would deal damage to any target this turn, prevent that damage. ~ deals that much damage to the source's controller.",
+      "The next time a source of your choice would deal damage to any target this turn, prevent that damage. If damage from a black source is prevented this way, ~ deals that much damage to you.",
+      "The next time a source of your choice would deal damage to any target this turn, prevent that damage. If damage from a black source is prevented this way, ~ deals 2 damage to the source's controller."
+    ],
+    "status": "stable",
+    "since": 8
+  },
+  {
+    "id": "eff.edhd103.preventAll.you.sourceOfChoice.whenColorPrevented.gainLife",
+    "kind": "effect",
+    "cr": [
+      "CR 609.7a",
+      "CR 615.1a",
+      "CR 615.5",
+      "CR 603.12",
+      "CR 105.2",
+      "CR 119.3"
+    ],
+    "pattern": "prevent all damage that would be dealt to you {d:Dur} by a source of your choice . whenever damage from a {c:Color} or {e:Color} source is prevented this way this turn , you gain that much life",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "zone": [
+              "battlefield",
+              "stack",
+              "command"
+            ]
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "damageSource": true,
+        "as": "damageSource"
+      },
+      {
+        "op": "effect",
+        "duration": "$d",
+        "effects": [
+          {
+            "s": "replace",
+            "replaces": {
+              "ev": "damage",
+              "source": {
+                "is": {
+                  "ref": "bound",
+                  "name": "damageSource"
+                }
+              },
+              "recipient": {
+                "player": "you"
+              }
+            },
+            "body": {
+              "b": "prevent",
+              "amount": "all",
+              "as": "prevented",
+              "then": [
+                {
+                  "op": "reflexive",
+                  "when": {
+                    "did": "prevented",
+                    "if": {
+                      "cond": "matches",
+                      "object": {
+                        "ref": "event",
+                        "role": "source"
+                      },
+                      "filter": {
+                        "colors": [
+                          "$c",
+                          "$e"
+                        ]
+                      }
+                    }
+                  },
+                  "targets": [],
+                  "do": [
+                    {
+                      "op": "gainLife",
+                      "who": {
+                        "ref": "you"
+                      },
+                      "amount": {
+                        "q": "preventedAmount"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "would",
+      "all",
+      "choice",
+      "whenever",
+      "this way",
+      "that much"
+    ],
+    "examples": [
+      {
+        "text": "Prevent all damage that would be dealt to you this turn by a source of your choice. Whenever damage from a blue or green source is prevented this way this turn, you gain that much life."
+      },
+      {
+        "text": "{1}{W}: Prevent all damage that would be dealt to you this turn by a source of your choice. Whenever damage from a white or black source is prevented this way this turn, you gain that much life."
+      }
+    ],
+    "counterExamples": [
+      "Prevent all damage that would be dealt to you this turn by a source of your choice. You gain that much life.",
+      "Prevent all damage that would be dealt to you this turn by a source of your choice. Whenever damage from a blue or green source is prevented this way this turn, you lose that much life.",
+      "Prevent all damage that would be dealt to you this turn by a source of your choice. Whenever damage from a blue or green source is prevented this way this turn, you gain 2 life."
+    ],
+    "status": "stable",
+    "since": 8
+  },
+  {
+    "id": "eff.edhd103.nextSourceOfChoice.chosenColor.you.prevent",
+    "kind": "effect",
+    "cr": [
+      "CR 609.7a",
+      "CR 615.1",
+      "CR 615.7",
+      "CR 615.8",
+      "CR 615.9",
+      "CR 607.2d"
+    ],
+    "pattern": "the next time a source of your choice of the chosen color would deal damage to you {d:Dur} , prevent that damage",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "zone": [
+              "battlefield",
+              "stack",
+              "command"
+            ],
+            "chosen": {
+              "link": "@chosenLink",
+              "quality": "color"
+            }
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "damageSource": true,
+        "as": "damageSource"
+      },
+      {
+        "op": "effect",
+        "duration": "$d",
+        "effects": [
+          {
+            "s": "replace",
+            "replaces": {
+              "ev": "damage",
+              "source": {
+                "is": {
+                  "ref": "bound",
+                  "name": "damageSource"
+                },
+                "chosen": {
+                  "link": "@chosenLink",
+                  "quality": "color"
+                }
+              },
+              "recipient": {
+                "player": "you"
+              }
+            },
+            "body": {
+              "b": "prevent",
+              "amount": "all"
+            },
+            "shield": {
+              "uses": 1
+            }
+          }
+        ]
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "would",
+      "next",
+      "choice",
+      "chosen"
+    ],
+    "examples": [
+      {
+        "text": "As ~ enters, choose a color.\n{1}{W}: The next time a source of your choice of the chosen color would deal damage to you this turn, prevent that damage."
+      },
+      {
+        "text": "As ~ enters, choose a color.\n{2}, {T}: The next time a source of your choice of the chosen color would deal damage to you this turn, prevent that damage."
+      }
+    ],
+    "counterExamples": [
+      "As ~ enters, choose a color.\n{1}{W}: The next time a source of your choice of the chosen color would deal damage to you, prevent that damage.",
+      "As ~ enters, choose a color.\n{1}{W}: The next time a source of your choice of the chosen color would deal damage to target creature this turn, prevent that damage.",
+      "{1}{W}: The next time a source of your choice of the chosen color would deal damage to you this turn, prevent that damage."
+    ],
+    "status": "stable",
+    "since": 8
+  },
+  {
+    "id": "eff.edhd103.nextCreatureOfChoice.withShadow.you.prevent",
+    "kind": "effect",
+    "cr": [
+      "CR 609.7a",
+      "CR 615.1",
+      "CR 615.7",
+      "CR 615.8",
+      "CR 702.28a"
+    ],
+    "pattern": "the next time a creature of your choice with shadow would deal damage to you {d:Dur} , prevent that damage",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "types": [
+              "Creature"
+            ],
+            "keyword": "shadow"
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "as": "damageSource"
+      },
+      {
+        "op": "effect",
+        "duration": "$d",
+        "effects": [
+          {
+            "s": "replace",
+            "replaces": {
+              "ev": "damage",
+              "source": {
+                "is": {
+                  "ref": "bound",
+                  "name": "damageSource"
+                },
+                "keyword": "shadow"
+              },
+              "recipient": {
+                "player": "you"
+              }
+            },
+            "body": {
+              "b": "prevent",
+              "amount": "all"
+            },
+            "shield": {
+              "uses": 1
+            }
+          }
+        ]
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "would",
+      "next",
+      "choice"
+    ],
+    "examples": [
+      {
+        "text": "{2}: The next time a creature of your choice with shadow would deal damage to you this turn, prevent that damage."
+      },
+      {
+        "text": "{W}, {T}: The next time a creature of your choice with shadow would deal damage to you this turn, prevent that damage."
+      }
+    ],
+    "counterExamples": [
+      "{2}: The next time a creature of your choice with flying would deal damage to you this turn, prevent that damage.",
+      "{2}: The next time a creature of your choice with shadow would deal damage to you, prevent that damage.",
+      "{2}: The next time a creature of your choice with shadow would deal damage to target creature this turn, prevent that damage."
+    ],
+    "status": "stable",
+    "since": 8
+  },
+  {
+    "id": "eff.edhd103.redirect.nextSpellToYou.toItsController",
+    "kind": "effect",
+    "cr": [
+      "CR 614.9",
+      "CR 615.8",
+      "CR 120.3",
+      "CR 112.1"
+    ],
+    "pattern": "the next time {f:Filter} would deal damage to you {d:Dur} , that spell deals that damage to its controller instead",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "source": "$f",
+            "recipient": {
+              "player": "you"
+            }
+          },
+          "body": {
+            "b": "redirect",
+            "to": {
+              "ref": "controllerOf",
+              "object": {
+                "ref": "event",
+                "role": "source"
+              }
+            }
+          },
+          "shield": {
+            "uses": 1
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "would",
+      "next",
+      "instead"
+    ],
+    "examples": [
+      {
+        "text": "{2}: The next time an instant or sorcery spell would deal damage to you this turn, that spell deals that damage to its controller instead."
+      },
+      {
+        "text": "{W}{W}: The next time a red instant spell would deal damage to you this turn, that spell deals that damage to its controller instead."
+      }
+    ],
+    "counterExamples": [
+      "{2}: The next time an instant or sorcery spell would deal damage to you this turn, prevent that damage.",
+      "{2}: The next time an instant or sorcery spell would deal damage to you, that spell deals that damage to its controller instead.",
+      "{2}: The next time an instant or sorcery spell would deal damage to you this turn, that spell deals that damage to you instead."
+    ],
+    "status": "stable",
+    "since": 8
+  },
+  {
+    "id": "eff.edhd103.preventAll.youAndPerms.bySourcesNotYours.mayDamageBack",
+    "kind": "effect",
+    "cr": [
+      "CR 615.1a",
+      "CR 615.5",
+      "CR 120.3",
+      "CR 608.2h"
+    ],
+    "pattern": "prevent all damage that would be dealt to you and permanents you control {d:Dur} by sources you don't control . if damage is prevented this way , you may have ~ deal that much damage to {t:Recipient}",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "source": {
+              "not": {
+                "controller": "you"
+              }
+            },
+            "recipient": {
+              "player": "you",
+              "object": {
+                "controller": "you"
+              }
+            }
+          },
+          "body": {
+            "b": "prevent",
+            "amount": "all",
+            "then": [
+              {
+                "op": "may",
+                "who": {
+                  "ref": "you"
+                },
+                "do": [
+                  {
+                    "op": "damage",
+                    "source": {
+                      "ref": "self"
+                    },
+                    "to": "$t",
+                    "amount": {
+                      "q": "preventedAmount"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "prevent",
+      "all",
+      "would",
+      "this way",
+      "if",
+      "may",
+      "that much"
+    ],
+    "examples": [
+      {
+        "text": "Prevent all damage that would be dealt to you and permanents you control this turn by sources you don't control. If damage is prevented this way, you may have ~ deal that much damage to any target."
+      },
+      {
+        "text": "Prevent all damage that would be dealt to you and permanents you control this turn by sources you don't control. If damage is prevented this way, you may have ~ deal that much damage to target player."
+      }
+    ],
+    "counterExamples": [
+      "Prevent all damage that would be dealt to you and permanents you control this turn by sources you don't control. If damage is prevented this way, ~ deals that much damage to any target.",
+      "Prevent all damage that would be dealt to you and permanents you control this turn by sources you don't control. If damage is prevented this way, you may have ~ deal 3 damage to any target.",
+      "Prevent all damage that would be dealt to you and permanents you control this turn by sources you control. If damage is prevented this way, you may have ~ deal that much damage to any target."
+    ],
+    "status": "stable",
+    "since": 8
+  },
+  {
+    "id": "eff.edhd103.preventNext.eachCreatureAndEachPlayer",
+    "kind": "effect",
+    "cr": [
+      "CR 615.1a",
+      "CR 615.7",
+      "CR 611.2c"
+    ],
+    "pattern": "prevent the next {n:Qty} damage that would be dealt to each creature and each player {d:Dur}",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "recipient": {
+              "object": {
+                "types": [
+                  "Creature"
+                ]
+              },
+              "player": "any"
+            }
+          },
+          "body": {
+            "b": "prevent",
+            "amount": "$n"
+          },
+          "shield": {
+            "uses": "all",
+            "each": true
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "would",
+      "next",
+      "each"
+    ],
+    "examples": [
+      {
+        "text": "{T}: Prevent the next 2 damage that would be dealt to each creature and each player this turn."
+      },
+      {
+        "text": "Prevent the next 3 damage that would be dealt to each creature and each player this turn."
+      }
+    ],
+    "counterExamples": [
+      "Prevent the next 3 damage that would be dealt to each creature this turn.",
+      "Prevent the next 3 damage that would be dealt to each creature and each player.",
+      "Prevent all damage that would be dealt to each creature and each player this turn."
+    ],
+    "status": "stable",
+    "since": 8
+  }
+]

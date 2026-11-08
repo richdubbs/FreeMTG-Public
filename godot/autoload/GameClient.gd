@@ -387,14 +387,15 @@ func legal_for(object_id: String) -> Array[Dictionary]:
 	return out
 
 
-## Whether the object has a legal action other than a mana ability (the board highlights it as playable).
-## Whether the object glows as usable now: a spell it can cast or an ability it can activate, not a mana ability. Lands never
-## glow: neither playing one nor a land's own ability.
+## Whether the object glows as usable now: a land it can play, a spell it can cast or an ability it can activate. Mana abilities
+## never make it glow, and neither does a land's own ability.
 func is_playable(object_id: String) -> bool:
-	if Chars.has_type(Chars.of_id(view, object_id), "Land"):
-		return false
+	var land := Chars.has_type(Chars.of_id(view, object_id), "Land")
 	for la: Dictionary in legal_for(object_id):
-		if not Val.flag(la, "isMana") and Val.text(la, "kind") != "playLand":
+		var kind := Val.text(la, "kind")
+		if kind == "playLand":
+			return true
+		if not land and not Val.flag(la, "isMana"):
 			return true
 	return false
 
@@ -408,6 +409,9 @@ func _on_server_ready(_port: int, _token: String) -> void:
 
 func _on_server_lost() -> void:
 	_close_socket()
+	# The game lived in the server that stopped: say so instead of waiting for a move that never comes.
+	if table_id != "" and not view.is_empty():
+		notice.emit("The game server stopped, so this game cannot go on. Leave the table to start a new game.", "error")
 
 
 func _open_socket() -> void:

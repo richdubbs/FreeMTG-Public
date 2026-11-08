@@ -1,0 +1,302 @@
+[
+  {
+    "id": "eff.edhe38.exile.allFilter.playerHandAndGraveyard",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 701.13a",
+      "CR 406.1",
+      "CR 404.1",
+      "CR 400.7"
+    ],
+    "pattern": "exile all {f:CardsDesc} from {p:Player} 's hand and graveyard",
+    "build": {
+      "op": "move",
+      "what": {
+        "ref": "each",
+        "filter": {
+          "anyOf": [
+            "$f"
+          ],
+          "zone": [
+            "hand",
+            "graveyard"
+          ],
+          "owner": "$p",
+          "isCard": true
+        }
+      },
+      "to": {
+        "zone": "exile"
+      }
+    },
+    "subject": "none",
+    "consumes": [
+      "all"
+    ],
+    "examples": [
+      {
+        "text": "Exile all artifact cards from target opponent's hand and graveyard."
+      },
+      {
+        "text": "Draw a card. Exile all noncreature, nonland cards from target player's hand and graveyard."
+      }
+    ],
+    "counterExamples": [
+      "Exile all artifact cards from target player's hand.",
+      "Exile all artifact cards from target player's hand and library.",
+      "Exile all artifact cards from target player's hand and graveyard unless they pay {3}."
+    ],
+    "weak": 1
+  },
+  {
+    "id": "eff.edhe38.exchange.graveyardLibrary",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 701.12a",
+      "CR 400.1",
+      "CR 404.1",
+      "CR 401.1"
+    ],
+    "pattern": "exchange your graveyard and library",
+    "build": {
+      "op": "exchange",
+      "a": {
+        "ref": "you"
+      },
+      "b": {
+        "ref": "you"
+      },
+      "what": "graveyardLibrary"
+    },
+    "subject": "none",
+    "consumes": [
+      "exchange"
+    ],
+    "examples": [
+      {
+        "text": "{2}{U}, {T}: Exchange your graveyard and library."
+      },
+      {
+        "text": "When ~ enters, exchange your graveyard and library. Then shuffle your library."
+      }
+    ],
+    "counterExamples": [
+      "Exchange your graveyard and library, then shuffle.",
+      "Exchange target player's graveyard and library.",
+      "Exchange your graveyard and exile."
+    ]
+  },
+  {
+    "id": "eff.edhe38.eachPlayer.returnEach.graveyard.bf.additionalCounters",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 400.3",
+      "CR 110.2a",
+      "CR 608.2c",
+      "CR 101.4",
+      "CR 122.1"
+    ],
+    "pattern": "each player returns each {f:Filter} card from their graveyard to the battlefield with {n:Qty} additional {k:CounterKind} counter[s] on it",
+    "build": {
+      "op": "move",
+      "what": {
+        "ref": "each",
+        "filter": {
+          "anyOf": [
+            "$f"
+          ],
+          "zone": "graveyard",
+          "isCard": true
+        }
+      },
+      "to": {
+        "zone": "battlefield",
+        "controller": "owner",
+        "counters": [
+          {
+            "kind": "$k",
+            "count": "$n"
+          }
+        ]
+      }
+    },
+    "subject": "none",
+    "consumes": [
+      "all",
+      "each",
+      "additional"
+    ],
+    "examples": [
+      {
+        "text": "Each player returns each creature card from their graveyard to the battlefield with an additional +1/+1 counter on it."
+      },
+      {
+        "text": "Each player returns each Elf card from their graveyard to the battlefield with two additional -1/-1 counters on it."
+      }
+    ],
+    "counterExamples": [
+      "Each player returns each creature card from their graveyard to their hand with an additional +1/+1 counter on it.",
+      "Each opponent returns each creature card from their graveyard to the battlefield with an additional +1/+1 counter on it.",
+      "Each player returns each creature card from their graveyard to the battlefield tapped with an additional +1/+1 counter on it."
+    ]
+  },
+  {
+    "id": "eff.edhe38.return.fourCreatureTypes.graveyard.hand",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 608.2c",
+      "CR 400.3",
+      "CR 205.3m",
+      "CR 701.20"
+    ],
+    "pattern": "return ( a | an ) {a:Filter} card from your graveyard to your hand , then do the same for {b:Filter} , {c:Filter} , and {d:Filter}",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "anyOf": [
+              "$a"
+            ],
+            "zone": "graveyard",
+            "owner": "you",
+            "isCard": true
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "as": "back0"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "bound",
+          "name": "back0"
+        },
+        "to": {
+          "zone": "hand"
+        }
+      },
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "anyOf": [
+              "$b"
+            ],
+            "zone": "graveyard",
+            "owner": "you",
+            "isCard": true
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "as": "back1"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "bound",
+          "name": "back1"
+        },
+        "to": {
+          "zone": "hand"
+        }
+      },
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "anyOf": [
+              "$c"
+            ],
+            "zone": "graveyard",
+            "owner": "you",
+            "isCard": true
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "as": "back2"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "bound",
+          "name": "back2"
+        },
+        "to": {
+          "zone": "hand"
+        }
+      },
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "anyOf": [
+              "$d"
+            ],
+            "zone": "graveyard",
+            "owner": "you",
+            "isCard": true
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "as": "back3"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "bound",
+          "name": "back3"
+        },
+        "to": {
+          "zone": "hand"
+        }
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "then",
+      "same"
+    ],
+    "examples": [
+      {
+        "text": "Return a Knight card from your graveyard to your hand, then do the same for Rogue, Cleric, and Soldier."
+      },
+      {
+        "text": "Return an Elf card from your graveyard to your hand, then do the same for Goblin, Wizard, and Zombie."
+      }
+    ],
+    "counterExamples": [
+      "Return a Knight card from your graveyard to your hand, then do the same for Rogue and Cleric.",
+      "Return a Knight card from your graveyard to the battlefield, then do the same for Rogue, Cleric, and Soldier.",
+      "Return a Knight card from your hand to your hand, then do the same for Rogue, Cleric, and Soldier."
+    ]
+  }
+]

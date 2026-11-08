@@ -1,0 +1,146 @@
+[
+  {
+    "id": "trg.edhe43.attacks.mostLife.equipped",
+    "kind": "trigger",
+    "since": 9,
+    "status": "stable",
+    "priority": 0,
+    "cr": [
+      "CR 603.2",
+      "CR 508.1b",
+      "CR 119.1",
+      "CR 702.105a"
+    ],
+    "pattern": "( when | whenever ) equipped creature attacks the player with the most life or tied for most life",
+    "build": {
+      "on": [
+        {
+          "ev": "attacks",
+          "attacker": {
+            "types": [
+              "Creature"
+            ],
+            "attachedToSource": true
+          },
+          "defender": "any"
+        }
+      ],
+      "while": {
+        "cond": "compare",
+        "left": {
+          "q": "countPlayers",
+          "of": {
+            "ref": "each",
+            "who": "player"
+          },
+          "lifeVs": {
+            "op": ">",
+            "than": {
+              "ref": "event",
+              "role": "defender"
+            }
+          }
+        },
+        "op": "==",
+        "right": 0
+      }
+    },
+    "consumes": [
+      "when",
+      "whenever"
+    ],
+    "needs": [
+      "feature:trigger.while",
+      "feature:q.countPlayers.lifeVs"
+    ],
+    "examples": [
+      {
+        "text": "Whenever equipped creature attacks the player with the most life or tied for most life, draw a card."
+      },
+      {
+        "text": "Whenever equipped creature attacks the player with the most life or tied for most life, you gain 2 life."
+      }
+    ],
+    "counterExamples": [
+      "Whenever a creature you control attacks the player with the most life, draw a card.",
+      "Whenever a creature you control attacks the player with the least life or tied for least life, draw a card.",
+      "Whenever a creature you control attacks a player, draw a card.",
+      "Whenever a creature you control attacks the player with the most cards in hand or tied for most cards in hand, draw a card."
+    ]
+  },
+  {
+    "id": "rid.edhe43.token.itsPowerToughnessEqual",
+    "kind": "rider",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 111.4",
+      "CR 208.1",
+      "CR 608.2c",
+      "CR 608.2h"
+    ],
+    "pattern": "its power is equal to {p:Qty} and its toughness is equal to {q:Qty}",
+    "build": {
+      "$patchPrevious": {
+        "token": {
+          "power": "$p",
+          "toughness": "$q"
+        }
+      }
+    },
+    "attachTo": "createToken",
+    "consumes": [],
+    "examples": [
+      {
+        "text": "Whenever ~ attacks, create a white Spirit creature token. Its power is equal to ~'s power and its toughness is equal to ~'s toughness."
+      },
+      {
+        "text": "Whenever ~ attacks, create a white Spirit creature token that's attacking. Its power is equal to the number of creatures you control and its toughness is equal to the number of lands you control."
+      }
+    ],
+    "counterExamples": [
+      "Draw a card. Its power is equal to ~'s power and its toughness is equal to ~'s toughness.",
+      "Whenever ~ attacks, create a white Spirit creature token. Its power is equal to ~'s power.",
+      "Whenever ~ attacks, create a white Spirit creature token. Its power is equal to ~'s power and its toughness is equal to ~'s toughness until end of turn."
+    ]
+  },
+  {
+    "id": "eff.edhe43.exile.tokensCreatedWithSelf",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "subject": "none",
+    "cr": [
+      "CR 607.2a",
+      "CR 406.2",
+      "CR 111.1"
+    ],
+    "pattern": "exile all tokens created with ~",
+    "build": {
+      "op": "move",
+      "what": {
+        "ref": "linked",
+        "link": "created"
+      },
+      "to": {
+        "zone": "exile"
+      }
+    },
+    "consumes": [
+      "all"
+    ],
+    "examples": [
+      {
+        "text": "At the beginning of your upkeep, create a 1/1 black Rat creature token.\nAt the beginning of your end step, exile all tokens created with ~."
+      },
+      {
+        "text": "{T}: Create a 2/2 black Zombie creature token.\nWhen ~ leaves the battlefield or dies, exile all tokens created with ~."
+      }
+    ],
+    "counterExamples": [
+      "{T}: Create a 2/2 black Zombie creature token.\nWhen ~ leaves the battlefield, exile all tokens.",
+      "{T}: Create a 2/2 black Zombie creature token.\nWhen ~ leaves the battlefield, destroy all tokens created with ~.",
+      "{T}: Create a 2/2 black Zombie creature token.\nWhen ~ leaves the battlefield, exile all creatures created with ~."
+    ]
+  }
+]

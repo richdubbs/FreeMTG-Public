@@ -33,7 +33,7 @@
     "id": "eff.p2cf2.becomeBlocked.group",
     "kind": "effect",
     "since": 8,
-    "status": "experimental",
+    "status": "stable",
     "cr": [
       "CR 509.1h",
       "CR 506.4",

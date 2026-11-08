@@ -1,0 +1,253 @@
+[
+  {
+    "id": "rid.edhe11.instead.mayPutTop.if",
+    "kind": "rider",
+    "since": 8,
+    "priority": 1,
+    "status": "stable",
+    "cr": [
+      "CR 614.15",
+      "CR 608.2c",
+      "CR 608.2d",
+      "CR 401.4"
+    ],
+    "pattern": "if {c:Cond} , you may put ( that permanent | that creature | it ) on top of its owner 's library instead",
+    "build": {
+      "$patchPrevious": {
+        "@require": {
+          "to.zone": "hand"
+        },
+        "@before": [
+          {
+            "op": "may",
+            "who": {
+              "ref": "you"
+            },
+            "guard": "$c",
+            "do": [
+              {
+                "op": "move",
+                "what": "@previous.what",
+                "to": {
+                  "zone": "library",
+                  "position": "top"
+                }
+              }
+            ]
+          }
+        ],
+        "@guardPrevious": "unlessDid"
+      }
+    },
+    "attachTo": "move",
+    "consumes": [
+      "may",
+      "instead",
+      "if"
+    ],
+    "examples": [
+      {
+        "text": "Return target nonland permanent to its owner's hand. If you control a Wizard, you may put that permanent on top of its owner's library instead."
+      },
+      {
+        "text": "Return target creature to its owner's hand. If that creature is tapped, you may put it on top of its owner's library instead."
+      }
+    ],
+    "counterExamples": [
+      "Return target creature to its owner's hand. If you control a Wizard, put that creature on top of its owner's library instead.",
+      "Destroy target creature. If you control a Wizard, you may put that creature on top of its owner's library instead.",
+      "Return target creature to its owner's hand. If you control a Wizard, you may put that creature on the bottom of its owner's library instead."
+    ]
+  },
+  {
+    "id": "rid.edhe11.instead.mayPutBottom.if",
+    "kind": "rider",
+    "since": 8,
+    "priority": 1,
+    "status": "stable",
+    "cr": [
+      "CR 614.15",
+      "CR 608.2c",
+      "CR 608.2d",
+      "CR 401.4"
+    ],
+    "pattern": "if {c:Cond} , you may put ( that creature | it ) on the bottom of its owner 's library instead",
+    "build": {
+      "$patchPrevious": {
+        "@require": {
+          "to.zone": "library",
+          "to.position": "top"
+        },
+        "@before": [
+          {
+            "op": "may",
+            "who": {
+              "ref": "you"
+            },
+            "guard": "$c",
+            "do": [
+              {
+                "op": "move",
+                "what": "@previous.what",
+                "to": {
+                  "zone": "library",
+                  "position": "bottom"
+                }
+              }
+            ]
+          }
+        ],
+        "@guardPrevious": "unlessDid"
+      }
+    },
+    "attachTo": "move",
+    "consumes": [
+      "may",
+      "instead",
+      "if"
+    ],
+    "examples": [
+      {
+        "text": "Put target creature on top of its owner's library. If that creature is blue, you may put it on the bottom of its owner's library instead."
+      },
+      {
+        "text": "Put target creature on top of its owner's library. If you control a Goblin, you may put that creature on the bottom of its owner's library instead."
+      }
+    ],
+    "counterExamples": [
+      "Put target creature on top of its owner's library. If that creature is blue, put it on the bottom of its owner's library instead.",
+      "Return target creature to its owner's hand. If that creature is blue, you may put it on the bottom of its owner's library instead.",
+      "Put target creature on top of its owner's library. If that creature is blue, you may put it on top of its owner's library instead."
+    ]
+  },
+  {
+    "id": "rid.edhe11.reveal.drawForEachLandAndColor.red",
+    "kind": "rider",
+    "since": 8,
+    "status": "stable",
+    "priority": 0,
+    "cr": [
+      "CR 701.20a",
+      "CR 402.3",
+      "CR 121.1",
+      "CR 608.2c"
+    ],
+    "pattern": "you draw a card for each mountain and red card in it",
+    "build": {
+      "$patchPrevious": {
+        "@after": [
+          {
+            "op": "draw",
+            "who": {
+              "ref": "you"
+            },
+            "count": {
+              "q": "count",
+              "of": {
+                "ref": "each",
+                "filter": {
+                  "zone": "hand",
+                  "owner": "@previous.who",
+                  "isCard": true,
+                  "anyOf": [
+                    {
+                      "subtypes": [
+                        "Mountain"
+                      ]
+                    },
+                    {
+                      "colors": [
+                        "R"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "attachTo": "reveal",
+    "consumes": [
+      "each"
+    ],
+    "examples": [
+      {
+        "text": "Target player reveals their hand. You draw a card for each Mountain and red card in it."
+      },
+      {
+        "text": "Draw a card. Target player reveals their hand. You draw a card for each Mountain and red card in it."
+      }
+    ],
+    "counterExamples": [
+      "Target player discards their hand. You draw a card for each Mountain and red card in it.",
+      "Target player reveals their hand. You draw a card for each Mountain card in it."
+    ]
+  },
+  {
+    "id": "rid.edhe11.reveal.drawForEachLandAndColor.green",
+    "kind": "rider",
+    "since": 8,
+    "status": "stable",
+    "priority": 0,
+    "cr": [
+      "CR 701.20a",
+      "CR 402.3",
+      "CR 121.1",
+      "CR 608.2c"
+    ],
+    "pattern": "you draw a card for each forest and green card in it",
+    "build": {
+      "$patchPrevious": {
+        "@after": [
+          {
+            "op": "draw",
+            "who": {
+              "ref": "you"
+            },
+            "count": {
+              "q": "count",
+              "of": {
+                "ref": "each",
+                "filter": {
+                  "zone": "hand",
+                  "owner": "@previous.who",
+                  "isCard": true,
+                  "anyOf": [
+                    {
+                      "subtypes": [
+                        "Forest"
+                      ]
+                    },
+                    {
+                      "colors": [
+                        "G"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "attachTo": "reveal",
+    "consumes": [
+      "each"
+    ],
+    "examples": [
+      {
+        "text": "Target player reveals their hand. You draw a card for each Forest and green card in it."
+      },
+      {
+        "text": "Draw a card. Target player reveals their hand. You draw a card for each Forest and green card in it."
+      }
+    ],
+    "counterExamples": [
+      "Target player discards their hand. You draw a card for each Forest and green card in it.",
+      "Target player reveals their hand. You draw a card for each Forest card in it."
+    ]
+  }
+]

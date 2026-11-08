@@ -1,0 +1,7 @@
+# edh-e-39 (coordinator E, Commander cards 2026-11-06, group graveyard 3/3): exile it and each player returns all X cards, a player puts the bottom card of their library into their graveyard, each player returns all cards named X to the battlefield, a granted encore costing its mana cost. After editing: npm run cards -- fixtures
+Underworld Cerberus
+Cellar Door
+Myr Servitor
+Wire Surgeons
+Misfortune Teller
+Dawn Evangel

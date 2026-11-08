@@ -50,6 +50,9 @@ export function isSpellStaticForm(toks: readonly Token[], ix: LexiconIndex): boo
   for (const verb of ['costs', 'cost']) {
     for (let i = find(w, ['~', verb]); i >= 0; i = find(w, ['~', verb], i + 1)) if (w.slice(i + 2).some((x) => x === 'less' || x === 'more')) return true;
   }
+  // edh-d-110 (CR 103.6, 103.6b, 113.6b; Providence): "You may reveal ~ from your opening hand. If you do, at the beginning of the first upkeep, ...": a pregame static ability of the card in
+  // the opening hand (it functions from the hand before the game starts, never on the stack); the whole first sentence only
+  if (w.join(' ') === 'you may reveal ~ from your opening hand') return true;
   // CR 101.2: "~ can't be countered", also after "If X is 5 or more,".
   if (find(w, ['~', "can't", 'be', 'countered']) >= 0 || (w[0] === '~' && w[1] === "can't")) return true;
   // edh-zones-16 (CR 107.3, 601.2b; Open the Way): "X can't be greater than the number of players in the game.", the largest X the spell may announce.

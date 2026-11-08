@@ -16,7 +16,7 @@ import { whileObjectHolds } from '../../statics/while-object';
 import { createDelayedTrigger } from '../../triggers/delayed';
 import { putReflexiveTrigger } from '../../triggers/stack';
 import type { ExecCtx, OpHandlers, StepResult } from '../api';
-import { evalCond } from '../eval';
+import { evalCond, evalQty } from '../eval';
 import { performControlSync, performEffectRecord } from '../perform-direct';
 import { COPY_SNAPSHOT_HOOK } from '../copy';
 import { askManual } from '../manual';
@@ -24,7 +24,7 @@ import * as pipeline from '../propose';
 import { costMovedSelfCard, isCurrent, linkValue, readInfo, resolveObjs, resolvePlayers } from '../refs';
 import { getChars } from '../../rules/characteristics';
 import { COND, FailsToDetermine, fixChosen, fixDuration, fixNode, fixPlayerPred, lockSet, mentionsSubject, prepareDeferred, STEP, TOP, varsOf } from './lasting-fix';
-import { bindActed } from './lifedamage';
+import { amountOf, announcedShares, bindActed } from './lifedamage';
 import type { ObjHandle } from '../../types/state';
 
 const NOTHING: StepResult = { performed: false, count: 0 };
@@ -113,7 +113,7 @@ function neverStarts(cx: ExecCtx, d: Duration): string | null {
  * names have right now, or the plain keyword when one of them has it plain (nothing found: the plain keyword).
  */
 function expandVariants(cx: ExecCtx, e: StaticEffect): StaticEffect {
-  const needs = (m: Extract<StaticEffect, { s: 'continuous' }>['mods'][number]): boolean => m.layer === 6 && (m.protectionFromColorsOf !== undefined || m.add?.some((a) => a.kind === 'keyword' && a.likeAmong !== undefined) === true);
+  const needs = (m: Extract<StaticEffect, { s: 'continuous' }>['mods'][number]): boolean => m.layer === 6 && (m.protectionFromColorsOf !== undefined || m.protectionFromVotedColors !== undefined || m.add?.some((a) => a.kind === 'keyword' && a.likeAmong !== undefined) === true);
   if (e.s !== 'continuous' || !e.mods.some(needs)) return e;
   const mods = e.mods.map((m) => {
     if (m.layer !== 6 || !needs(m)) return m;
@@ -133,7 +133,15 @@ function expandVariants(cx: ExecCtx, e: StaticEffect): StaticEffect {
       const word: Record<string, string> = { W: 'white', U: 'blue', B: 'black', R: 'red', G: 'green' };
       for (const c of colors) add.push({ kind: 'keyword', keyword: 'protection', quality: `color:${c}`, text: `protection from ${word[c] ?? c}` });
     }
-    const { protectionFromColorsOf: _p, ...rest } = m;
+    // edhe35 (CR 702.16a, 701.38a-b, 608.2h; Council Guardian): "protection from each color with the most votes or tied for most votes": one protection for each color word that got the
+    // most votes of the vote step (at least one vote); no vote, no protection
+    if (m.protectionFromVotedColors !== undefined) {
+      const tally = cx.results.get(m.protectionFromVotedColors.step)?.votes;
+      const best = tally === undefined ? 0 : Math.max(0, ...tally.values());
+      const letter: Record<string, string> = { white: 'W', blue: 'U', black: 'B', red: 'R', green: 'G' };
+      if (tally !== undefined && best > 0) for (const [word, n] of tally) if (n === best && letter[word] !== undefined) add.push({ kind: 'keyword', keyword: 'protection', quality: `color:${letter[word]}`, text: `protection from ${word}` });
+    }
+    const { protectionFromColorsOf: _p, protectionFromVotedColors: _v, ...rest } = m;
     return { ...rest, add };
   });
   return { ...e, mods };
@@ -168,6 +176,74 @@ function grantedSelfGraveyardPermit(e: StaticEffect): 'play' | 'cast' | null {
   return JSON.stringify({ ...p, action: 'x' }) === JSON.stringify({ s: 'permit', who: { ref: 'you' }, action: 'x', of: { self: true }, from: 'graveyard' }) ? p.action : null;
 }
 
+/**
+ * trek-23 (CR 608.2c, 611.2a, 400.7; Vulcan Mind-Meld): "For each card exiled this way, the player who exiled it may play it ...": the named cards are fixed now (the cards the instructions
+ * named, in exile as the effect begins, each a new object once it leaves, CR 400.7), and each player of `who` gets a permission for exactly the cards this resolution remembers them exiling (`exiledBy`, written
+ * by a move with `by`, effects/handlers/zones-move.ts). A card whose exiler is not known, or is not one of those players, is permitted to nobody (fail closed); nothing named: no permission.
+ */
+function exiledByPermits(cx: ExecCtx, e: Extract<StaticEffect, { s: 'permit' }>): StaticEffect[] {
+  const { exiledByOnly: _only, ...rest } = fixNode(cx, e, TOP) as Extract<StaticEffect, { s: 'permit' }>;
+  if (e.action !== 'play' || rest.of?.is === undefined || Object.keys(rest.of).length !== 1) return [];
+  const locked = lockSet(cx, rest.of.is);
+  if (locked.empty || locked.ref.ref !== 'fixed' || !('objects' in locked.ref)) return [];
+  const allowed = new Set(resolvePlayers(cx, e.who));
+  const byPlayer = new Map<string, ObjHandle[]>();
+  for (const h of locked.ref.objects) {
+    const p = h.zone === 'exile' ? cx.exiledBy?.get(h.id) : undefined;
+    if (p !== undefined && allowed.has(p)) byPlayer.set(p, [...(byPlayer.get(p) ?? []), h]);
+  }
+  return [...byPlayer].map(([p, objects]) => ({ ...rest, who: { ref: 'fixed', players: [p] }, of: { is: { ref: 'fixed', objects } } }) as StaticEffect);
+}
+
+/**
+ * edh-d-103 (CR 615.7, 611.2c; Kitsune Palliator ruling 2005-02-01): "Prevent the next 1 damage that would be dealt to each creature and each player this turn": one shield per creature on the
+ * battlefield and per player in the game as the step resolves, each with the whole budget, about that one object or player only (a creature that enters later is not protected). Only that
+ * recipient and a fixed amount; any other shape is left to the players (askManual), never guessed.
+ */
+function eachShields(cx: ExecCtx, e: Extract<StaticEffect, { s: 'replace' }>): StaticEffect[] {
+  const r = e.replaces;
+  const body = e.body;
+  const shape = r.ev === 'damage' && Object.keys(r).length === 2 && JSON.stringify(r.recipient) === '{"object":{"types":["Creature"]},"player":"any"}';
+  const amount = body.b === 'prevent' && body.amount !== 'all' && body.then === undefined && body.as === undefined ? amountOf(cx, body.amount) : undefined;
+  if (!shape || amount === undefined || r.ev !== 'damage') {
+    askManual(cx, `${nameOfSource(cx)}: a prevention shield for each creature and each player`, 'the engine can\'t make these shields (CR 615.7)');
+    return [];
+  }
+  const { each: _e, ...shield } = e.shield!;
+  const g = cx.g;
+  const creatures = g.s.zones.battlefield.filter((id) => g.s.objects[id]?.phasedOut !== true && getChars(g.s, id)?.types.includes('Creature')).map((id) => ({ id, zone: 'battlefield' as const })); // CR 702.26b: a phased-out creature is treated as though it doesn't exist
+  const players = g.s.players.filter((p) => !p.hasLost).map((p) => p.id);
+  const one = (objects: ObjHandle[], ps: string[]): StaticEffect => fixNode(cx, { ...e, replaces: { ...r, recipient: { object: { is: { ref: 'fixed', objects } }, player: { ref: 'fixed', players: ps } } }, body: { b: 'prevent', amount }, shield } as StaticEffect, TOP);
+  return amount <= 0 ? [] : [...creatures.map((h) => one([h], [])), ...players.map((p) => one([], [p]))];
+}
+
+/**
+ * edh-e-68 (CR 601.2d, 615.7, 608.2b; Embolden: "Prevent the next 4 damage that would be dealt this turn to any number of targets, divided as you choose"): the shields a divided prevention becomes, one for
+ * each target that is still legal, each preventing exactly the share announced for it with the targets (`announcedShares`: a target that became illegal loses its share, never given to the others).
+ * The step's one `replace` names the targets of one spec as its recipient; its amount is the total. Null when the step is not of that shape or the division is missing for several targets (the caller
+ * asks the players, never guesses).
+ */
+function dividedEffects(cx: ExecCtx, effects: StaticEffect[]): StaticEffect[] | null {
+  const e = effects.length === 1 ? effects[0]! : undefined;
+  if (e === undefined || e.s !== 'replace') return null;
+  const pb = e.body;
+  if (pb.b !== 'prevent' || pb.amount === 'all' || pb.then !== undefined || pb.as !== undefined || pb.oncePerBatch !== undefined) return null;
+  const rp = e.replaces;
+  if (rp.ev !== 'damage') return null;
+  const rec = rp.recipient as { object?: { is?: { ref?: string; id?: string } }; player?: { ref?: string; id?: string } } | undefined;
+  const t = rec?.player;
+  if (t?.ref !== 'target' || t.id === undefined || JSON.stringify(rec) !== JSON.stringify({ object: { is: t }, player: t }) || JSON.stringify(e.shield) !== '{"uses":"all"}') return null;
+  const total = evalQty(cx, pb.amount);
+  if (total === undefined || total < 0) return null;
+  const shares = announcedShares(cx, t.id, Math.floor(total));
+  if (shares === null) return null;
+  return shares.filter((x) => x.amount > 0).map((x): StaticEffect => ({
+    ...e,
+    replaces: { ...rp, recipient: (typeof x.to === 'string' ? { player: { ref: 'fixed', players: [x.to] } } : { object: { is: { ref: 'fixed', objects: [x.to] } } }) as typeof rp.recipient },
+    body: { ...pb, amount: x.amount },
+  }));
+}
+
 function effectsToStore(cx: ExecCtx, e0: StaticEffect, duration: Duration): StaticEffect[] {
   const e = fixGrantCaster(cx, expandVariants(cx, e0));
   // CLOUD std-msh (CR 115.1, 608.2c): "... becomes a copy of that creature" after "up to one target creature" with none chosen: there is nothing to copy, so
@@ -188,6 +264,7 @@ function effectsToStore(cx: ExecCtx, e0: StaticEffect, duration: Duration): Stat
   // of "it"), and the permission names exactly them from then on (statics/play-permits.ts reads only fixed objects). One that picks nothing permits nothing; a value
   // that can't be determined (there is no "it") permits nothing too (FailsToDetermine, CR 608.2b)
   const lockedGroup = e.s === 'permit' && (e.action === 'play' || e.action === 'cast');
+  if (e.s === 'permit' && e.exiledByOnly === true) return exiledByPermits(cx, e);
   // edh-d-99 (CR 607.2a, 611.2a, 400.7; King Narfi's Betrayal): ... and the same for the cards linked to the source ("until end of turn, you may cast spells from among cards exiled with this
   // Saga"): the cards exiled with it as the effect begins, each one a new object once it leaves exile (CR 400.7), so a card cast this way is not cast again
   if (lockedGroup && e.of !== undefined && Object.keys(e.of).length === 1 && (e.of.is?.ref === 'each' || e.of.is?.ref === 'linked')) {
@@ -214,6 +291,13 @@ function effectsToStore(cx: ExecCtx, e0: StaticEffect, duration: Duration): Stat
   if (e.s === 'restrict' && e.onlyNearest !== undefined && 'chosen' in e.onlyNearest) {
     const picked = linkValue(cx, e.onlyNearest.chosen)?.values?.[0];
     if (picked === 'left' || picked === 'right') return [fixNode(cx, { ...e, onlyNearest: { side: picked } } as StaticEffect, TOP)];
+  }
+  if (e.s === 'replace' && e.shield?.each === true) return eachShields(cx, e);
+  // edh-d-103 (CR 614.9, 120.3; Aegis of Honor): a redirection to the controller of the damage's own source ("that spell deals that damage to its controller instead"): the
+  // new recipient is read from each event it meets (as the `then` steps of a prevention are); the rest is fixed now
+  if (e.s === 'replace' && e.body.b === 'redirect' && JSON.stringify(e.body.to) === '{"ref":"controllerOf","object":{"ref":"event","role":"source"}}') {
+    const fixed = fixNode(cx, { ...e, body: { b: 'prevent', amount: 'all' } } as StaticEffect, TOP) as Extract<StaticEffect, { s: 'replace' }>;
+    return [{ ...fixed, body: e.body } as StaticEffect];
   }
   if (e.s !== 'continuous') return [fixNode(cx, e, TOP)]; // rule-modifying: identities and values fixed, an `each` filter stays live (CR 611.2c)
   // edh-d-101 (CR 611.2c, 113.6, 601.3, 305.1, 400.7; Kethis, the Hidden Hand): "Until end of turn, each legendary card in your graveyard gains "You may play this card from your graveyard."":
@@ -262,7 +346,7 @@ function selfMovesTo(steps: EffectStep[], to: ObjHandle[]): EffectStep[] {
 }
 
 /** CLOUD std-tmt: the value forms of the `effect` op this handler runs (`op:effect.as`: the objects a continuous effect affects are bound to the step's `as`). */
-export const EFFECT_OP_FORMS: readonly string[] = ['op:effect.as', 'feature:keyword.likeAmong' /* edh-combat-5 */, 'feature:mod.protectionFromColorsOf' /* edh-players-15 */, 'feature:keyword.exceptAttached', 'feature:keyword.exceptAttached.kinds' /* edh-d-24 */ /* edh-perms-21 */, 'feature:ref.grantCaster' /* edh-next-146 */];
+export const EFFECT_OP_FORMS: readonly string[] = ['op:effect.as', 'feature:permit.play.exiledByOnly' /* trek-23: exiledByPermits */, 'feature:keyword.likeAmong' /* edh-combat-5 */, 'feature:mod.protectionFromColorsOf' /* edh-players-15 */, 'feature:mod.protectionFromVotedColors' /* edhe35 */, 'feature:keyword.exceptAttached', 'feature:keyword.exceptAttached.kinds' /* edh-d-24 */ /* edh-perms-21 */, 'feature:ref.grantCaster' /* edh-next-146 */, 'op:effect.divided' /* edh-e-68: dividedEffects */];
 
 export const LASTING_HANDLERS: OpHandlers = {
   /** CR 611.2: a resolved continuous effect (layers, rules, shields), with its duration; values and identities fixed as it is created (design 9.1). */
@@ -292,7 +376,9 @@ export const LASTING_HANDLERS: OpHandlers = {
     const locked: ObjHandle[] = []; // CLOUD std-tmt: the objects the effects affect, for the step's `as` (CR 611.2c, 608.2c)
     // CR 611.2b, 301.5c: "for as long as ~ remains attached to it": what it is attached to now; attached to anything else later ends the effect
     const attachedTo = duration.d === 'whileSource' && duration.as === 'attached' ? g.s.objects[cx.source.id]?.attachedTo : undefined;
-    for (const e of step.effects) {
+    const effects = step.divided === true ? dividedEffects(cx, step.effects) : step.effects;
+    if (effects === null) return askManual(cx, step.span ?? `${name}: a prevention divided among its targets`, 'the division of the shield among its targets is not known (CR 601.2d)', step.duration);
+    for (const e of effects) {
       if (!storableKind(e.s)) {
         // Nothing in this build would apply such a record (its capability `static:<s>` is missing; the degrade pass keeps such units away, this is the
         // defensive fallback): resolved by hand, never stored and ignored. The chip lasts as long as the effect would, its players fixed (CR 611.2a).
@@ -394,7 +480,8 @@ export const LASTING_HANDLERS: OpHandlers = {
    */
   reflexive: (cx, step) => {
     const g = cx.g;
-    if (!(cx.results.get(step.when.did)?.performed ?? false)) return NOTHING;
+    const did = cx.results.get(step.when.did);
+    if (!(did?.performed ?? false)) return NOTHING;
     // FAST5X E16 INTERFACE CHANGE: a reflexive trigger that waits for a result of that step ("When excess damage is dealt to ... this way", CR 603.12, 120.10)
     if (step.when.if !== undefined && !evalCond(cx, step.when.if)) return NOTHING;
     // r5-cost (CR 603.12, 700.2): the targets of a reflexive trigger's modes are its own too
@@ -422,18 +509,25 @@ export const LASTING_HANDLERS: OpHandlers = {
       askManual(cx, step.span ?? `${name}: a copy effect "except it has this ability"`, 'the engine can\'t tell which ability "this ability" is (CR 707.9a)', undefined);
       return NOTHING;
     }
-    putReflexiveTrigger(g, {
-      source: { id: cx.source.id, zone: cx.source.zone },
-      controller: cx.controller,
-      text: step.span ?? `Reflexive triggered ability of ${name}.`,
-      targets,
-      steps: baked,
-      bound,
-      vars: varsOf(cx),
-      context: cx.event,
-      ...(modes !== undefined ? { modes } : {}),
-    });
-    g.log(`${name}'s reflexive triggered ability triggers.`, { rules: ['CR 603.12'], level: 'info' });
+    // edh-d-86-fix (CR 603.12, 122.6; Craig Boone, Novac Guard ruling 2024-06-07, Etched Slith): after "put N counters on <one object>. When you do, ...", the
+    // reflexive ability triggers once for every N counters actually put this way: a replacement that doubles the counters makes it trigger twice
+    const per = did?.countersStated;
+    const put = did?.countersPut === undefined ? 0 : [...did.countersPut.values()].reduce((a, b) => a + b, 0);
+    const times = per !== undefined && per > 0 && put > per ? Math.floor(put / per) : 1;
+    for (let i = 0; i < times; i++) {
+      putReflexiveTrigger(g, {
+        source: { id: cx.source.id, zone: cx.source.zone },
+        controller: cx.controller,
+        text: step.span ?? `Reflexive triggered ability of ${name}.`,
+        targets,
+        steps: baked,
+        bound,
+        vars: varsOf(cx),
+        context: cx.event,
+        ...(modes !== undefined ? { modes } : {}),
+      });
+      g.log(`${name}'s reflexive triggered ability triggers.`, { rules: ['CR 603.12'], level: 'info' });
+    }
     return { performed: true, count: 1 };
   },
 };

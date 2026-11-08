@@ -185,10 +185,20 @@ export function nearMisses(text: string): { kind: NearMissKind; text: string }[]
   const num = /(?<![{\w/+-])(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b(?![}/])/i.exec(text.replace(/\{[^}]*\}/g, (m) => ' '.repeat(m.length)));
   if (num) add('insert-up-to', `${text.slice(0, num.index)}up to ${text.slice(num.index)}`);
   else if (/\btarget\b/i.test(text)) add('insert-up-to', text.replace(/\btarget\b/i, (w) => (w[0] === 'T' ? 'Up to one target' : 'up to one target')));
-  if (/\byou (\w+)/.test(text)) add('negate', text.replace(/\byou (\w+)/, "you don't $1"));
-  else if (/^[A-Z][a-z]+\b/.test(text) && !/^(When|Whenever|At|If|As|Until)\b/.test(text)) add('negate', `Don't ${text[0]!.toLowerCase()}${text.slice(1)}`);
+  // combined copy (CR 207.2c-d; edh-d-97, "Last Stand — You can't lose the game."): an ability word or flavor word label before an em dash is no part of the ability,
+  // so the negation goes after it ("Don't last Stand — ..." changed only the label and kept the meaning)
+  const label = /^[A-Z][^—\n.:]* — /.exec(text)?.[0] ?? '';
+  const body = text.slice(label.length);
+  if (/\byou (\w+)/.test(body)) add('negate', label + body.replace(/\byou (\w+)/, "you don't $1"));
+  else if (/^[A-Z][a-z]+\b/.test(body) && !/^(When|Whenever|At|If|As|Until)\b/.test(body)) add('negate', `${label}Don't ${body[0]!.toLowerCase()}${body.slice(1)}`);
   if (DURATIONS.test(text)) add('drop-duration', text.replace(DURATIONS, ''));
   return out;
+}
+
+/** combined copy: the type lines of a combined-copy rule first, then the ones the example had before (so an example that parsed before still does). */
+function firstThen(t: Pick<Template, 'kind'>, text: string, first: string[]): string[] {
+  const before = t.kind === 'static' ? [/^(enchant|equip)/i.test(text) ? 'Enchantment — Aura' : 'Enchantment'] : ['Instant', 'Sorcery', guessTypeLine(text)];
+  return [...new Set([...first, ...before])];
 }
 
 /**
@@ -199,6 +209,21 @@ export function nearMisses(text: string): { kind: NearMissKind; text: string }[]
 export function exampleTypeLines(t: Pick<Template, 'kind'>, text: string): string[] {
   if (t.kind === 'trigger' || t.kind === 'ability') return ['Creature — Spirit'];
   if (t.kind === 'cost') return ['Artifact Creature — Golem'];
+  // combined copy (band 5,001-10,000): examples that are abilities of a kind of permanent or spell the guess never makes; under the default type line they never
+  // parsed fully and their templates had no near miss tried
+  // - Saga chapters "I — ...", "II -- ..." (CR 714.2; edh-d-101, The Creation of Avacyn)
+  if (/^(I|II|III|IV|V|VI)\s+(—|--)\s/.test(text)) return firstThen(t, text, ['Enchantment — Saga']);
+  // - loyalty abilities "+1: ...", "−2: ..." and "As this planeswalker enters" (CR 606.1, 306.5; edh-next-137, edh-d-94)
+  if (/(^|\n)[+−-]?\d+:\s/.test(text) || /^as this planeswalker enters\b/i.test(text)) return firstThen(t, text, ['Legendary Planeswalker — Example']);
+  // - "As this Vehicle enters" (CR 301.7; edh-d-94), "this Equipment" anywhere (CR 301.5; edh-d-97, Eater of Virtue)
+  if (/^as this vehicle enters\b/i.test(text)) return firstThen(t, text, ['Artifact — Vehicle']);
+  if (/\bthis equipment\b/i.test(text)) return firstThen(t, text, ['Artifact — Equipment']);
+  // - "You may reveal the first card you draw each turn" is a creature's static ability (edh-next-132, God-Eternal Kefnet)
+  if (/^you may reveal the first card you draw\b/i.test(text)) return firstThen(t, text, ['Legendary Creature — God']);
+  // - "Enchant player" is a Curse (CR 303.4, 205.3h; edh-next-144)
+  if (/^enchant player\b/i.test(text)) return firstThen(t, text, ['Enchantment — Aura Curse']);
+  // - "As ~ enters, ...", "As this enchantment enters, ..." and "As Example <Name> enters, ..." of a permanent (CR 614.12a; edh-next-138, -144)
+  if (/^as (~|this enchantment|example [a-z]+) enters\b/i.test(text)) return firstThen(t, text, /^as this enchantment\b/i.test(text) ? ['Enchantment'] : ['Artifact', 'Enchantment']);
   // std-typechange-2 (CR 306.8): a static ability about the object's own loyalty counters is a planeswalker's ("During your turn, as long as ~ has two or more loyalty
   // counters on it, ~ is a 2/5 Samurai creature ...": the renderer says that identity of a planeswalker only)
   if (t.kind === 'static' && /^during your turn, as long as ~ has [^,]* loyalty counters? on it,/i.test(text)) return ['Legendary Planeswalker — Example'];
@@ -218,9 +243,15 @@ export function exampleTypeLines(t: Pick<Template, 'kind'>, text: string): strin
   if (t.kind === 'static' && /^cast (~|example subject) only\b/i.test(text)) return ['Instant'];
   // edh-next-90 (CR 702.61a, 113.6; Molten Disaster): "If this spell was kicked, it has split second." is a static ability of a spell on the stack (a line of a sorcery)
   if (t.kind === 'static' && /(^|\n)if [^\n]*, it has split second\./i.test(text)) return ['Sorcery'];
+  // edh-e-66 (CR 107.3m, 614.12, 122.6; Apocalypse Hydra): "~ enters with X +1/+1 counters on it. If X is 5 or more, it enters with an additional X ..." is the line of a creature with {X} in its cost
+  if (t.kind === 'static' && /^(~|example subject) enters with x [^.]* counters on it\. if x is\b/i.test(text)) return ['Creature — Hydra'];
+  // combined copy: a static ability of the spell itself ("If this spell is the first spell ...", "As an additional cost to cast this spell, ...": CR 601.2f, 118.9;
+  // edh-next-143, -144), after the narrower spell lines above
+  if (t.kind === 'static' && /\bthis spell\b/i.test(text)) return firstThen(t, text, ['Instant', 'Sorcery']);
   if (t.kind === 'static') return [/^(enchant|equip)/i.test(text) ? 'Enchantment — Aura' : 'Enchantment'];
   // edh-perms-4 (CR 303.4a): an effect example that is a whole enters trigger of an Aura or an enchantment ("When this Aura enters, it loses ...") is an ability of that permanent, not spell text
-  if (/^when this aura\b/i.test(text)) return ['Enchantment — Aura'];
+  // edh-e-37: and the leaves-the-battlefield trigger of the enchanted creature (Traveling Plague's return of the Aura)
+  if (/^when this aura\b/i.test(text) || /^when(ever)? enchanted creature leaves the battlefield\b/i.test(text)) return ['Enchantment — Aura'];
   if (/^when this enchantment\b/i.test(text)) return ['Enchantment'];
   // edh-c-90 (CR 205.1b, 306.5): "~ becomes a 3/3 ... creature that's still a land" is the ability of a land itself, "... that's still a planeswalker" of a planeswalker's loyalty ability
   if (/\bthat's still a land\b/i.test(text)) return ['Land'];
@@ -230,14 +261,18 @@ export function exampleTypeLines(t: Pick<Template, 'kind'>, text: string): strin
 
 /** A synthetic card in which an example of `t` is an ability of the right kind (invented name, design 6.10), under `typeLine` (default: the first of `exampleTypeLines`). */
 export function exampleCard(t: Pick<Template, 'kind'>, text: string, typeLine: string = exampleTypeLines(t, text)[0]!): OracleCard {
+  // combined copy (edh-next-138): an example that names its own card "Example <Name>" (no ~) is that card
+  const self = text.includes('~') ? undefined : /\bExample [A-Z][a-z]+\b/.exec(text)?.[0];
   let oracle = text.replace(/~/g, 'Example Subject');
   // edh-perms-4: an Aura that enchants a card in a graveyard has its enchant line (the example's own quoted "enchant <type> card in a graveyard" names the type)
   const grave = /^Enchantment — Aura/.test(typeLine) ? /enchant (\w+) card in a graveyard/i.exec(oracle) : null;
   if (grave) oracle = `Enchant ${grave[1]!} card in a graveyard\n${oracle}`;
-  const c = { name: 'Example Subject', layout: 'normal', type_line: typeLine, oracle_text: t.kind === 'cost' && !oracle.includes(':') ? `${oracle}: Draw a card.` : oracle, mana_cost: '{1}', colors: [], keywords: [] } as OracleCard;
+  const c = { name: self ?? 'Example Subject', layout: 'normal', type_line: typeLine, oracle_text: t.kind === 'cost' && !oracle.includes(':') ? `${oracle}: Draw a card.` : oracle, mana_cost: '{1}', colors: [], keywords: [] } as OracleCard;
   if (/\bCreature\b/.test(typeLine)) Object.assign(c, { power: '2', toughness: '2' });
   // r4-repl (CR 107.3, 601.2b): an instant or sorcery example that reads X without defining it ("Draw X cards. If X is 6 or more, ...") is a spell with {X} in its cost
   if (/^(Instant|Sorcery)\b/.test(typeLine) && /\bX\b/.test(oracle.replace(/,? where X is [^.]*/g, '')) && !/\{X\}|\bX is the\b/.test(oracle)) c.mana_cost = '{X}';
+  // edh-e-66: the creature whose entering X counters are read has {X} in its cost
+  if (/^Creature\b/.test(typeLine) && /^Example Subject enters with X [^.]* counters on it\. If X is\b/.test(oracle)) c.mana_cost = '{X}{G}';
   return c;
 }
 

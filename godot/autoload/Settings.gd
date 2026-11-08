@@ -42,7 +42,7 @@ var stops_own: Array[String] = []
 var stops_opponent: Array[String] = []
 var full_control: bool = false
 ## How a game of three or four players is drawn, and whether the shared table's camera follows the mouse.
-var table_layout: String = "shared"
+var table_layout: String = "acrossTop"
 var camera_follow: bool = true
 ## The names the New game screen starts with.
 var player_names: Array[String] = DEFAULT_NAMES.duplicate()
@@ -88,7 +88,7 @@ func load_settings() -> void:
 		stops_opponent = _steps(opp)
 	full_control = Val.as_bool(_file.get_value("stops", "full_control", full_control), full_control)
 	var layout: String = Val.as_text(_file.get_value("table", "layout", table_layout), table_layout)
-	table_layout = layout if LAYOUTS.has(layout) else "shared"
+	table_layout = layout if LAYOUTS.has(layout) else "acrossTop"
 	camera_follow = Val.as_bool(_file.get_value("table", "camera_follow", camera_follow), camera_follow)
 	var names: Variant = _file.get_value("players", "names", []) if _file.has_section_key("players", "names") else []
 	if names is Array:
@@ -260,7 +260,7 @@ func restore_defaults() -> void:
 	stops_own.assign(Config.DEFAULT_STOPS["ownTurn"])
 	stops_opponent.assign(Config.DEFAULT_STOPS["opponentTurn"])
 	full_control = false
-	table_layout = "shared"
+	table_layout = "acrossTop"
 	camera_follow = true
 	player_names = DEFAULT_NAMES.duplicate()
 	_changed("all")

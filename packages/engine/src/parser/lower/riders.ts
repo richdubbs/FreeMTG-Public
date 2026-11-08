@@ -593,6 +593,24 @@ export function lowerRiders(input: Draft): Draft {
         });
         return;
       }
+      // edh-e-39 (CR 608.2c; Misfortune Teller ruling 2022-04-29: a card that is both a land and a creature gets both): "If A, X. If B, Y. Otherwise, Z." after two conditional sentences, neither
+      // with an "otherwise" of its own, is "if neither A nor B": reading it as the else of the last `if` alone would do Z for a card that satisfied A. Read only when both conditions test the
+      // very same object (`matches`), as a third `if` on "neither" (rendered back as the "Otherwise" sentence, render/fold-edhe39.ts); any other pair of conditions keeps the older reading
+      if (isOtherwisePatch(u.rider.patch) && last !== undefined && last['op'] === 'if' && last['else'] === undefined) {
+        const before = hat > 0 && holder === prev!.steps ? holder[hat - 1] : hat === 0 ? eligible[1]?.steps.slice(-1)[0] : undefined;
+        if (before !== undefined && before['op'] === 'if' && before['else'] === undefined) {
+          const c1 = before['cond'];
+          const c2 = last['cond'];
+          const sameObject = isRec(c1) && isRec(c2) && c1['cond'] === 'matches' && c2['cond'] === 'matches' && canonicalJson(c1['object']) === canonicalJson(c2['object']) && before['guard'] === undefined && last['guard'] === undefined;
+          const body = (u.rider.patch['else'] as Rec)['@new'];
+          if (sameObject && Array.isArray(body) && hat === prev!.steps.length - 1) {
+            u.steps = [{ op: 'if', cond: { cond: 'not', of: { cond: 'any', of: [clone(c1), clone(c2)] } }, then: clone(body) }];
+            delete u.rider;
+            return;
+          }
+          // (any other pair of conditions keeps the older reading: "Otherwise" is the else of the last `if`)
+        }
+      }
       let merged: Rec;
       let sibling: Rec | undefined;
       let afterSteps: unknown;
@@ -713,6 +731,26 @@ function fixDividedTotals(d: Draft): void {
     rewrite(u.steps, (node) => {
       if (node['op'] !== 'if' || !isRec(node['cond'])) return undefined;
       const c = node['cond'];
+      // edh-e-68 (CR 601.2d, 702.33a, 614.15; Pollen Remedy): "Prevent the next 3 damage ..., divided as you choose. If ~ was kicked, prevent the next 6 damage this way instead.": the kicker is announced
+      // before the division (CR 601.2b), so the total is read from the kicks of the cast: 3 + (6 - 3) * min(1, kicks)
+      const dividedShield = (steps: unknown): Rec | undefined => (Array.isArray(steps) && steps.length === 1 && isRec(steps[0]) && steps[0]['op'] === 'effect' && steps[0]['divided'] === true ? steps[0] : undefined);
+      const ts = dividedShield(node['then']);
+      const es = dividedShield(node['else']);
+      if (ts !== undefined && es !== undefined) {
+        const amountOf = (st: Rec): Quantity | undefined => { const e0 = Array.isArray(st['effects']) ? st['effects'][0] : undefined; const b0 = isRec(e0) ? e0['body'] : undefined; return isRec(b0) ? (b0['amount'] as Quantity | undefined) : undefined; };
+        const pl = (st: Rec): unknown => { const e0 = Array.isArray(st['effects']) ? st['effects'][0] : undefined; const r0 = isRec(e0) && isRec(e0['replaces']) ? e0['replaces']['recipient'] : undefined; return isRec(r0) ? r0['player'] : undefined; };
+        const p0 = pl(es);
+        const spec = isRec(p0) && p0['ref'] === 'target' && JSON.stringify(p0) === JSON.stringify(pl(ts)) ? d.targets.find((x) => x.id === p0['id']) : undefined;
+        const a = amountOf(ts);
+        const b = amountOf(es);
+        if (spec?.divide === undefined || a === undefined || b === undefined || JSON.stringify(c) !== '{"cond":"wasCast","kicked":true}') {
+          setManual(u, { code: 'ambiguous', reason: 'the amount divided among the targets depends on a condition the announcement cannot read (CR 601.2d)' });
+          return undefined;
+        }
+        const kicked = { q: 'math', op: 'min', args: [1, { q: 'kickCount' }] };
+        spec.divide = { what: 'damage', total: clone({ q: 'math', op: '+', args: [b, { q: 'math', op: '*', args: [{ q: 'math', op: '-', args: [a, b] }, kicked] }] }) as Quantity };
+        return undefined;
+      }
       const th = dividedDamage(node['then']);
       const el = dividedDamage(node['else']);
       if (th === undefined || el === undefined) return undefined;

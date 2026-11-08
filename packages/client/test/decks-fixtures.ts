@@ -1,7 +1,9 @@
 /** Fixture cards and a fake local server for the deck screens (no network: answers come from these tables through a stubbed fetch). */
 import type { AutomationLevel, Color } from '@openmtg/engine';
-import type { CardDetailResponse, CardSummary, ResolveResponse, SearchResponse, SetSummary, ValidateResponse } from '@openmtg/server/api';
+import type { CardDetailResponse, CardSummary, DeckTokensResponse, PrintingsResponse, ResolveResponse, SearchResponse, SetSummary, ValidateResponse } from '@openmtg/server/api';
+import type { OracleCard } from '@openmtg/engine';
 import { parseDecklist } from '../../cards/src/decklist';
+import { canAddCommander } from '../../cards/src/formats/commander';
 import type { Deck } from '../src/decks/model';
 import { stubFetch } from './helpers';
 
@@ -43,7 +45,36 @@ export const CARDS: CardSummary[] = [
   card('Lurrus of the Dream-Den', { cost: '{1}{W/B}{W/B}', type: 'Legendary Creature — Cat Nightmare', text: 'Companion — Each permanent card in your starting deck has mana value 2 or less.', mv: 3, colors: ['W', 'B'] }),
   card('Jegantha, the Wellspring', { cost: '{4}{R/G}', type: 'Legendary Creature — Elemental Elk', text: 'Companion — No card in your starting deck has more than one of the same mana symbol in its mana cost.', mv: 5, colors: ['R', 'G'] }),
   card('Fire // Ice', { cost: '{1}{R}', type: 'Instant', mv: 4, colors: ['R', 'U'], layout: 'split' }),
+  // deck-art-1: commander candidates (CR 903.3, 903.3a, 702.124).
+  card('Sol Ring', { cost: '{1}', type: 'Legendary Artifact', text: '{T}: Add {C}{C}.', mv: 1 }),
+  card('Krenko, Mob Boss', { cost: '{2}{R}{R}', type: 'Legendary Creature — Goblin Warrior', text: '{T}: Create X 1/1 red Goblin creature tokens, where X is the number of Goblins you control.', mv: 4, colors: ['R'], pt: ['3', '3'] }),
+  card('Parhelion II', { cost: '{6}{W}{W}', type: 'Legendary Artifact — Vehicle', text: 'Crew 4', mv: 8, colors: ['W'], pt: ['5', '5'] }),
+  card('Test Spacecraft', { cost: '{4}', type: 'Legendary Artifact — Spacecraft', text: 'Station', mv: 4, pt: ['4', '4'] }),
+  card('Test Station', { cost: '{4}', type: 'Legendary Artifact — Spacecraft', text: 'Station', mv: 4 }),
+  card('Freya, the Fury', { cost: '{3}{G}', type: 'Legendary Planeswalker — Freya', text: '+1: Draw a card.\nFreya, the Fury can be your commander.', mv: 4, colors: ['G'] }),
+  card('Cloakwood Hermit', { cost: '{2}{G}', type: 'Legendary Enchantment — Background', text: 'Commander creatures you own have "Whenever a creature token you control dies, draw a card."', mv: 3, colors: ['G'] }),
+  card('Wilson, Refined Grizzly', { cost: '{1}{G}', type: 'Legendary Creature — Bear Warrior', text: 'Choose a Background', mv: 2, colors: ['G'], pt: ['4', '4'] }),
+  card('Partner A', { cost: '{1}', type: 'Legendary Creature — Human', text: 'Partner', mv: 1, pt: ['1', '1'] }),
+  card('Partner B', { cost: '{1}', type: 'Legendary Creature — Elf', text: 'Partner', mv: 1, pt: ['1', '1'] }),
 ];
+
+/** The fixture card as the index's Oracle card (for the cards package's own rules). */
+export function oracleOf(c: CardSummary): OracleCard {
+  const f = c.faces[0]!;
+  return { name: c.name, layout: c.layout, type_line: f.typeLine, oracle_text: f.oracleText, ...(f.power !== undefined ? { power: f.power, toughness: f.toughness } : {}) } as OracleCard;
+}
+
+/** POST /api/decks/commander-choices as the server answers it: the cards package's canAddCommander (Brawl formats use the Brawl style). */
+export function fakeCommanderChoices(body: { format: string; commander: { name: string; count: number }[]; names: string[] }): { choices: Record<string, boolean> } {
+  const style = body.format === 'brawl' || body.format === 'standardbrawl' ? 'brawl' : 'commander';
+  const current = body.commander.flatMap((e) => Array.from({ length: e.count }, () => byName.get(e.name))).filter((x): x is CardSummary => x !== undefined).map(oracleOf);
+  const choices: Record<string, boolean> = {};
+  for (const n of body.names) {
+    const c = byName.get(n);
+    choices[n] = c !== undefined && canAddCommander(current, oracleOf(c), style);
+  }
+  return { choices };
+}
 
 export const byName = new Map(CARDS.map((c) => [c.name, c]));
 
@@ -79,6 +110,10 @@ export interface FakeServer {
   cards?: 'down';
   /** GET /api/sets (absent: 404, as an older server). */
   sets?: SetSummary[];
+  /** deck-art-1: GET /api/printings (absent: 404). */
+  printings?: (params: URLSearchParams) => PrintingsResponse;
+  /** deck-art-1: POST /api/decks/tokens (absent: no tokens). */
+  tokens?: (names: string[]) => DeckTokensResponse;
 }
 
 /** Stub fetch with a fake server; unknown cards are 404, unanswered endpoints 501 (like the C0 stubs). */
@@ -101,6 +136,9 @@ export function fakeServer(s: FakeServer = {}) {
       const r = (s.resolve ?? fakeResolve)(String(body.text));
       return 'status' in r ? r : { status: 200, body: r };
     }
+    if (u.pathname === '/api/printings') return s.printings ? { status: 200, body: s.printings(u.searchParams) } : { status: 404, body: { error: 'no printings' } };
+    if (u.pathname === '/api/decks/tokens') return { status: 200, body: s.tokens ? s.tokens(body.names as string[]) : { tokens: [] } };
+    if (u.pathname === '/api/decks/commander-choices') return { status: 200, body: fakeCommanderChoices(body as unknown as Parameters<typeof fakeCommanderChoices>[0]) };
     if (u.pathname === '/api/decks/validate')
       return s.validate ? { status: 200, body: s.validate(body as unknown as { deck: Deck; format: string }) } : { status: 200, body: { format: String(body.format), checkedAs: String(body.format), valid: true, status: 'legal', problems: [] } };
     return { status: 404, body: { error: `no route ${u.pathname}` } };

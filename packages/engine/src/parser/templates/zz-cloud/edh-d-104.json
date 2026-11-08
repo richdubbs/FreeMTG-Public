@@ -1,0 +1,158 @@
+[
+  {
+    "id": "rid.edhd104.playThisWay.effects",
+    "kind": "rider",
+    "since": 9,
+    "status": "stable",
+    "subject": "none",
+    "cr": [
+      "CR 603.7a",
+      "CR 603.7c",
+      "CR 601.2i",
+      "CR 305.1"
+    ],
+    "pattern": "when you play a card this way , {e:Effects}",
+    "build": {
+      "$patchPrevious": {
+        "@require": {
+          "effects.0.s": "permit",
+          "effects.0.action": "play",
+          "effects.1": null,
+          "effects.0.onCast": null
+        },
+        "effects": [
+          {
+            "onCast": {
+              "@new": "$e"
+            },
+            "onCastLand": true
+          }
+        ]
+      }
+    },
+    "consumes": [
+      "when",
+      "this way"
+    ],
+    "examples": [
+      {
+        "text": "{3}{R}: Exile the top card of your library. You may play that card this turn. When you play a card this way, ~ deals 1 damage to each opponent."
+      },
+      {
+        "text": "Whenever ~ attacks, exile the top card of your library. Until end of turn, you may play that card. When you play a card this way, you gain 2 life."
+      }
+    ],
+    "counterExamples": [
+      "{3}{R}: Exile the top card of your library. You may play that card this turn. When you cast a card this way, ~ deals 1 damage to each opponent.",
+      "{3}{R}: Exile the top card of your library. You may cast that card this turn. When you play a card this way, ~ deals 1 damage to each opponent.",
+      "When you play a card this way, ~ deals 1 damage to each opponent."
+    ]
+  },
+  {
+    "id": "eff.edhd104.otherLinkedOwn.toHand",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "subject": "none",
+    "cr": [
+      "CR 607.2a",
+      "CR 406.3",
+      "CR 608.2c",
+      "CR 108.3",
+      "CR 400.7"
+    ],
+    "pattern": "put all other cards you own exiled with ~ into your hand",
+    "build": {
+      "op": "move",
+      "what": {
+        "ref": "each",
+        "filter": {
+          "is": {
+            "ref": "linked",
+            "link": "exiled"
+          },
+          "zone": "exile",
+          "owner": "you",
+          "not": {
+            "is": {
+              "ref": "bound",
+              "name": "",
+              "$anaphor": {
+                "sort": "object",
+                "number": "plural",
+                "text": "other"
+              }
+            }
+          }
+        }
+      },
+      "to": {
+        "zone": "hand"
+      }
+    },
+    "consumes": [
+      "all",
+      "other"
+    ],
+    "examples": [
+      {
+        "text": "Whenever you draw your second card each turn, exile the top card of your library face down.\nAt the beginning of your end step, you may exile all cards from your hand face down. If you do, put all other cards you own exiled with ~ into your hand."
+      },
+      {
+        "text": "Whenever you gain life, exile the top card of your library face down.\nAt the beginning of each upkeep, you may exile all cards from your hand face down. If you do, put all other cards you own exiled with ~ into your hand."
+      }
+    ],
+    "counterExamples": [
+      "Whenever you draw your second card each turn, exile the top card of your library face down.\nAt the beginning of your end step, you may exile all cards from your hand face down. If you do, put all cards you own exiled with ~ into your hand.",
+      "Whenever you draw your second card each turn, exile the top card of your library face down.\nAt the beginning of your end step, you may exile all cards from your hand face down. If you do, put all other cards you own exiled with ~ into your graveyard.",
+      "At the beginning of your end step, put all other cards you own exiled with ~ into your hand."
+    ]
+  },
+  {
+    "id": "eff.edhd104.mayCast.obj.byPayingMana",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "subject": "none",
+    "cr": [
+      "CR 118.9",
+      "CR 601.2b",
+      "CR 601.2f",
+      "CR 608.2g",
+      "CR 107.3"
+    ],
+    "pattern": "you may cast {o:Obj} by paying {m:ManaCost} rather than paying its mana cost",
+    "build": {
+      "op": "cast",
+      "who": {
+        "ref": "you"
+      },
+      "what": "$o",
+      "optional": true,
+      "costChange": {
+        "kind": "set",
+        "cost": {
+          "mana": "$m"
+        },
+        "name": "alternative"
+      }
+    },
+    "consumes": [
+      "may",
+      "rather than"
+    ],
+    "examples": [
+      {
+        "text": "Whenever you cast a creature spell, reveal the top card of your library. If it's an artifact card, you may cast it by paying {2} rather than paying its mana cost."
+      },
+      {
+        "text": "When ~ enters, exile target instant card from your graveyard. You may cast that card by paying {U} rather than paying its mana cost."
+      }
+    ],
+    "counterExamples": [
+      "Whenever you cast a creature spell, reveal the top card of your library. If it's an artifact card, you may cast it by paying {2} rather than paying its mana value.",
+      "Whenever you cast a creature spell, reveal the top card of your library. If it's an artifact card, you may cast it by paying {2} in addition to paying its mana cost.",
+      "When ~ enters, exile target instant card from your graveyard. You may cast that card by paying 2 life rather than paying its mana cost."
+    ]
+  }
+]

@@ -147,8 +147,8 @@ describe('WP24 token variants: the interpreter\'s token and the index\'s token s
       for (const card of getTokens(t)) expect(keys(compileCard(card, noAbilityCompiler))).toEqual(oracleTokenVariantKeys(card));
     }
     const spirits = getTokens('Spirit').flatMap(oracleTokenVariantKeys);
-    expect(spirits).toHaveLength(13); // edh-c-105: Obscura Ascendancy's white 2/2 Spirit with flying; edh-top-1: Ugin, the Ineffable's colorless 2/2 Spirit; edh-*: Forbidden Orchard's colorless 1/1 Spirit; FAST5 MX6: the endure cards' white Spirit tokens (1/1, 2/2, 3/3, X/X) joined the fixture set; std-cardcopy-5: Kaya, Spirits' Justice's white-black 1/1; pc-tokens-1: Ceaseless Conflict's red-white 3/2; edh-zones-24: Teferi, Temporal Pilgrim's blue 2/2 with vigilance; edh-next-9: Saint Traft and Rem Karolus's blue 1/1 flying Spirit; edh-next-117: Wan Shi Tong, All-Knowing's colorless 1/1 Spirit that can't block or be blocked by non-Spirit creatures
-    expect(new Set(spirits).size).toBe(13);
+    expect(spirits).toHaveLength(14); // edh-c-105: Obscura Ascendancy's white 2/2 Spirit with flying; edh-top-1: Ugin, the Ineffable's colorless 2/2 Spirit; edh-*: Forbidden Orchard's colorless 1/1 Spirit; FAST5 MX6: the endure cards' white Spirit tokens (1/1, 2/2, 3/3, X/X) joined the fixture set; std-cardcopy-5: Kaya, Spirits' Justice's white-black 1/1; pc-tokens-1: Ceaseless Conflict's red-white 3/2; edh-zones-24: Teferi, Temporal Pilgrim's blue 2/2 with vigilance; edh-next-9: Saint Traft and Rem Karolus's blue 1/1 flying Spirit; edh-next-117: Wan Shi Tong, All-Knowing's colorless 1/1 Spirit that can't block or be blocked by non-Spirit creatures; edh-d-106: Invoke the Ancients's green 4/5 Spirit
+    expect(new Set(spirits).size).toBe(14);
     expect(spirits).toContain('Spirit (1/1 C Creature — Spirit)');
     expect(spirits).toContain('Spirit (1/1 W Creature — Spirit; Flying)');
   });

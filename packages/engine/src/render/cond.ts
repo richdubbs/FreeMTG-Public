@@ -118,6 +118,11 @@ function existsPhrase(of: ObjRef,atLeast: Parameters<typeof K.qty>[0] | undefine
     && typeof f.controller === 'object' && f.controller.ref === 'controllerOf' && f.controller.object.ref === 'attachedTo') {
     return 'its controller controls another creature';
   }
+  // edh-e-53 (CR 303.4e, 109.5, 611.3a; Predator's Gambit): the same permanents counted none, "its controller controls no other creatures" (template sta.edhe53.grant.aslong.itsControllerControlsNoOtherCreatures)
+  if (negate && atLeast === undefined && f.attachedToSource === false && f.types?.length === 1 && f.types[0] === 'Creature' && keys.length === 3
+    && typeof f.controller === 'object' && f.controller.ref === 'controllerOf' && f.controller.object.ref === 'attachedTo') {
+    return 'its controller controls no other creatures';
+  }
   if (!negate && atLeast === undefined && f.attachedToObject !== undefined && keys.length === 2 && f.subtypes?.length === 1 && f.subtypes[0] === 'Equipment') {
     return `${K.obj(f.attachedToObject, st, 'subject').text} is equipped`;
   }
@@ -290,7 +295,7 @@ function statusAfterNoun(f: ObjectFilter, st: RenderState): string[] {
 /** The fields of a filter that `predicates` words itself; everything else goes through the noun phrase (design 3.3: all present fields are ANDed). */
 const PREDICATE_FIELDS: (keyof ObjectFilter)[] = [
   'tapped', 'attacking', 'blocking', 'blocked', 'token', 'faceDown', 'transformed', 'colors', 'colorless', 'multicolored', 'monocolored', 'keyword', 'notKeyword',
-  'power', 'toughness', 'manaValue', 'counters', 'hasAbility', 'controller', 'self', 'isCopy', 'attached', 'enteredThisTurn', 'dealtDamageThisTurn', 'dealtExcessDamageThisTurn' /* edh-d-38 */, 'attackedThisTurn', 'blockedThisTurn', 'wasBlockedThisTurn', 'targets' /* edh-next-93 */,
+  'power', 'toughness', 'manaValue', 'counters', 'hasAbility', 'controller', 'self', 'isCopy', 'attached', 'enteredThisTurn', 'enteredSinceYourLastTurn' /* edh-e-27 */, 'dealtDamageThisTurn', 'dealtExcessDamageThisTurn' /* edh-d-38 */, 'dealtNoncombatDamageThisTurn' /* edh-e-50 */, 'controlledSinceTurnStart' /* edh-e-50 */, 'attackedThisTurn', 'blockedThisTurn', 'wasBlockedThisTurn', 'targets' /* edh-next-93 */, 'targetsOnly' /* edhe32: "that spell targets only ~" */,
   'solved', 'prepared', 'prototyped', 'flipped', // M6-0 (m6 design 2.1)
   'saddled', // FAST5X E3 (CR 702.171b)
   'suspected', // FAST5X E12 (CR 701.60b)
@@ -353,6 +358,7 @@ function predicates(f: ObjectFilter, st: RenderState, plural: boolean): string[]
   const isA = plural ? 'are' : 'is';
   const has = plural ? 'have' : 'has';
   const was = plural ? 'were' : 'was';
+  if (f.chosen !== undefined && f.chosen.quality === 'cardName' && Object.keys(f).filter((k) => (f as Record<string, unknown>)[k] !== undefined).length === 1) out.push(`${has} the chosen name`); // edh-e-3 (CR 201.2, 607.2d; Cursed Scroll): "if that card has the chosen name"
   if (f.tapped === true) out.push(`${isA} tapped`);
   else if (f.tapped === false) out.push(`${isA} untapped`);
   if (f.attackingAlone === true) out.push(`${isA} attacking alone`); // p2-attack-block-1 (CR 506.5)
@@ -446,18 +452,32 @@ function predicates(f: ObjectFilter, st: RenderState, plural: boolean): string[]
   // std-rx32 (CR 301.5, 303.4): "if it's attached to a creature you control" (Stolen Uniform): attached to one object of a description
   const ato = f.attachedToObject;
   if (ato !== undefined && ato.ref === 'each' && 'filter' in ato) out.push(`${isA} attached to ${K.np(ato.filter, st, { det: 'a' })}`);
-  if (f.enteredThisTurn === true) out.push(alt('entered the battlefield this turn', 'entered this turn'));
+  if (f.enteredSinceYourLastTurn === true) out.push('entered since your last turn ended'); // edh-e-27
+  else if (f.enteredThisTurn === true) out.push(alt('entered the battlefield this turn', 'entered this turn'));
   else if (f.enteredThisTurn === false) out.push(alt("didn't enter the battlefield this turn", "didn't enter this turn"));
   if (f.dealtDamageThisTurn === true) out.push(`${was} dealt damage this turn`);
   else if (f.dealtDamageThisTurn === false) out.push(`${plural ? "weren't" : "wasn't"} dealt damage this turn`);
   if (f.dealtExcessDamageThisTurn === true) out.push(`${was} dealt excess damage this turn`); // edh-d-38 (CR 120.10)
+  if (f.dealtNoncombatDamageThisTurn === true) out.push(`${was} dealt noncombat damage this turn`); // edh-e-50 (CR 120.1, 510.2)
   // edh-next-93 (CR 115.9b, 608.2c; Bane's Contingency): "if that spell targets a commander you control": one of the spell's (or ability's) targets is an object of that description
   if (f.targets !== undefined) {
     if (f.targets.ref !== 'each' || !('filter' in f.targets) || plural) throw new NoRenderer('a targets condition of another shape');
     // edh-next-132 (Orvar, the All-Form; family targets-one-or-more): said "targets one or more other permanents you control" too, the same test of its targets
     out.push(`targets ${alt(K.np(f.targets.filter, cloneState(st), { det: 'a' }), K.np(f.targets.filter, cloneState(st), { det: 'none', plural: true, count: 'one or more' }))}`);
   }
-  if (f.attackedThisTurn === true) out.push('attacked this turn');
+  // edh-e-50 (CR 302.6, 508.1, 400.7; Mad Dog): "if this creature didn't attack or come under your control this turn": it did not attack, and you have controlled it since before this turn
+  // began (the one wording of `controlledSinceTurnStart` in a condition: the controller is "you" and the other half is the missing attack)
+  const comeUnder = f.controlledSinceTurnStart === true && f.controller === 'you' && f.attackedThisTurn === false && !plural;
+  if (f.controlledSinceTurnStart !== undefined && !comeUnder) throw new NoRenderer('controlledSinceTurnStart in a condition other than "didn\'t attack or come under your control this turn"');
+  if (comeUnder) out.push("didn't attack or come under your control this turn");
+  // edhe32 (CR 115.9c, 608.2c; Ink-Treader Nephilim): "if that spell targets only ~": the one different target of the spell (or ability) is this very object. Only the object itself (`self`);
+  // any other reference keeps the noun phrase ("a spell that targets only a single creature you control") through np.ts
+  if (f.targetsOnly !== undefined) {
+    if (f.targetsOnly.ref !== 'self' || f.targetsOnlyPlayer === true || plural) throw new NoRenderer('a targets-only condition of another shape');
+    out.push('targets only ~');
+  }
+  // bundle 7 merge fix: "didn't attack" is already part of edh-e-50's "didn't attack or come under your control this turn" (Mad Dog)
+  if (comeUnder) { /* worded above */ } else if (f.attackedThisTurn === true) out.push('attacked this turn');
   else if (f.attackedThisTurn === false) out.push("didn't attack this turn");
   if (f.blockedThisTurn === true) out.push('blocked this turn');
   else if (f.blockedThisTurn === false) out.push("didn't block this turn");
@@ -496,7 +516,7 @@ function predicates(f: ObjectFilter, st: RenderState, plural: boolean): string[]
   // edh-d-41 (CR 303.4b, 301.5, 603.10a; Koll, the Forgemaster): "if it was enchanted or equipped": an Aura or an Equipment was attached to it as it last existed
   if (isEnchantedOrEquippedOnly(f)) out.push(`${isA} enchanted or equipped`);
   // the controller is a predicate of the object, whatever its types: "you control it"
-  if (f.controller !== undefined && f.controller !== 'any') out.push(f.controller === 'you' ? `you control ${plural ? 'them' : 'it'}` : `${controls(f, st)} ${plural ? 'them' : 'it'}`);
+  if (f.controller !== undefined && f.controller !== 'any' && !comeUnder) out.push(f.controller === 'you' ? `you control ${plural ? 'them' : 'it'}` : `${controls(f, st)} ${plural ? 'them' : 'it'}`);
   // everything else (types, subtypes, zone, owner, name, not, anyOf ...) is the noun phrase of what is left of the filter
   const rest: ObjectFilter = { ...f };
   for (const k of PREDICATE_FIELDS) delete rest[k];
@@ -510,6 +530,7 @@ function predicates(f: ObjectFilter, st: RenderState, plural: boolean): string[]
   if (out.includes(`${isA} enchanted`)) delete rest.enchanted; // edh-d-5: said above (the filter has no other field)
   if (out.includes(`${isA} equipped`)) delete rest.equipped; // edh-d-5: said above
   if (ato !== undefined && ato.ref === 'each' && 'filter' in ato) delete rest.attachedToObject; // std-rx32: said above
+  if (out.includes(`${has} the chosen name`)) delete rest.chosen; // edh-e-3: said above
   if (colorCard) delete rest.isCard; // edh-d-61: said above
   if (f.doubleFaced === true && rest.isCard === true) delete rest.isCard; // std-rx31: "a double-faced card" says it is a card (the filter reads cards only, rules/filter.ts)
   if (Object.values(rest).some((v) => v !== undefined)) {
@@ -576,7 +597,7 @@ function predicates(f: ObjectFilter, st: RenderState, plural: boolean): string[]
  * and only the characteristics and statuses that last known information keeps (attacking and blocking too: types/state.ts#LastKnown.combat, CR 506.4).
  */
 const PAST_FIELDS: ReadonlySet<string> = new Set(['modified' /* edh-d-53 (CR 700.9) */, 'types', 'allTypes', 'notTypes', 'subtypes', 'notSubtypes', 'supertypes', 'notSupertypes', 'isCard', 'tapped',
-  'manaValue', 'power', 'toughness', 'colors', 'colorless', 'multicolored', 'token', 'dealtDamageThisTurn', 'dealtExcessDamageThisTurn' /* edh-d-38 */, 'attacking', 'blocking',
+  'manaValue', 'power', 'toughness', 'colors', 'colorless', 'multicolored', 'token', 'dealtDamageThisTurn', 'dealtExcessDamageThisTurn' /* edh-d-38 */, 'dealtNoncombatDamageThisTurn' /* edh-e-50 */, 'attacking', 'blocking',
   'suspected', // FAST5X E12 (CR 701.60b): a designation of the permanent, kept in its last known information (LastKnown.object)
   'counters', // FAST5X E21 (CR 122.1, 608.2h): the counters on it, kept in its last known information (LastKnown.object.counters)
   'commander', // edh-players-20 (CR 903.3, 608.2h; Tevesh Szat): "if the sacrificed permanent was a commander": the card's designation, kept with the card (statics/commander.ts#isCommander reads its card id)
@@ -846,6 +867,14 @@ function wasCastPhrase(c: Extract<Condition, { cond: 'wasCast' }>, st: RenderSta
   if (namedCostOnly(c, 'additional')) return `${K.obj({ ref: 'self' }, st, 'possessive').text} additional cost was paid`;
   // edh-players-7 (CR 601.2a, 603.4; Chainer, Nightmare Adept): "if you cast it from your hand" of the object that entered (the caster is you)
   if (isEventSubject(c.object) && c.by === 'you' && castFromHandOnly(c)) return 'you cast it from your hand';
+  // edh-d-111 (CR 601.2i, 603.4; Codespell Cleric): "it was the second spell you cast this turn": the object itself, cast by you as your nth spell this turn, and nothing else
+  if (c.nth !== undefined) {
+    const words = ['first', 'second', 'third', 'fourth', 'fifth'];
+    if (c.by !== 'you' || c.object !== undefined || c.kicked !== undefined || c.via !== undefined || c.from !== undefined || c.xAtLeast !== undefined || c.spent !== undefined || c.kept !== undefined || words[c.nth - 1] === undefined) {
+      throw new NoRenderer('"the nth spell you cast this turn" with another part of the cast history');
+    }
+    return `it was the ${words[c.nth - 1]!} spell you cast this turn`;
+  }
   // FAST4 T27 (CR 601.2a): "you cast it": the object was cast by the ability's controller, and nothing else
   if (c.by === 'you') {
     if (c.kicked !== undefined || c.via !== undefined || c.from !== undefined || c.xAtLeast !== undefined || c.spent !== undefined) throw new NoRenderer('"you cast it" with another part of the cast history');
@@ -943,6 +972,17 @@ function playerIsPhrase(c: Extract<Condition, { cond: 'playerIs' }>, st: RenderS
   const subject = who.text === 'that player' ? alt('that player', 'the player') : who.text;
   if (c.is === 'you') return `${subject} is you`; // edh-d-52 (CR 109.5; The Ghoul, Gunslinger): "if that player is you"
   return `${subject} ${alt('is your opponent', 'is an opponent')}`;
+}
+
+/**
+ * edh-e-62 (CR 603.4, 119.1, 402.1; Wild Dogs, Sokenzan Renegade, Loxodon Peacekeeper): the condition that an `extremePlayer` names someone: "a player has more life than each other player",
+ * "a player has more cards in hand than each other player" (the one such player), "two or more players are tied for lowest life total" (`tied`). Nothing else is said.
+ */
+function hasPlayerPhrase(c: Extract<Condition, { cond: 'hasPlayer' }>): string {
+  const w = c.who;
+  if (w.ref !== 'extremePlayer') throw new NoRenderer('a has-player condition other than "a player has more X than each other player"');
+  if (w.tied === true) return `two or more players are tied for ${w.stat === 'life' ? (w.fewest === true ? 'lowest life total' : 'most life') : `${w.fewest === true ? 'fewest' : 'most'} cards in hand`}`;
+  return `a player has ${w.stat === 'life' ? `${w.fewest === true ? 'less' : 'more'} life` : `${w.fewest === true ? 'fewer' : 'more'} cards in hand`} than each other player`;
 }
 
 /** edh-players-18: "the player is your opponent and has four or more cards in hand": both parts said of the one player, the subject once (family player-is-your-opponent). */
@@ -1310,6 +1350,8 @@ function condBase(c: Condition, st: RenderState): string {
       return `it's not the case that ${K.cond(c.of, st)}`;
     }
     case 'compare': {
+      // edh-e-15 (CR 122.1, 608.2c; Bounty of the Luxa; parser/holes/cond.ts): "no counters were removed this way" (the counters removed by the instruction before are none; any kind)
+      if (typeof c.left === 'object' && c.left.q === 'countersRemoved' && c.left.kind === undefined && c.op === '==' && c.right === 0) return 'no counters were removed this way';
       // edh-next-128 (CR 705.2, 608.2c; Yusri, Fortune's Flame): the flips a called flip of several coins won, at least N: "you won five flips this way"
       if (typeof c.left === 'object' && c.left.q === 'resultCount' && Object.keys(c.left).length === 2 && c.op === '>=' && typeof c.right === 'number' && c.right >= 2 && st.info.get(`r:${c.left.step}`)?.thisWay === 'you win') return `you won ${numWord(c.right)} flips this way`;
       // edh-next-143 (CR 701.20a, 202.3, 608.2c; Atemsis, All-Seeing): "cards with at least six different mana values are revealed this way": the different mana values among the cards of
@@ -1388,6 +1430,7 @@ function condBase(c: Condition, st: RenderState): string {
           if (e instanceof NoRenderer && typeof c.left === 'object' && c.left.q === 'countPlayers' && c.left.controlsIs !== undefined) return null; // std-rx31, opp-port-1: the idiom only
           if (e instanceof NoRenderer && typeof c.left === 'object' && (c.left.q === 'mostSharingName' || c.left.q === 'mostSharingCreatureType')) return null; // edh-replace-4, edh-c-74: the idiom only
           if (e instanceof NoRenderer && typeof c.left === 'object' && c.left.q === 'happenedPlayers' && c.left.of.ref === 'event') return null; // edh-d-37: "that player had another land enter ...", the idiom only
+          if (e instanceof NoRenderer && typeof c.left === 'object' && c.left.q === 'graveyardUsesThisTurn') return null; // edh-d-108 (Laboratory Drudge): the idiom only
           throw e;
         }
       };
@@ -1408,11 +1451,21 @@ function condBase(c: Condition, st: RenderState): string {
       const either = f?.anyOf !== undefined && f.anyOf.length === 2 && c.atLeast === undefined && f.controller === 'you' && Object.keys(f).filter((k) => (f as Record<string, unknown>)[k] !== undefined).length === 2
         && f.anyOf.every((x) => x.subtypes?.length === 1 && Object.keys(x).filter((k) => (x as Record<string, unknown>)[k] !== undefined).length === 1) ? f.anyOf : undefined;
       if (either !== undefined) return `you control ${either.map((x) => K.np(x, st, { det: 'a', noController: true })).join(' or ')}`;
+      // edh-e-39 (CR 303.4, 603.10a, 608.2h; parser/holes/cond.ts#auraYouControlledWasAttached; Dawn Evangel): "an Aura you controlled was attached to it", an Aura you controlled (in any zone) that was attached to the object as it last existed
+      if (f !== undefined && c.atLeast === undefined && f.wasAttachedTo !== undefined && f.controller === 'you' && f.zone === 'any' && f.subtypes?.length === 1 && f.subtypes[0] === 'Aura'
+        && Object.keys(f).filter((k) => (f as Record<string, unknown>)[k] !== undefined).length === 4) return `an Aura you controlled was attached to ${K.obj(f.wasAttachedTo, st, 'object').text}`;
       const said = existsPhrase(c.of, c.atLeast, false, st);
       if (tied && said !== null) return alt(said, 'you control the creature with the greatest power or tied for the greatest power');
       // edh-zones-24 (CR 603.4, 400.7; template eff.edhz24.delayEnd.ifRemainExiled): some of a group of cards an earlier instruction exiled are still in exile, "if any of those cards remain exiled"
       const stillExiled = f !== undefined && c.atLeast === undefined && f.zone === 'exile' && f.is?.ref === 'bound' && Object.keys(f).filter((k) => (f as Record<string, unknown>)[k] !== undefined).sort().join() === 'is,zone';
       return stillExiled && said !== null ? alt(said, 'any of those cards remain exiled') : said;
+    }
+    case 'graveyardPos': { // edhe7 (CR 404.2, 113.6m; parser/holes/cond.ts#graveyardPosition): where ~ sits in its owner's graveyard
+      st.mentioned.add('self');
+      if (c.mode === 'only') return `~ is the only ${K.np({ ...c.filter, zone: 'graveyard' }, st, { det: 'none', noController: true, noZone: true })} in your graveyard`;
+      if (c.mode === 'directlyAbove') return `~ is in your graveyard with ${K.np({ ...c.filter, zone: 'graveyard' }, st, { det: 'a', noController: true, noZone: true })} directly above it`;
+      if (c.atLeast === undefined || c.atLeast < 1) throw new NoRenderer('a graveyard position without a count');
+      return `~ is in your graveyard with ${numWord(c.atLeast)} or more ${K.np({ ...c.filter, zone: 'graveyard' }, st, { det: 'none', plural: true, noController: true, noZone: true })} above it`;
     }
     case 'prime': { // std-rx1 (CR 603.4; parser/holes/cond.ts#control): "you control a prime number of lands", a count of permanents you control only
       const q = c.of;
@@ -1489,7 +1542,7 @@ function condBase(c: Condition, st: RenderState): string {
       // (its binding, render/steps-cards.ts#reveal: `revealedTop`, one card) of a description is also "a creature card is revealed this way" (Oracle's present tense)
       const revealed = c.object.ref === 'bound' ? st.info.get(`b:${c.object.name}`) : undefined;
       const revealedWords = revealed?.revealedTop === true && revealed.plural === false && c.filter.isCard === true && Object.keys(c.filter).every((k) => !['controller', 'owner', 'zone', 'is'].includes(k))
-        ? `${K.np({ ...c.filter, zone: 'library' }, cloneState(st), { det: 'a', noZone: true })} is revealed this way` : null; // said at the end of this case
+        ? alt(`${K.np({ ...c.filter, zone: 'library' }, cloneState(st), { det: 'a', noZone: true })} is revealed this way`, `you reveal ${K.np({ ...c.filter, zone: 'library' }, cloneState(st), { det: 'a', noZone: true })} this way`) : null; // said at the end of this case; edh-e-1 (Vesuvan Drifter): also 'if you reveal a creature card this way'
       // std-combat-5 (CR 607.2d, 205.3m): "if target attacking creature token is the chosen type": the object has the type the linked choice chose
       const ch = c.filter.chosen;
       if (Object.keys(c.filter).length === 1 && ch !== undefined && (ch.quality === 'creatureType' || ch.quality === 'cardType' || ch.quality === 'landType')) {
@@ -1666,7 +1719,7 @@ function condBase(c: Condition, st: RenderState): string {
       if (c.which !== undefined && c.to === 'hand') return putThisWayPhrase(c.which, c.not === true, st); // FAST5 T75
       // edh-perms-5 (CR 700.4, 701.8a; Saw in Half): the destroy of one announced target put it into a graveyard: "if that creature dies this way" (the same `did`)
       const dr = c.which !== undefined && c.to === 'graveyard' && c.not !== true ? st.info.get(`r:${c.step}`)?.diesRef : undefined;
-      const dies = dr !== undefined ? ((): string => { const who = K.obj(dr, cloneState(st), 'subject').text; return alt(`${who} dies this way`, `${who} is put into a graveyard this way`) /* edh-d-51 (CR 700.4; Tuktuk Scrapper): a permanent that is not a creature is "put into a graveyard" */; })() : null;
+      const dies = dr !== undefined ? ((): string => { const who = diesWho(c.which, dr, st); return alt(`${who} dies this way`, `${who} is put into a graveyard this way`) /* edh-d-51 (CR 700.4; Tuktuk Scrapper): a permanent that is not a creature is "put into a graveyard" */; })() : null;
       let moved: string | null = null;
       try {
         moved = c.which !== undefined ? movedCondPhrase(c, st) : null; // Cloud C7: "if a creature card was exiled this way" (CR 608.2c, 608.2h)
@@ -1714,6 +1767,7 @@ function condBase(c: Condition, st: RenderState): string {
       return `it was crewed by exactly ${numWord(c.count)} ${c.count === 1 ? 'creature' : 'creatures'}`;
     }
     case 'playerIs': return playerIsPhrase(c, st); // edh-players-18
+    case 'hasPlayer': return hasPlayerPhrase(c); // edh-e-62
     case 'completedDungeon': return completedPhrase(c, st, false); // MX4, CR 309.7
     case 'chosen': return c.link === 'tribute' && (c.equals === 'unpaid' || c.equals === 'paid') ? `tribute ${c.equals === 'paid' ? 'was' : "wasn't"} paid` : `the chosen ${c.link} is ${c.equals}`; // edh-c-37 (CR 702.104b): the tribute link of the keyword
     case 'ask': return c.text;
@@ -1852,6 +1906,13 @@ function scriedOrSurveilled(of: readonly Condition[]): string | null {
   if (!verbs.has('scry') || !verbs.has('surveil') || scope === undefined) return null;
   const sw = scopeWords(scope as Extract<Condition, { cond: 'happened' }>['scope']);
   return alt(`you've scried or surveilled ${sw}`, `you have scried or surveilled ${sw}`, `you scried or surveilled ${sw}`);
+}
+
+/** edh-e-27 (Cinder Cloud): the subject of "dies this way": "that creature" (only the card type said), or "a white creature" (a description that says more; parser/holes/cond.ts#aDiesThisWay). */
+function diesWho(which: ObjectFilter | undefined, dr: ObjRef, st: RenderState): string {
+  const keys = which === undefined ? [] : Object.keys(which).filter((k) => (which as Record<string, unknown>)[k] !== undefined);
+  if (which !== undefined && keys.length >= 2 && which.types?.length === 1) return K.np(which, st, { det: 'a' });
+  return K.obj(dr, cloneState(st), 'subject').text;
 }
 
 /**
@@ -2073,6 +2134,13 @@ function happenedPhrase(c: Extract<Condition, { cond: 'happened' }>, st: RenderS
   if (c.event.ev === 'becomes' && c.event.what === 'crewCostPaid' && c.event.by !== undefined && c.scope === 'turn' && c.by === undefined && c.times === undefined
     && Object.keys(c.event.object).length === 1 && c.event.object.is !== undefined && Object.keys(c.event).every((k) => k === 'ev' || k === 'what' || k === 'object' || k === 'by')) {
     return `${K.np(c.event.by, st, { det: 'a', noZone: true })} crewed ${K.obj(c.event.object.is, st, 'object').text} this turn`;
+  }
+  // edhe34 (CR 706.2, 603.4; parser/holes/cond.ts#history; Eelectrocute, The Space Family Goblinson): "you've rolled a 6 this turn", "you've rolled three or more dice this turn"
+  if (c.event.ev === 'dieRoll' && c.event.player === 'you' && c.scope === 'turn' && c.by === undefined && Object.keys(c.event).every((k) => k === 'ev' || k === 'player' || k === 'result')) {
+    const r = c.event.result;
+    if (c.times === undefined && r !== undefined && r.op === '==' && typeof r.value === 'number') return `you've rolled a ${r.value} this turn`;
+    if (r === undefined && c.times?.op === '>=' && typeof c.times.value === 'number' && c.times.value >= 2 && c.times.value <= 10) return `you've rolled ${numWord(c.times.value)} or more dice this turn`;
+    throw new NoRenderer('a die-roll history in another form');
   }
   // r4-fxb (CR 500.9, 513.1; parser/holes/cond.ts): "it's the first end step of the turn": exactly one end step has begun this turn
   if (c.event.ev === 'step' && c.event.step === 'end' && c.event.whose === undefined && c.event.nth === undefined && c.scope === 'turn' && c.by === undefined
@@ -2332,6 +2400,8 @@ function zoneHistoryPhrase(c: Extract<Condition, { cond: 'happened' }>, st: Rend
   }
   // p2-damage-3 (CR 603.4, 207.2c; parser/holes/cond.ts#zoneHistory): Landfall's "you had a land enter the battlefield under your control this turn" (Searing Blaze)
   if (ctl === 'you' && verb === 'entered the battlefield') return alt(`${np(f)} ${verb}${tail}`, `you had ${np(f)} enter the battlefield${tail}`); // edh-c-27: also with a count ("you had two or more creatures enter ...", Park Heights Pegasus)
+  // edh-e-16 (CR 603.4, 207.2c; parser/holes/cond.ts#zoneHistory; Baloth Cage Trap, Permafrost Trap): "an opponent had an artifact enter the battlefield under their control this turn"
+  if (ctl === 'opponent' && verb === 'entered the battlefield' && t === undefined) return alt(`${np(f)} ${verb}${tail}`, `an opponent had ${np(f)} enter the battlefield under their control ${scopeWords(c.scope)}`);
   // edh-c-9 (CR 603.4, 603.10a; family left-you-controlled; Vrock): "a permanent you controlled left the battlefield this turn" is "a permanent left the battlefield under your control this turn"
   if (t === undefined && ctl === 'you' && verb === 'left the battlefield') return alt(`${np(f)} ${verb}${tail}`, `${np(f)} you controlled ${verb} ${scopeWords(c.scope)}`);
   return `${np(f)} ${verb}${tail}`;
@@ -2491,6 +2561,12 @@ function compareIdiom(c: Extract<Condition, { cond: 'compare' }>, st: RenderStat
       if (left.from !== undefined) return `mana from ${K.np(left.from, st, { det: 'a' })} was spent to cast ${of}`;
       return alt(`${num} or more mana was spent to cast ${of}`, `at least ${num} mana was spent to cast ${of}`);
     }
+    case 'colorsSpent': {
+      // edh-d-112 (CR 601.2h, 106.1; Steel Exemplar): "two or more colors of mana were spent to cast it": the colors of mana spent to cast the object itself (converge's count), at least N
+      if (c.op !== '>=' || num === null || typeof right !== 'number' || right < 2 || left.among !== undefined) return null;
+      const self = K.obj({ ref: 'self' }, st, 'object').text;
+      return alt(`${num} or more colors of mana were spent to cast it`, `${num} or more colors of mana were spent to cast ${self}`, `${num} or more colors of mana were spent to cast this spell`);
+    }
     case 'manaSpent': {
       // FAST5 T51 (CR 601.2h): an object that was not cast had no mana spent on it, so "it wasn't cast or no mana was spent to cast it" is no mana spent on this object
       if (c.op !== '==' || right !== 0) return null;
@@ -2601,6 +2677,11 @@ function compareIdiom(c: Extract<Condition, { cond: 'compare' }>, st: RenderStat
         && ev.recipient?.player === 'you' && ev.recipient.object === undefined && left.by === undefined && left.beforeEvent === undefined && left.scope === 'turn') {
         return `you were dealt ${num} or more ${ev.combat === true ? 'combat ' : ev.combat === false ? 'noncombat ' : ''}damage this turn`;
       }
+      // edh-e-16 (CR 120.1, 400.7; parser/holes/cond.ts, Inferno Trap): "you've been dealt damage by two or more creatures this turn": the different creatures that dealt damage to you
+      if (left.sum === undefined && left.per === 'source' && num !== null && c.op === '>=' && typeof right === 'number' && right >= 2 && ev.ev === 'damage' && ev.amount === undefined && ev.excess === undefined && ev.combat === undefined
+        && ev.recipient?.player === 'you' && ev.recipient.object === undefined && left.by === undefined && left.beforeEvent === undefined && left.scope === 'turn' && JSON.stringify(ev.source) === '{"types":["Creature"]}') {
+        return alt(`you've been dealt damage by ${num} or more creatures this turn`, `you have been dealt damage by ${num} or more creatures this turn`);
+      }
       // edh-next-82 (CR 120.1, 400.7; parser/holes/cond.ts#sourcesDealtDamage, Dragon Cultist): "a source you controlled dealt 5 or more damage this turn"
       if (left.sum === 'amount' && left.per === 'source' && num !== null && c.op === '>=' && ev.ev === 'damage' && ev.recipient === undefined && ev.amount === undefined && ev.excess === undefined && ev.combat === undefined
         && left.by === undefined && left.beforeEvent === undefined && left.scope === 'turn' && JSON.stringify(ev.source) === '{"controller":"you"}') {
@@ -2686,14 +2767,21 @@ function compareIdiom(c: Extract<Condition, { cond: 'compare' }>, st: RenderStat
         const one = c.op === '>=' && right === 1 && left.of.ref === 'you' ? ['you have a card in hand'] : [];
         return alt(base, `${has} hand`, ...(left.of.ref === 'you' ? [`${has} your hand`] : []), ...one);
       }
+      // edh-d-107 (CR 404.1, 608.2c; Nezumi Graverobber): "no cards are in that graveyard": the graveyard of a player an earlier instruction named (the owner of a card it targeted), empty
+      if (left.zone === 'graveyard' && c.op === '==' && right === 0 && left.of.ref === 'ownerOf') return alt(base, 'no cards are in that graveyard');
       // p2-attack-block-2 (CR 404.1, 506.2): "defending player has seven or more cards in their graveyard" (Vantress Gargoyle): the player's own graveyard
       if (left.zone === 'graveyard' && left.of.ref === 'defending' && c.op === '>=') return alt(base, `defending player has ${amount} cards in their graveyard`);
       // edh-zones-7 (CR 404.1; parser/holes/cond.ts#graveyardSize; family you-have-cards-in-graveyard): "you have seven or more cards in your graveyard" (Search for Azcanta)
       if (left.zone === 'graveyard' && left.of.ref === 'you' && c.op === '>=') return alt(base, `you have ${amount} cards in your graveyard`);
+      // edh-d-108 (CR 404.1, 303.4; So Tiny; family attached-controller-has-cards-in-graveyard): "its controller has seven or more cards in their graveyard" after "It gets ...": the
+      // graveyard of the player who controls the permanent this Aura or Equipment is attached to
+      if (left.zone === 'graveyard' && JSON.stringify(left.of) === '{"ref":"controllerOf","object":{"ref":"attachedTo"}}' && c.op === '>=') return alt(base, `its controller has ${amount} cards in their graveyard`);
       return base;
     }
     // FAST5X E22 (CR 700.11): "you descended this turn" is one or more permanent cards put into your graveyard this turn
     case 'descendedThisTurn': return c.op === '>=' && right === 1 ? 'you descended this turn' : null;
+    // edh-d-108 (CR 601.2, 602.2, 404.1; Laboratory Drudge): one or more spells cast from a graveyard or abilities of cards in a graveyard activated by you this turn
+    case 'graveyardUsesThisTurn': return c.op === '>=' && right === 1 ? "you've cast a spell from a graveyard or activated an ability of a card in a graveyard this turn" : null;
     case 'extraTurnsBegun': return c.op === '==' && right === 0 ? "you haven't begun an extra turn this game" : null; // trek-18 (CR 500.7)
     case 'lifeGainedThisTurn': {
       // FAST4 T24: "you gained life this turn" is gaining one or more life this turn (CR 119.3, 119.9; the controller's own count, statics/match.ts)
@@ -2894,6 +2982,10 @@ function compareIdiom(c: Extract<Condition, { cond: 'compare' }>, st: RenderStat
       // std-sos review (CR 102.2, 102.3): "an opponent controls more lands than you": at least one opponent, judged alone, controls more of them than you
       if (left.controlsVs !== undefined) {
         const v = left.controlsVs;
+        // edh-e-24 (CR 102.2, 102.3; parser/holes/cond.ts, Even the Odds): "you control fewer creatures than each opponent": no opponent, judged alone, controls as many of them as you
+        if (left.sizeVs === undefined && c.op === '==' && right === 0 && v.op === '<=' && v.by === undefined && v.than.ref === 'you' && v.filter.controller === undefined && left.of.ref === 'each' && left.of.who === 'opponent') {
+          return `you control fewer ${K.np(v.filter, st, { det: 'none', plural: true, noController: true })} than each opponent`;
+        }
         if (left.sizeVs !== undefined || c.op !== '>=' || right !== 1 || left.of.ref !== 'each' || left.of.who !== 'opponent' || v.than.ref !== 'you' || v.filter.controller !== undefined) return null;
         // edh-c-58 (CR 102.2, 102.3; Avatar of Might): "an opponent controls at least four more creatures than you"
         if (v.by !== undefined) return v.op === '>=' && v.by >= 2 ? `an opponent controls at least ${numWord(v.by)} more ${K.np(v.filter, st, { det: 'none', plural: true, noController: true })} than you` : null;
@@ -2914,6 +3006,11 @@ function compareIdiom(c: Extract<Condition, { cond: 'compare' }>, st: RenderStat
         // edh-c-16 (CR 402.1, 102.3; parser/holes/cond.ts#opponentNoHand): "an opponent has no cards in hand"
         if (zone === 'hand' && op === '==' && n === 0 && c.op === '>=' && right === 1 && left.of.ref === 'each' && left.of.who === 'opponent' && left.lostLifeThisTurn === undefined
           && left.lifeIs === undefined && left.lostLifeIs === undefined && left.didNot === undefined) return 'an opponent has no cards in hand';
+        // edhe5 (CR 401.1, 402.1, 102.3; parser/holes/cond.ts#aLibraryHasFewer, eachPlayerNoHand): "a library has twenty or fewer cards in it" (Shelldock Isle), "each player has no cards in hand" (Howltooth Hollow)
+        if (left.of.ref === 'each' && left.of.who === 'player' && left.lostLifeThisTurn === undefined && left.lifeIs === undefined && left.lostLifeIs === undefined && left.didNot === undefined) {
+          if (zone === 'library' && op === '<=' && c.op === '>=' && right === 1) return `a library has ${numWord(n)} or fewer cards in it`;
+          if (zone === 'hand' && op === '>=' && n === 1 && c.op === '==' && right === 0) return 'each player has no cards in hand';
+        }
         if (zone !== 'hand' || c.op !== '>=' || right !== 1 || left.of.ref !== 'each' || left.of.who !== 'player' || (op !== '<=' && op !== '>=') || left.lostLifeThisTurn !== undefined) return null;
         if (op === '<=' && n === 0) return 'a player has no cards in hand'; // edh-b-4 (Lupine Prototype)
         return `a player has ${numWord(n)} ${op === '<=' ? 'or fewer' : 'or more'} cards in hand`;

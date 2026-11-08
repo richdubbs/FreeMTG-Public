@@ -1,0 +1,190 @@
+[
+  {
+    "id": "rep.edhe66.enters.removeAllCounters.forEach",
+    "kind": "static",
+    "since": 66,
+    "status": "stable",
+    "cr": [
+      "CR 614.1c",
+      "CR 614.12a",
+      "CR 122.1",
+      "CR 122.6"
+    ],
+    "pattern": "as ~ enters , remove all counters from all {f:Filter} . ~ enters with a {k:CounterKind} counter on it for each counter removed this way",
+    "build": {
+      "kind": "static",
+      "zone": [
+        "stack",
+        "battlefield"
+      ],
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "zoneChange",
+            "subject": {
+              "self": true
+            },
+            "to": "battlefield"
+          },
+          "body": {
+            "b": "enters",
+            "removeCounters": {
+              "filter": "$f",
+              "kind": "$k",
+              "times": 1,
+              "all": true
+            }
+          }
+        }
+      ]
+    },
+    "consumes": [
+      "all",
+      "each",
+      "this way"
+    ],
+    "examples": [
+      {
+        "text": "As ~ enters, remove all counters from all artifacts. ~ enters with a +1/+1 counter on it for each counter removed this way."
+      },
+      {
+        "text": "As this creature enters, remove all counters from all lands. This creature enters with a +1/+1 counter on it for each counter removed this way."
+      }
+    ],
+    "counterExamples": [
+      "As ~ enters, remove all counters from any number of artifacts. ~ enters with a +1/+1 counter on it for each counter removed this way.",
+      "As ~ enters, remove all counters from all artifacts. ~ enters with two +1/+1 counters on it for each counter removed this way.",
+      "As ~ enters, remove all counters from all artifacts. ~ enters with a +1/+1 counter on it for each counter removed this way until end of turn."
+    ]
+  },
+  {
+    "id": "rep.edhe66.enters.xCounters.additionalIfXAtLeast",
+    "kind": "static",
+    "since": 66,
+    "status": "stable",
+    "cr": [
+      "CR 614.1c",
+      "CR 614.12",
+      "CR 107.3m",
+      "CR 122.6"
+    ],
+    "pattern": "~ enters with x {k:CounterKind} counters on it . if x is {n:Qty} or more , it enters with an additional x {k2:CounterKind} counters on it",
+    "build": {
+      "kind": "static",
+      "zone": [
+        "stack",
+        "battlefield"
+      ],
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "zoneChange",
+            "subject": {
+              "self": true
+            },
+            "to": "battlefield"
+          },
+          "body": {
+            "b": "enters",
+            "counters": [
+              {
+                "kind": "$k",
+                "count": {
+                  "q": "X"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "zoneChange",
+            "subject": {
+              "self": true
+            },
+            "to": "battlefield"
+          },
+          "body": {
+            "b": "enters",
+            "counters": [
+              {
+                "kind": "$k2",
+                "count": {
+                  "q": "X"
+                }
+              }
+            ]
+          },
+          "condition": {
+            "cond": "compare",
+            "left": {
+              "q": "X"
+            },
+            "op": ">=",
+            "right": "$n"
+          }
+        }
+      ]
+    },
+    "consumes": [
+      "if",
+      "additional"
+    ],
+    "examples": [
+      {
+        "text": "~ enters with X +1/+1 counters on it. If X is 4 or more, it enters with an additional X +1/+1 counters on it."
+      },
+      {
+        "text": "~ enters with X +1/+1 counters on it. If X is 6 or more, it enters with an additional X +1/+1 counters on it."
+      }
+    ],
+    "counterExamples": [
+      "~ enters with X +1/+1 counters on it. If X is 4 or less, it enters with an additional X +1/+1 counters on it.",
+      "~ enters with X +1/+1 counters on it. If X is 4 or more, it enters with an additional two +1/+1 counters on it.",
+      "~ enters with X +1/+1 counters on it. If Y is 4 or more, it enters with an additional X +1/+1 counters on it."
+    ]
+  },
+  {
+    "id": "trg.edhe66.enchantedPlayer.losesGame",
+    "kind": "trigger",
+    "since": 66,
+    "status": "stable",
+    "cr": [
+      "CR 603.2",
+      "CR 104.3",
+      "CR 303.4",
+      "CR 800.4a"
+    ],
+    "pattern": "when enchanted player loses the game",
+    "build": {
+      "on": [
+        {
+          "ev": "loseGame",
+          "player": {
+            "ref": "enchantedPlayer"
+          }
+        }
+      ]
+    },
+    "consumes": [
+      "when",
+      "enchanted"
+    ],
+    "examples": [
+      {
+        "text": "When enchanted player loses the game, you gain 5 life."
+      },
+      {
+        "text": "When enchanted player loses the game, draw two cards."
+      }
+    ],
+    "counterExamples": [
+      "When enchanted player wins the game, you gain 5 life.",
+      "When a player loses the game, you gain 5 life.",
+      "When enchanted player loses life, you gain 5 life."
+    ]
+  }
+]

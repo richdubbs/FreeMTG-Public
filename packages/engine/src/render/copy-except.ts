@@ -81,6 +81,10 @@ function copyExceptTextM6(except: readonly CopyExcept[], general: (mods: Modific
     if (own === null) throw new NoRenderer('a copy exception that retains a value other than the color, or depends on a condition');
     return own;
   }
+  // edh-d-105 (CR 707.9b, 201.2): a token copy given a new name, first ("its name is Mishra's Warform and it's a 4/4 Construct artifact creature in addition to its other types"), or legendary
+  // with its subtypes set and a new name in one clause ("it's a legendary Alien named Prisoner Zero")
+  const given = !plural && !self && noun === undefined ? givenNameText(except, (rest) => copyExceptTextM6(rest, general, quote, noun, plural, generalFirst, self)) : null;
+  if (given !== null) return given;
   // edh-perms-7 (CR 707.9b, 707.9f, 205.1a): "it's a Vehicle artifact with crew 3 and it loses all other card types" (Imposter Mech); "it has vanishing 3 if that creature doesn't have vanishing" (Flesh Duplicate)
   const setTypes = typesSetText(except, quote) ?? typesSetHasText(except, quote) ?? typesSetBareText(except);
   if (setTypes !== null) return setTypes;
@@ -117,6 +121,26 @@ function copyExceptTextM6(except: readonly CopyExcept[], general: (mods: Modific
   // std-sos (CR 707.9b, 205.1b, 613.4b): a base power and toughness and added types said as one noun phrase, "except it's a 0/0 Fractal creature in addition to its other types" (Applied Geometry)
   const identity = plainMods.length === 2 && plainMods.some((m) => m.layer === '7b') && plainMods.some((m) => m.layer === 4) ? identityText(plainMods, 'it') : null;
   return alt(...(generalFirst ? [other, own] : [own, other]), ...(identity !== null ? [identity] : []));
+}
+
+/**
+ * edh-d-105 (CR 707.9b, 201.2, 205.1a, 205.4a; Mishra, Eminent One; The Eleventh Hour): the exceptions of ONE token copy that give it a name (parser/holes/p2copyperm1.ts): a layer-4
+ * change that only names it, first, then the other exceptions as `rest` says them ("its name is <name> and <rest>"); or the one layer-4 change that adds legendary, sets one subtype and
+ * names it ("it's a legendary <subtype> named <name>"). Null for any other list.
+ */
+function givenNameText(except: readonly CopyExcept[], rest: (more: readonly CopyExcept[]) => string): string | null {
+  const [first, ...more] = except;
+  if (first === undefined || !('layer' in first) || first.layer !== 4 || typeof first.named !== 'string' || first.namedChosen !== undefined) return null;
+  const keys = Object.keys(first).filter((k) => k !== 'layer').sort().join(',');
+  if (keys === 'named') {
+    if (more.length === 0 || more.some((m) => 'layer' in m && m.layer === 4 && m.named !== undefined)) return null;
+    return `its name is ${first.named} and ${rest(more)}`;
+  }
+  const sup = first.supertypes;
+  const sub = first.subtypes;
+  if (keys !== 'named,subtypes,supertypes' || more.length > 0 || sup === undefined || sub === undefined) return null;
+  if (Object.keys(sup).length !== 1 || sup.add?.length !== 1 || sup.add[0] !== 'Legendary' || Object.keys(sub).sort().join(',') !== 'set,setAll' || sub.setAll !== true || sub.set?.length !== 1) return null;
+  return `it's a legendary ${sub.set[0]} named ${first.named}`;
 }
 
 /**

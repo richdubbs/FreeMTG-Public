@@ -86,13 +86,14 @@ const HYBRID_PAIRS = ['W/U', 'W/B', 'U/B', 'U/R', 'B/R', 'B/G', 'R/G', 'R/W', 'G
  */
 const MANA_SYMBOLS: ReadonlySet<string> = new Set([
   ...'WUBRGCSXYE'.split(''),
+  'TK', // edh-e-30 (CR 107.17): the ticket symbol {TK}, one ticket counter,
   ...HYBRID_PAIRS,
   ...['2', 'C'].flatMap((n) => [...'WUBRG'].map((c) => `${n}/${c}`)),
   ...[...'WUBRG'].map((c) => `${c}/P`),
   ...HYBRID_PAIRS.map((p) => `${p}/P`),
 ]);
 /** Braces the rules define that are not mana: unsupported in cost positions today (an ERR says so; WP6 may add a kind for them). */
-const OTHER_RULES_SYMBOLS: ReadonlySet<string> = new Set(['PW', 'CHAOS', 'TK', 'P', 'H']);
+const OTHER_RULES_SYMBOLS: ReadonlySet<string> = new Set(['PW', 'CHAOS', 'P', 'H']);
 const isManaSymbol = (body: string): boolean => /^\d+$/.test(body) || MANA_SYMBOLS.has(body);
 const ROMAN_RE = /^(?:I|II|III|IV|V|VI|VII|VIII|IX|XI|XII|XIII|XIV|XV|XVI|XVII|XVIII|XIX|XX)$/;
 const ROMAN_VALUES: Readonly<Record<string, number>> = {

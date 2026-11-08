@@ -22,11 +22,15 @@ function eachPlayerPutsOneFromGraveyard(list: EffectStep[], i: number, st: Rende
   if (a?.op !== 'chooseObjects' || a.guard !== undefined || a.random !== undefined || a.groupLimit !== undefined || a.startingWith !== undefined || a.min !== a.max || typeof a.min !== 'number' || a.min < 1) return null; // edh-d-7: exactly N (N = 1: "puts a"; more: "returns N ... to the battlefield")
   if (!same(a.who, ITERATING) || !same(a.perPlayer, { ref: 'each', who: 'player' }) || a.from.ref !== 'each') return null;
   const f = a.from.filter;
-  if (f.anyOf?.length !== 1 || f.zone !== 'graveyard' || !same(f.owner, ITERATING) || f.isCard !== true || Object.keys(f).some((k) => !['anyOf', 'zone', 'owner', 'isCard'].includes(k))) return null;
+  if (f.anyOf?.length !== 1 || f.zone !== 'graveyard' || !same(f.owner, ITERATING) || f.isCard !== true || Object.keys(f).some((k) => !['anyOf', 'zone', 'owner', 'isCard', 'manaValue'].includes(k))) return null;
+  // edh-e-37 (CR 202.3; Crypt Champion): "... a creature card with mana value 3 or less from their graveyard ...": a plain upper bound on the mana value, in this shape only.
+  const mv = f.manaValue;
+  if (mv !== undefined && (mv.op !== '<=' || typeof mv.value !== 'number' || Object.keys(mv).length !== 2)) return null;
   if (b?.op !== 'move' || b.guard !== undefined || b.as !== undefined || b.until !== undefined || b.link !== undefined || !same(b.what, { ref: 'bound', name: a.as })) return null;
   if (!same(b.to, { zone: 'battlefield', controller: 'owner' })) return null;
   if (a.as === undefined || list.slice(i + 2).some((x) => JSON.stringify(x).includes(`"${a.as}"`))) return null;
-  const kind = f.anyOf[0]!;
+  const kind = mv === undefined ? f.anyOf[0]! : { ...f.anyOf[0]!, manaValue: mv };
+  if (mv !== undefined && a.min !== 1) return null; // the "returns N" wording has no mana value tail
   bind(st, a.as, { nouns: [...K.nounsOf(kind), 'card'], plural: true });
   if (a.min !== 1) {
     // edh-d-7 (CR 101.4, 608.2d; Fall of the Thran): "Each player returns two land cards from their graveyard to the battlefield."

@@ -626,7 +626,8 @@
     "consumes": [
       "chosen",
       "and"
-    ]
+    ],
+    "priority": 1
   },
   {
     "id": "eff.edhz4.return.anyNumber.differentNames.graveyard.battlefield",

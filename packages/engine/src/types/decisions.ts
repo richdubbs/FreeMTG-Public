@@ -2,6 +2,7 @@
  * Decisions: everything the game asks a player. Exactly one decision is pending at a time
  * (GameState.pending). Priority is also a decision, so UIs and bots have one place to look.
  */
+import type { CardNameKind } from './card';
 import type { CardId, ObjectId, PlayerId } from './ids';
 import type { TargetChoice } from './state';
 import type { ManaType } from './mana';
@@ -311,7 +312,7 @@ export interface ChooseNameDecision extends DecisionBase {
    * show to be of the other kind (core/validate.ts; a card that is not in the game has no object the choice could affect).
    */
   /** edh-next-146 (CR 201.3): 'creature', "choose a creature card name" (Psychic Paper): the name of a creature card (checked as 'land' is). */
-  cardKind?: 'land' | 'nonland' | 'creature';
+  cardKind?: CardNameKind; // edh-e-8: also 'artifact' and 'nonartifactNonland' (CR 201.3; Dispossess, Lost Legacy)
 }
 
 /**

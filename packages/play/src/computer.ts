@@ -30,6 +30,15 @@ export function computerDelayMs(speed: ComputerSpeed): number {
 /** The longest the computer waits for the board to finish showing changes before it acts anyway (ms). */
 export const COMPUTER_MAX_BOARD_WAIT_MS = 8000;
 
+/**
+ * The longest a decision of the computer may stay unanswered (ms, from when it became the computer's): past it the computer stops thinking about it and
+ * takes the first fallback the engine accepts (pass priority, CR 117.3d; else the most cautious legal answer), so the game never waits on it for good.
+ */
+export const COMPUTER_DECISION_LIMIT_MS = 20000;
+
+/** The longest one action of the computer may take to be applied (ms): an answer that never comes back counts as refused. */
+export const COMPUTER_ACT_LIMIT_MS = 10000;
+
 export type Chooser = (view: GameView, decision: Decision, seed: string) => Action;
 
 export interface ComputerOptions {
@@ -43,6 +52,8 @@ export interface ComputerOptions {
   pacer?: ComputerPacer;
   /** The longest wait for a busy board before acting anyway (ms; default COMPUTER_MAX_BOARD_WAIT_MS). */
   maxBoardWaitMs?: number;
+  /** The longest a decision may stay unanswered before the computer falls back (ms; default COMPUTER_DECISION_LIMIT_MS). */
+  decisionLimitMs?: number;
   /** Seed for the AI's choices between equally good plays (with the decision id, so a replay plays the same). */
   seed: string;
   /** The AI (default packages/ai `chooseAction`); tests pass their own. */
@@ -162,6 +173,71 @@ export function runComputer(seat: GameConnection, opts: ComputerOptions): () => 
   const choose = opts.choose ?? chooseAction;
   const pacer = opts.pacer;
   const maxWait = opts.maxBoardWaitMs ?? COMPUTER_MAX_BOARD_WAIT_MS;
+  const limitMs = opts.decisionLimitMs ?? COMPUTER_DECISION_LIMIT_MS;
+  /** The decision being timed, and the timer that ends its time. */
+  let timed: string | null = null;
+  let limitTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The action in flight, applied with a time limit: one that never answers counts as refused. */
+  const act = (a: Action): Promise<ActResult> =>
+    new Promise<ActResult>((resolve) => {
+      const t = setTimeout(() => {
+        console.error('[Computer] no answer to its action in time', a);
+        resolve({ ok: false, error: { message: 'The action took too long.', rules: [] } });
+      }, COMPUTER_ACT_LIMIT_MS);
+      seat.act(a).then(
+        (r) => {
+          clearTimeout(t);
+          resolve(r);
+        },
+        (e: unknown) => {
+          clearTimeout(t);
+          console.error('[Computer] its action failed', a, e);
+          resolve({ ok: false, error: { message: String(e), rules: [] } });
+        },
+      );
+    });
+
+  /** The decision took too long: drop whatever the computer was doing about it and answer with the fallbacks. */
+  const outOfTime = async (id: string) => {
+    limitTimer = null;
+    const d = dueDecision(seat.view());
+    if (stopped || !d || d.id !== id || stuckOn === id) return;
+    console.error(`[Computer] no answer within ${limitMs} ms; falling back`, d.kind, d.id);
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+    quitWaiting();
+    acting = true;
+    let ok = false;
+    try {
+      for (const fb of fallbacks(d, seat.view())) {
+        if (stopped || seat.view().pending?.id !== d.id) break;
+        const r = await act(fb);
+        if (r.ok) {
+          ok = true;
+          break;
+        }
+      }
+    } finally {
+      acting = false;
+    }
+    if (!ok && !stopped && seat.view().pending?.id === d.id) {
+      stuckOn = d.id;
+      opts.onStuck?.(`${seat.view().players.find((p) => p.id === d.player)?.name ?? 'The computer'} could not decide: ${d.prompt} You can concede or leave the game.`);
+    }
+    schedule();
+  };
+
+  /** Time each new decision of the computer from the moment it is due. */
+  const timeDecision = (d: Decision | null) => {
+    if (d?.id === timed) return;
+    if (limitTimer !== null) clearTimeout(limitTimer);
+    limitTimer = null;
+    timed = d?.id ?? null;
+    if (d && !stopped) {
+      const id = d.id;
+      limitTimer = setTimeout(() => void outOfTime(id), limitMs);
+    }
+  };
   let timer: ReturnType<typeof setTimeout> | null = null;
   /** While waiting for a busy board: the timer that ends the wait anyway. */
   let waitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -203,12 +279,12 @@ export function runComputer(seat: GameConnection, opts: ComputerOptions): () => 
         console.error('[Computer] the AI could not choose', d, e);
         action = fallback(d);
       }
-      let r: ActResult | null = action ? await seat.act(action) : null;
+      let r: ActResult | null = action ? await act(action) : null;
       if (r && !r.ok) console.error('[Computer] action rejected', action, r.error);
       // The fallbacks in turn until one is accepted (the one the catch above already sent is tried again only if nothing else works).
       for (const fb of r?.ok ? [] : fallbacks(d, view)) {
         if (stopped || seat.view().pending?.id !== d.id) break;
-        r = await seat.act(fb);
+        r = await act(fb);
         if (r.ok) break;
         console.error('[Computer] fallback rejected', fb, r.error);
       }
@@ -229,6 +305,7 @@ export function runComputer(seat: GameConnection, opts: ComputerOptions): () => 
 
   function schedule() {
     const d = stopped ? null : dueDecision(seat.view());
+    timeDecision(d);
     if (stuckOn !== null && d?.id !== stuckOn) {
       stuckOn = null;
       opts.onStuck?.(null);
@@ -267,6 +344,8 @@ export function runComputer(seat: GameConnection, opts: ComputerOptions): () => 
     unsubscribePacer?.();
     if (timer !== null) clearTimeout(timer);
     timer = null;
+    if (limitTimer !== null) clearTimeout(limitTimer);
+    limitTimer = null;
     quitWaiting();
   };
 }

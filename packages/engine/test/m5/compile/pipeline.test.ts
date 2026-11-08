@@ -63,11 +63,11 @@ describe('design 10.2: the capability degrade runs on every ability against `cap
     expect(def.automation.requiresEngine).toContain('op:damage');
   });
 
-  it('a keyword the engine does not implement is manual and names the capability (CR 702.54 assist, amplify is implemented by edh-c-42; FAST5X E28 implements persist, std-ry8 enlist)', () => {
-    const { def } = compile(creature('Assist'));
+  it('a keyword the engine does not implement is manual and names the capability (CR 702.50 epic; assist is native since edh-e-29, amplify is implemented by edh-c-42; FAST5X E28 implements persist, std-ry8 enlist)', () => {
+    const { def } = compile(creature('Epic'));
     expect(abilities(def)[0]).toMatchObject({ kind: 'manual' });
-    expect((abilities(def)[0] as ManualAbilityDef).reason).toContain('keyword:assist');
-    expect(def.automation.requiresEngine).toContain('keyword:assist');
+    expect((abilities(def)[0] as ManualAbilityDef).reason).toContain('keyword:epic');
+    expect(def.automation.requiresEngine).toContain('keyword:epic');
   });
 
   it('with no capabilities at all nothing is automated (fail closed)', () => {

@@ -129,6 +129,11 @@ const putCounters: StepHandler<Step<'putCounters'>> = (cx, rawStep) => {
   if (st.upTo === true) {
     const on = holders(cx, st.on);
     if (on.length === 0 || !on.some((h) => canHold(cx, h))) return NOTHING;
+    // edh-e-14 (CR 122.1, 608.2d; Clockwork Avian): the holder may end with at most `maxTotal` counters of the kind: the most that can still be put is the room left
+    if (st.maxTotal !== undefined) {
+      n = Math.min(n, Math.max(0, st.maxTotal - (countersOn(cx, on[0]!)[st.kind] ?? 0)));
+      if (n === 0) return NOTHING;
+    }
     const pick = cx.g.choose({ kind: 'chooseNumber', player: cx.controller, prompt: `Put how many ${st.kind} counters on ${holderName(cx, on[0]!)}? (up to ${n})`, min: 0, max: n, rules: ['CR 122.1', 'CR 608.2d'] }).n;
     n = Math.max(0, Math.min(pick, n));
     if (n === 0) return NOTHING;
@@ -152,12 +157,21 @@ const putCounters: StepHandler<Step<'putCounters'>> = (cx, rawStep) => {
     const put = proposeMeasured(cx, { ev: 'counters', change: 'put', on: to, kind: st.kind, count: amount });
     if (put <= 0) continue;
     tally.set(st.kind, (tally.get(st.kind) ?? 0) + put);
+    // edh-e-14 (CR 122.1, 614.1; Clockwork Avian ruling 2004-10-04 "any counters over the maximum are simply not added"): a replacement (Doubling Season) may have made more than the room
+    // left, so the holder is cut back to the limit; the cut counters count as never put
+    if (st.maxTotal !== undefined) {
+      const over = (countersOn(cx, to)[st.kind] ?? 0) - st.maxTotal;
+      if (over > 0) { proposeMeasured(cx, { ev: 'counters', change: 'removed', on: to, kind: st.kind, count: over, by: cx.controller }); tally.set(st.kind, (tally.get(st.kind) ?? 0) - over); }
+    }
     acted.push(to);
     cx.g.log(`${counterWords(put, st.kind)} put on ${holderName(cx, to)}.`, { rules: ['CR 122.1', 'CR 122.6', ...(amount !== n ? ['CR 601.2d'] : [])], level: 'action' });
   }
   // edh-c-48 (CR 702.100a; Renegade Krasis ruling 2013-04-15): the creature evolves when its evolve ability puts a +1/+1 counter on it (once, however many a replacement made it)
   if (st.evolve === true) for (const h of acted) if (typeof h !== 'string') performAction(cx.g, { verb: 'evolve', actor: cx.controller, objectId: h.id });
-  return { ...recordActed(cx, st.as, acted), countersPut: tally }; // 5. record
+  // edh-d-86-fix (CR 603.12, 122.6; Craig Boone ruling 2024-06-07): the number the instruction states for its one holder, so a reflexive "When you do" counts
+  // the times it was done (effects/handlers/lasting.ts#reflexive)
+  const stated = shares.length === 1 && acted.length === 1 ? { countersStated: n } : {};
+  return { ...recordActed(cx, st.as, acted), countersPut: tally, ...stated }; // 5. record
   } finally {
     if (performer === undefined) delete cx.performer;
     else cx.performer = performer;
@@ -178,6 +192,7 @@ export const OP_FORMS: readonly string[] = ['op:removeCounters.upTo', 'op:moveCo
   'op:moveCounters.anyKind' /* p2-counters-move-1 */, 'op:moveCounters.upTo' /* p2-counters-move-1 */, 'op:moveCounters.distribute' /* p2-counters-move-4 */,
   'op:moveCounters.among', 'op:moveCounters.eachNewKind', 'op:moveCounters.atLeastOne' /* edh-misc-6 */, 'op:putCounters.kindOfChoice' /* edh-perms-15 */, 'op:putCounters.by' /* edh-players-19 */, 'op:removeCounters.kindOfChoice' /* edh-perms-24 */, 'op:putCounters.evolve' /* edh-c-48 */, 'op:moveCounters.fromGroup' /* edh-c-27 */, 'op:removeCounters.among' /* edhn63 */, 'op:putCounters.ofEvent' /* edhn63 */, 'op:putCounters.copyFrom' /* edhn63 */,
   'op:putCounters.ifNone', // edh-d-89: CR 122.1, 608.2c ("if it doesn't have a counter of that kind on it")
+  'op:putCounters.maxTotal', // edh-e-14: CR 122.1, 608.2d ("This ability can't cause the total number of +1/+0 counters on ~ to be greater than four")
 ];
 
 function removalPlan(cx: ExecCtx, st: Step<'removeCounters'>, on: Holder, n: number | 'all'): Record<string, number> {

@@ -34,6 +34,7 @@ export function SearchPanel({
   images = false,
   autoSearch = false,
   inDeck,
+  canCommand = () => false,
   onAdd,
   onPreview,
   onHover,
@@ -49,6 +50,8 @@ export function SearchPanel({
   autoSearch?: boolean;
   /** Copies of a card already in the deck (all sections). */
   inDeck: (name: string) => number;
+  /** deck-art-1: may this card be added as a commander now (useCommanderChoices: the deck check's own rule)? Only then is "Commander" offered. */
+  canCommand?: (name: string) => boolean;
   onAdd: (card: CardSummary, section: DeckSection) => void;
   /** Pin the big preview (the name under a card). */
   onPreview: (card: CardSummary) => void;
@@ -265,7 +268,7 @@ export function SearchPanel({
         <div className="deck-pool-scroll" ref={scroller} aria-busy={busy}>
           <ul className="search-results" aria-label="Search results">
             {result.cards.map((c) => (
-              <SearchResult key={c.oracleId || c.name} card={c} count={inDeck(c.name)} format={format} onAdd={onAdd} onPreview={onPreview} onHover={onHover} />
+              <SearchResult key={c.oracleId || c.name} card={c} count={inDeck(c.name)} commander={canCommand(c.name)} onAdd={onAdd} onPreview={onPreview} onHover={onHover} />
             ))}
           </ul>
           {pages > 1 && (
@@ -290,14 +293,15 @@ export function SearchPanel({
 function SearchResult({
   card,
   count,
-  format,
+  commander,
   onAdd,
   onPreview,
   onHover,
 }: {
   card: CardSummary;
   count: number;
-  format: FormatOption;
+  /** Offer "Commander" (the card may be added as a commander now). */
+  commander: boolean;
   onAdd: (card: CardSummary, section: DeckSection) => void;
   onPreview: (card: CardSummary) => void;
   onHover: ((card: CardSummary | null, el: HTMLElement | null) => void) | undefined;
@@ -332,7 +336,7 @@ function SearchResult({
         <button type="button" className="deck-mini" onClick={() => onAdd(card, 'sideboard')} aria-label={`Add ${card.name} to sideboard`}>
           + Side
         </button>
-        {format.commander && (
+        {commander && (
           <button type="button" className="deck-mini" onClick={() => onAdd(card, 'commander')} aria-label={`Set ${card.name} as commander`}>
             Commander
           </button>

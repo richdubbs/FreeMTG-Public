@@ -53,6 +53,10 @@ export function isCastChoice(c: unknown): boolean {
  * put three +1/+1 counters on this creature instead"). Only when neither instruction has a target (no target needs a condition, CR 601.2c, 603.3d).
  */
 export function isFixedChoice(c: unknown, y: unknown, x: unknown): boolean {
+  // edh-e-18 (CR 702.33d, 603.4, 614.15; Desolation Giant, Desolation Angel): "When this creature enters, destroy all other creatures you control. If it was kicked, destroy all other
+  // creatures instead.": whether the permanent was kicked was fixed as it was cast, before its ability triggered, so (as with the mana spent to cast it) one instruction may replace another
+  // as a whole when neither has a target
+  if (isRec(c) && c['cond'] === 'wasCast' && (c['object'] === undefined || (isRec(c['object']) && c['object']['ref'] === 'self')) && !hasTarget(y) && !hasTarget(x)) return true;
   if (!isRec(c) || c['cond'] !== 'compare' || hasTarget(y) || hasTarget(x)) return false;
   const left = c['left'];
   if (!isRec(left) || left['q'] !== 'spellManaSpent' || typeof c['right'] !== 'number') return false;
@@ -253,6 +257,15 @@ export function notSelfReplacement(y: unknown, x: unknown, castChoice = false): 
       const xf = xe[0]['affects']['filter'];
       if (Object.keys(yf).every((k) => canon(yf[k]) === canon(xf[k])) && Object.keys(xf).length > Object.keys(yf).length) return null;
     }
+  }
+  // edh-e-48 (CR 614.15, 608.2c, 702.103b; Everflame Eidolon, Erebos's Emissary): "This creature gets +1/+0 until end of turn. If it's an Aura, enchanted creature gets +1/+0 until end of turn
+  // instead.": the same kind of pump (one continuous effect, no target, the same duration and layer, any numbers) on the creature the Aura is attached to in place of the permanent itself.
+  if (op === 'effect' && x['op'] === 'effect' && !hasTarget(y) && !hasTarget(x) && sameOutside(y, x, ['effects', 'sentence'])) {
+    const ye = y['effects'];
+    const xe = x['effects'];
+    if (Array.isArray(ye) && Array.isArray(xe) && ye.length === 1 && xe.length === 1 && isRec(ye[0]) && isRec(xe[0]) && ye[0]['s'] === 'continuous' && xe[0]['s'] === 'continuous'
+      && sameOutside(ye[0], xe[0], ['affects', 'mods']) && canon(ye[0]['mods'], false) === canon(xe[0]['mods'], false)
+      && canon(ye[0]['affects']) === canon({ ref: 'self' }) && canon(xe[0]['affects']) === canon({ ref: 'attachedTo' })) return null;
   }
   // edh-next-145 (CR 614.15, 608.2c, 608.2d; Mythos of Snapdax): "Each player chooses an artifact, ... from among the nonland permanents they control, then sacrifices the rest. If C, you choose
   // the permanents for each player instead.": the same keep-one-of-each-type sacrifice by every player, with only who chooses the kept permanents changed to you (`chooser`)
@@ -461,10 +474,13 @@ export function notWideReplacement(ys: readonly unknown[], xs: readonly unknown[
     // edh-d-5 (CR 614.15, 608.2c, 701.8a; Kirtar's Wrath): "Destroy all creatures. They can't be regenerated. If C, instead destroy all creatures, then create two 1/1 tokens. Creatures destroyed
     // this way can't be regenerated.": X restates the one destroy (a no-regeneration rider on either side comes in its own sentence) and does the following instructions after it, only in this
     // case; `if C then [destroy, B] else [destroy]` is exactly those words
-    if (xs.length > 1 && !castChoice && y['op'] === 'destroy' && xs[0]!['op'] === 'destroy' && canonNoRegen(y) === canonNoRegen(xs[0]!) && xs.slice(1).every((x) => FOLLOWING_AFTER_INSTEAD.has(String(x['op'])))) return null;
+    if (xs.length > 1 && !castChoice && y['op'] === 'destroy' && xs[0]!['op'] === 'destroy' && canonNoRegen(y) === canonNoRegen(xs[0]!) && xs.slice(1).every((x) => FOLLOWING_AFTER_INSTEAD.has(String(x['op'])) || x['op'] === 'damage' /* edh-e-38 (Rancid Earth): "instead destroy that land and ~ deals 1 damage to each creature and each player" */)) return null;
     // edh-next-93 (CR 614.15, 608.2c, 701.6a; Bane's Contingency): "Counter target spell. If C, instead counter that spell, scry 2, then draw a card.": X restates the one counter (the same spell, nothing
     // else different) and does the following instructions after it, only in this case; `if C then [counter, B] else [counter]` is exactly those words
     if (xs.length > 1 && !castChoice && y['op'] === 'counter' && xs[0]!['op'] === 'counter' && canon(y) === canon(xs[0]!) && xs.slice(1).every((x) => FOLLOWING_AFTER_INSTEAD.has(String(x['op'])))) return null;
+    // edh-d-110 (CR 614.15, 608.2c, 701.9a, 701.20a; Gruesome Discovery, Devour Intellect): "Target player discards two cards. If C, instead that player reveals their hand, you choose two
+    // cards from it, then that player discards those cards.": the one discard of that player replaced as a whole by a discard of the same player of cards you choose from their revealed hand
+    if (!castChoice && revealChooseDiscardFor(y, xs)) return null;
     return why;
   }
   // r4-repl (CR 614.15, 701.20e): "Put one of them into your hand and the rest on the bottom of your library in any order. Put each of those cards into your hand
@@ -490,6 +506,24 @@ export function notWideReplacement(ys: readonly unknown[], xs: readonly unknown[
     if (w !== null && !(ys.length > 1 && otherPlayerOnly(y, x))) return `instruction ${i + 1}: ${w}`;
   }
   return changed ? null : 'X repeats the sentence it replaces';
+}
+
+/**
+ * edh-d-110 (CR 614.15, 701.9a, 701.20a, 608.2c): `y` is one discard of one player (by their own choice: no filter of its own), `xs` that player's reveal of their own hand, your choice
+ * among it, and that player's discard of exactly the chosen cards.
+ */
+function revealChooseDiscardFor(y: Rec, xs: readonly Rec[]): boolean {
+  if (xs.length !== 3 || y['op'] !== 'discard' || y['filter'] !== undefined || y['guard'] !== undefined || y['random'] !== undefined) return false;
+  const [r, c, x] = xs as [Rec, Rec, Rec];
+  const who = canon(y['who']);
+  const what = r['what'];
+  if (r['op'] !== 'reveal' || canon(r['who']) !== who || !isRec(what) || what['ref'] !== 'each' || !isRec(what['filter']) || what['filter']['zone'] !== 'hand' || canon(what['filter']['owner']) !== who) return false;
+  if (c['op'] !== 'chooseObjects' || canon(c['who']) !== canon({ ref: 'you' }) || typeof c['as'] !== 'string' || typeof r['as'] !== 'string') return false;
+  // (the choice is among the hand that reveal revealed, nothing else)
+  const from = c['from'];
+  if (!isRec(from) || from['ref'] !== 'each' || !isRec(from['filter']) || canon(from['filter']['is']) !== canon({ ref: 'bound', name: r['as'] })) return false;
+  const filter = x['filter'];
+  return x['op'] === 'discard' && canon(x['who']) === who && isRec(filter) && canon(filter['is']) === canon({ ref: 'bound', name: c['as'] }) && Object.keys(filter).length === 1;
 }
 
 /** `if C then xs else ys` reads "ys. If C, [instead] xs [instead]." (CR 614.15; CLOUD C9: `notWideReplacement`). */

@@ -265,6 +265,7 @@ export const exchange: StepHandler<Step<'exchange'>> = (cx, st) => {
   if (st.what === 'power') return exchangePower(cx, st); // edh-c-13
   if (st.what === 'handLibrary') return exchangeHandLibrary(cx, st); // edh-b-12
   if (st.what === 'handGraveyard') return exchangeHandGraveyard(cx, st); // edh-c-113
+  if (st.what === 'graveyardLibrary') return exchangeGraveyardLibrary(cx, st); // edh-e-38
   if (st.what !== 'life') return byHand(cx, st, `exchanging ${st.what} is not automated yet (CR 701.12)`);
   const g = cx.g;
   // std-rx25 (CR 701.12c, 115.3): one reference to both players, "two target players exchange life totals" (`a` equal to `b`, as MX2's exchange of control):
@@ -386,7 +387,7 @@ function exchangeControl(cx: ExecCtx, st: Step<'exchange'>): StepResult {
 }
 
 /** edh-b-12: the exchange form that swaps a player's hand and library (capability `op:exchange.handLibrary`). */
-export const HAND_LIBRARY_OP_FORMS: readonly string[] = ['op:exchange.handLibrary', 'op:exchange.handGraveyard'];
+export const HAND_LIBRARY_OP_FORMS: readonly string[] = ['op:exchange.handLibrary', 'op:exchange.handGraveyard', 'op:exchange.graveyardLibrary'];
 
 /**
  * edh-b-12 (`op:exchange.handLibrary`; CR 701.12a, 400.1, 401.1; Mordenkainen): "Exchange your hand and library": each card in the player's hand is put into their library and each
@@ -422,6 +423,26 @@ function exchangeHandGraveyard(cx: ExecCtx, st: Step<'exchange'>): StepResult {
   for (const id of hand) if (proposeMove(cx, { id, zone: 'hand' }, 'graveyard', { cause: 'effect' }).ok) count++;
   for (const id of graveyard) if (proposeMove(cx, { id, zone: 'graveyard' }, 'hand', { cause: 'effect' }).ok) count++;
   g.log(`${g.player(player).name} exchanges their hand and graveyard (${hand.length} and ${graveyard.length} cards).`, { rules: ['CR 701.12a'], level: 'action' });
+  return { performed: count > 0, count };
+}
+
+/**
+ * edh-e-38 (`op:exchange.graveyardLibrary`; CR 701.12a, 400.1, 404.1, 401.1; Morality Shift, ruling 2004-10-04): "Exchange your graveyard and library": each card in the player's graveyard is put
+ * into their library and each card in their library is put into their graveyard, together (both groups are fixed before any card moves; works when either is empty). The library keeps no order the
+ * player chose (the shuffle step that follows, CR 401.2, makes the order unknowable); the cards put into the graveyard go in the order the library had them (CR 404.2: a graveyard's order is
+ * not a choice the rules ask for here). `a` is the one player.
+ */
+function exchangeGraveyardLibrary(cx: ExecCtx, st: Step<'exchange'>): StepResult {
+  const g = cx.g;
+  const players = [...new Set(resolveRecipients(cx, st.a as PlayerRef).players)];
+  if (players.length !== 1) return NOTHING;
+  const player = players[0]!;
+  const graveyard = [...zoneArray(g, 'graveyard', player)];
+  const library = [...zoneArray(g, 'library', player)];
+  let count = 0;
+  for (const id of graveyard) if (proposeMove(cx, { id, zone: 'graveyard' }, 'library', { cause: 'effect', position: 'top' }).ok) count++;
+  for (const id of library) if (proposeMove(cx, { id, zone: 'library' }, 'graveyard', { cause: 'effect' }).ok) count++;
+  g.log(`${g.player(player).name} exchanges their graveyard and library (${graveyard.length} and ${library.length} cards).`, { rules: ['CR 701.12a'], level: 'action' });
   return { performed: count > 0, count };
 }
 

@@ -26,6 +26,8 @@ export type HoleType =
   | 'CounterKind' | 'ManaCost' | 'PT' | 'Keyword' | 'TokenDesc' | 'ChoiceKind' | 'Effects' | 'Text' | 'Abilities' | 'Name' | 'Lib'
   /** WP22 ADDITION (INTERFACE CHANGE): printed, unsigned power/toughness ("base power and toughness 3/3", "becomes a 2/2 creature"), value {p, t}. */
   | 'BasePT'
+  /** edh-d-105 (CR 613.4b, 608.2d): a printed base power and toughness with the words it is said with (`text`, "4/1"), the answer of a choice between two sizes */
+  | 'BasePTSaid'
   /** WP22 ADDITION (INTERFACE CHANGE): a run of singular subtype words in a type description ("a green Elk creature"), value string[] (CR 205.3). */
   | 'Subtypes'
   /**
@@ -119,6 +121,7 @@ export type HoleType =
    * edh-cast-10 ADDITION (INTERFACE CHANGE): "those cards" for the cards of a hand a player looked at ("look at that player's hand. You may cast a spell from among those cards"), and
    * nothing else: a plural anaphor whose antecedent must be such a look (the participle "seen-in-hand" of lower/mentions.ts), never cards of a library (parser/holes/object.ts#seenInHand).
    */
+  | 'PileLooked' // edhe35
   | 'SeenInHand'
   /**
    * FAST5 T45 ADDITION (INTERFACE CHANGE): the description of a spell that is cast, without its article, as the `spell` filter of a `cast` event pattern
@@ -150,6 +153,8 @@ export type HoleType =
   | 'CountersOf'
   /** M12-3 ADDITION (INTERFACE CHANGE), CR 701.38b: the two words of a vote, "carnage or homage" (a closed list, parser/holes/vote.ts), value string[]. */
   | 'VoteWords'
+  /** edhe35 ADDITION (INTERFACE CHANGE), CR 701.38a-b, 702.16a: "each color with the most votes or tied for most votes", the colors the vote before the sentence gave the most votes (parser/holes/vote.ts#votedColors), value a marker lower/conditions.ts#resolveVotes resolves. */
+  | 'VotedColors'
   /** edh-players-13 ADDITION (INTERFACE CHANGE), CR 608.2d: the words players choose between, "fame or fortune" (`ChoiceWords`, value string[]) and one of them (`ChoiceWord`): a closed list, parser/holes/choicewords.ts. */
   | 'ChoiceWords'
   /** edh-players-13 ADDITION (INTERFACE CHANGE), CR 701.38a-b: "evidence vote", the votes a vote word got (parser/holes/vote.ts#voteCount), value a Quantity marker. */
@@ -211,6 +216,7 @@ export type HoleType =
   | 'PluralSubtype' // cloud r4-mech
   | 'NotMoved' // r4-moved (parser/holes/moved.ts#notMoved)
   | 'FewerDiscarded' // edh-c-73 (parser/holes/edhv73.ts#fewerDiscarded)
+  | 'SameForCards' // edh-d-107 (parser/holes/edhd107.ts#sameForCards)
   | 'ItNotSource' // edh-c-73 (parser/holes/edhv73.ts#itNotSource)
   | 'FewerPut' // edh-d-93 (parser/holes/edhd93.ts#fewerPut)
   | 'CountersMoved' // edh-d-93 (parser/holes/edhd93.ts#countersMoved)
@@ -218,6 +224,7 @@ export type HoleType =
   | 'CardsDesc'
   /** edh-b-1 ADDITION: a card description with its article whose list ends in a legendary item ("a Knight, Aura, or legendary artifact card"), parser/holes/edhb1.ts#listedCard. */
   | 'ListedCard'
+  | 'ColorOrTypeCard'
   /** edh-b-1 ADDITION: subtypes said as a list with one article ("a Cleric, Rogue, Warrior, and Wizard"), parser/holes/edhb1.ts#subtypeList. */
   | 'SubtypeList'
   /** Cloud r4-dig ADDITION (INTERFACE CHANGE): the card a library search is for, ranked one unspecific word lower (parser/holes/r4dig.ts#searchDesc). */

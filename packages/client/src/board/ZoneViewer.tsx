@@ -49,7 +49,7 @@ export function PileTop({ id }: { id: ObjectId | undefined }) {
   const def = hidden ? null : defOf(view, o);
   return (
     <span className="pile-art" aria-hidden="true">
-      {renderCard({ def, face: def ? shownFace(def, o) : 0, chars: hidden ? null : charsOf(view, o), size: 'small', faceDown: o.faceDown === true })}
+      {renderCard({ def, face: def ? shownFace(def, o) : 0, chars: hidden ? null : charsOf(view, o), size: 'small', faceDown: o.faceDown === true, owner: o.owner })}
     </span>
   );
 }

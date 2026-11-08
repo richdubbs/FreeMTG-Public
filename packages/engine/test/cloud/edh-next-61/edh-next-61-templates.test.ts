@@ -177,7 +177,7 @@ describe('edh-next-61 parser, renderer and engine changes (one test each)', () =
   });
   it('render/np.ts#teamWords (CR 102.3): "a permanent your team controls" is "a permanent you control" (no team of several players is played); another description keeps its one wording', () => {
     expect(fullyAutomated(creature('If one or more counters would be put on a permanent your team controls, that many plus one of each of those kinds of counters are put on that permanent instead.', 'Enchantment'))).toBe(true);
-    expect(fullyAutomated(creature('If one or more counters would be put on a creature your team controls, that many plus one of each of those kinds of counters are put on that permanent instead.', 'Enchantment'))).toBe(false);
+    expect(fullyAutomated(creature('If one or more counters would be put on a creature your team controls, that many plus one of each of those kinds of counters are put on that permanent instead.', 'Enchantment'))).toBe(true); // edh-e-61: teamWords also accepts the plain "creature you control" (Combo Attack); another description (tapped, a type) still keeps its one wording
   });
   it('effects/bodies/m5.ts (CR 614.1a, 111.2): `modify.to` on a token creation changes the player who creates the tokens; the rendered wording is said for exactly that body', () => {
     expect(fullyAutomated(spell("Draw a card. Each token that would be created under an opponent's control this turn is created under your control instead."))).toBe(true);

@@ -32,7 +32,7 @@ export const EDH_N147_HANDLERS: OpHandlers = {
     const used = new Set(Object.values(g.s.objects).filter((x) => x.owner === p).flatMap((x) => (x.nameStickers ?? []).map((st) => st.id)));
     const free = (g.player(p).stickers ?? []).filter((st) => !used.has(st.id));
     if (free.length === 0) {
-      g.log(`${g.player(p).name} has no name sticker left to put on ${g.nameOf(o.id)}.`, { rules: ['CR 123.3', 'CR 123.2c'], level: 'info' });
+      g.log(`${g.player(p).name} has no sticker left to put on ${g.nameOf(o.id)}.`, { rules: ['CR 123.3', 'CR 123.2c'], level: 'info' });
       return NOTHING;
     }
     const pick = free.length === 1 ? [free[0]!.id] : g.choose({

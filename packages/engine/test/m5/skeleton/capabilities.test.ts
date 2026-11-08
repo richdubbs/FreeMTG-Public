@@ -82,7 +82,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'op:putCounters.distribute' /* std-rx26: counters divided among objects chosen on resolution (effects/handlers/counters.ts#OP_FORMS) */,
       'op:putCounters.upTo' /* std-mana-2: "put up to N counters on <one object>", how many chosen on resolution (effects/handlers/counters.ts#OP_FORMS, CR 608.2d) */,
       'op:search.differentNames' /* FAST5 T42: "... cards with different names" (effects/handlers/cards-library.ts#OP_FORMS) */,
-      'op:search.alsoZones', 'op:shuffle.ifSearched' /* CLOUD std-dft: "search your library and/or graveyard", "if you search your library this way, shuffle", CR 701.23a, 701.24a (effects/handlers/cards-library.ts#OP_FORMS) */,
+      'op:shuffle.reorderGraveyard' /* edhe34 */, 'op:scry.fateseal' /* edhe58 */, 'op:search.alsoZones', 'op:shuffle.ifSearched' /* CLOUD std-dft: "search your library and/or graveyard", "if you search your library this way, shuffle", CR 701.23a, 701.24a (effects/handlers/cards-library.ts#OP_FORMS) */,
       'op:search.and' /* CLOUD C9: "for a basic land card and a Shrine card", one card of each description (effects/handlers/cards-library.ts#OP_FORMS) */,
       'op:search.allZones' /* r4-refs: "search target opponent's graveyard, hand, and library", every zone listed, CR 701.23a (effects/handlers/cards-library.ts#OP_FORMS) */,
       'op:moveCounters.every' /* FAST5X E21: "put its counters on ...", every kind, CR 122.5, 122.8 (effects/handlers/counters.ts#OP_FORMS) */,
@@ -107,6 +107,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'op:sacrificeChoice.perPlayerCount' /* r5-refs: the count of a group's sacrifice read for each choosing player (CR 608.2e, 101.4; zones-remove.ts) */,
       'op:chooseObjects.perPlayer.ownChoice' /* r5-refs: "each player chooses ... they control" (CR 101.4, 608.2d; choose.ts#choosePerPlayer) */,
       'op:effect.as' /* CLOUD std-tmt: a group's control change names the objects it locked, CR 611.2c, 608.2c (effects/handlers/lasting.ts#EFFECT_OP_FORMS) */,
+      'op:effect.divided', // edh-e-68: "prevent the next 4 damage ... to any number of targets, divided as you choose" (effects/handlers/lasting.ts#dividedEffects, CR 601.2d, 615.7)
       'op:addMana.chosenOr' /* CMD3: "Add {W} or one mana of the chosen color", the Thriving lands, CR 106.1b (effects/handlers/cards-mana.ts#OP_FORMS) */,
       'op:designate.citysBlessing' /* CMD3: ascend on an instant or sorcery, CR 702.131a (core/citys-blessing.ts) */,
       'op:cast.graveyardInstead' /* r4-repl: a spell cast during a resolution exiled or put on the bottom instead of a graveyard, CR 614.1a (effects/handlers/tokens-cast.ts#OP_FORMS) */,
@@ -124,6 +125,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'op:chooseObjects.distinct' /* std-library-1: "with different powers", no two chosen with one value of a statistic, CR 208.1, 608.2d (effects/handlers/choose.ts#OP_FORMS) */,
       'op:chooseObjects.damageSource' /* audit-fix-1: "a source of your choice", an ability on the stack offered and bound as its source, CR 609.7a (effects/handlers/choose.ts#OP_FORMS) */,
       'op:chooseObjects.cardTypesAtLeast' /* edh-d-85: "with four or more card types among them", the chosen set's card types, CR 205.2a, 608.2d (effects/handlers/choose.ts#OP_FORMS) */,
+      'op:chooseObjects.allOrNone' /* edh-d-107: "exile two cards from your graveyard. If you can't", none chosen when fewer than the number can be, CR 608.2d, 609.3 (effects/handlers/choose.ts#OP_FORMS) */,
       'op:exchange.lifePower' /* edh-next-89: a life total exchanged with a creature's power, CR 701.12a, 613.4b */,
       'op:exchange.lifeToughness' /* p2-pt-1: a life total exchanged with a creature's toughness, CR 701.12a, 613.4b (effects/handlers/zones-status.ts) */,
       'op:flipCoin.untilLose' /* p2-coinflip-1: "flip a coin until you lose a flip", CR 705.1-705.2 (effects/handlers/game.ts#OP_FORMS) */,
@@ -150,7 +152,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'op:attach.asCreature' /* edh-mana-keywords-12: "Equip planeswalker" attaches as though the host were a creature, CR 701.3a (effects/handlers/zones-status.ts#ATTACH_OP_FORMS) */,
       'op:chooseValue.manaTypeSpent' /* edh-mana-keywords-12: "Note the type of mana spent to pay this activation cost", CR 106.1, 607.2d (effects/handlers/choose.ts#OP_FORMS) */,
       'op:chooseValue.counterKind' /* edh-perms-15: "choose a counter on target permanent or player", CR 122.1, 608.2d */, 'op:putCounters.kindOfChoice' /* edh-perms-15 */, 'op:putCounters.by' /* edh-players-19: the player who puts the counters, CR 122.6 */, 'op:putCounters.evolve' /* edh-c-48: the evolve keyword's counter (CR 702.100a) */,
-      'op:chooseValue.excludeBound' /* edh-next-110: "Choose a second player" offers none of the players chosen before, CR 608.2d */, 'op:chooseValue.controlsMore' /* edh-d-46: "choose an opponent who controls more lands than you", CR 109.4, 608.2d */, 'op:chooseValue.mostLife' /* edh-players-8: "choose a player with the most life or tied for most life", CR 119.1, 608.2d (effects/handlers/choose.ts#OP_FORMS) */,
+      'op:chooseValue.among' /* edh-e-62 */, 'op:chooseValue.excludeBound' /* edh-next-110: "Choose a second player" offers none of the players chosen before, CR 608.2d */, 'op:chooseValue.controlsMore' /* edh-d-46: "choose an opponent who controls more lands than you", CR 109.4, 608.2d */, 'op:chooseValue.mostLife' /* edh-players-8: "choose a player with the most life or tied for most life", CR 119.1, 608.2d (effects/handlers/choose.ts#OP_FORMS) */,
       'op:look.rebind', // edh-next-126: a look that names an earlier look's group again, CR 608.2c (Lim-Dûl's Vault)
       'op:search.differentPowers', // edh-next-135: "up to four creature cards with different powers", CR 701.23a, 208.1 (Threats Undetected)
       'op:chooseObjects.unchosen',
@@ -187,12 +189,14 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'op:move.becomes' /* edh-next-125: the objects put onto the battlefield enter as creatures of a size ("those permanents are 4/4 creatures"), CR 614.1c, 613.4b */,
       'op:exchange.sacrificeReturn', // edh-zones-26: Goblin Welder's simultaneous sacrifice and return (CR 701.21a, 400.7; effects/handlers/zones-status.ts#SACRIFICE_RETURN_OP_FORMS)
       'op:exchange.power', // edh-c-13: Serene Master's exchange of two creatures' powers (CR 701.12a, 613.4b; effects/handlers/zones-status.ts#POWER_OP_FORMS)
+      'op:exchange.graveyardLibrary', // edh-e-38: Morality Shift's exchange of graveyard and library (CR 701.12a, 401.1; effects/handlers/zones-status.ts#HAND_LIBRARY_OP_FORMS)
       'op:exchange.handGraveyard', // edh-c-113: Harness Infinity's exchange of hand and graveyard (CR 701.12a; effects/handlers/zones-status.ts#HAND_LIBRARY_OP_FORMS)
       'op:exchange.handLibrary', // edh-b-12: Mordenkainen's exchange of hand and library (CR 701.12a, 401.1; effects/handlers/zones-status.ts#HAND_LIBRARY_OP_FORMS)
       'op:chooseValue.random.opponent', // edh-c-14: "Choose an opponent at random" (CR 608.2d; effects/handlers/choose.ts#OP_FORMS)
       'op:chooseValue.random.player', // edh-d-20: "Choose a player at random" (CR 608.2d)
       'op:chooseValue.random', // edh-zones-26: "Choose 1, 2, or 3 at random" (CR 608.2d; effects/handlers/choose.ts#OP_FORMS)
       'op:rollDie.highest', // edh-top-16: the opponents with the highest roll (CR 706.2; effects/handlers/game.ts#OP_FORMS)
+      'op:rollDie.visit', // edhe34: "roll to visit your Attractions" (CR 701.52a; effects/handlers/game.ts#OP_FORMS)
       'op:rollDie.keepHighest', // edh-d-49: "roll a d20 for each player being attacked and ignore all but the highest roll" (CR 706.2, 706.6; effects/handlers/game.ts#OP_FORMS)
       'op:search.publicRequired' /* edh-c-32: "all cards with the same name", the matching cards of a public zone are all found, CR 701.23b (effects/handlers/cards-library.ts#OP_FORMS) */,
       'op:fight.toughness' /* edh-c-111: "each of those creatures deals damage equal to its toughness to the other" (not a fight), CR 120.2b, 608.2b (effects/handlers/lifedamage.ts#OP_FORMS) */,
@@ -222,10 +226,13 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'op:reselectAttack.playersOnly', // edh-d-88: "reselect which player ~ is attacking" (CR 508.7c; effects/handlers/trek-18.ts#OP_FORMS)
       'op:cast.energyManaValue', // edh-d-100: "by paying an amount of {E} equal to its mana value rather than paying its mana cost" (CR 118.9; effects/handlers/tokens-cast.ts#OP_FORMS)
       'op:changeFace.faceUp.exile' /* edh-d-101 (CR 406.3): face-down cards in exile turned face up (effects/handlers/change-face.ts, model/capabilities.ts) */,
+      'op:pay.manaCostOf', // edh-e-21: "sacrifice this creature unless you pay its mana cost" (CR 118.12, 202.1; effects/handlers/pay.ts#OP_FORMS)
+      'op:putCounters.maxTotal' /* edh-e-14: "up to X counters" cut to a total of N on the holder (effects/handlers/counters.ts#OP_FORMS, CR 122.1, 608.2d) */,
+      'op:move.by', // trek-23: who exiles, remembered as the exiler of each card (CR 608.2c, 406.3; effects/handlers/zones-move.ts#OP_FORMS)
     ];
     expect((byPrefix.get('op') ?? []).sort(), 'op').toEqual([...ops.map((op) => `op:${op}`), ...forms].sort());
     for (const op of ops) expect(Object.hasOwn(OP_HANDLERS, op) && Object.hasOwn(RENDERERS, op), op).toBe(true); // design 5.2: a handler AND a renderer
-    expect((byPrefix.get('dur') ?? []).sort(), 'dur').toEqual(['duringNextCombat' /* edh-d-88: statics/rule-sources.ts#duringNextCombatNow, core/steps.ts#endCombatPhase */, 'duringNextTurn' /* std-control-1: "during that turn" of the next turn, CR 611.2a */, 'endOfCombat', 'endOfNextTurn' /* FAST5X E29 */, 'endOfTurn', 'permanent', 'remainsExiled' /* FAST5X E29 */, 'throughNextUntap' /* MX5: core/durations.ts#expireAfterUntapStep */, 'until', 'untilExiledWith' /* r5-dig: core/durations.ts#endDurations */, 'untilNextStep', 'untilNextTurn', 'whileObject' /* std-rx32: statics/while-object.ts */, 'whileSource'].map((d) => `dur:${d}`)); // not asLongAs (WP15 review: not judged live)
+    expect((byPrefix.get('dur') ?? []).sort(), 'dur').toEqual(['duringNextCombat' /* edh-d-88: statics/rule-sources.ts#duringNextCombatNow, core/steps.ts#endCombatPhase */, 'duringNextTurn' /* std-control-1: "during that turn" of the next turn, CR 611.2a */, 'endOfCombat', 'endOfCombatNextTurn' /* edh-d-104: core/durations.ts (CR 611.2a, 500.5a) */, 'endOfNextTurn' /* FAST5X E29 */, 'endOfTurn', 'permanent', 'remainsExiled' /* FAST5X E29 */, 'throughNextUntap' /* MX5: core/durations.ts#expireAfterUntapStep */, 'until', 'untilExiledWith' /* r5-dig: core/durations.ts#endDurations */, 'untilNextStep', 'untilNextTurn', 'whileObject' /* std-rx32: statics/while-object.ts */, 'whileSource'].map((d) => `dur:${d}`)); // not asLongAs (WP15 review: not judged live)
     // WP8 (triggers/) registers the event matchers the engine can emit (`dieRoll` since WP15's rollDie emits `dieRolled`); its features are checked below.
     expect((byPrefix.get('ev') ?? []).sort(), 'ev').toEqual(
       // M6-4: `dayNight` (core/designations.ts emits it; triggers/forms-dfc.ts#EMITS)
@@ -261,6 +268,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:ev.becomes.tapped', 'feature:ev.becomes.untapped', 'feature:history', 'feature:history.sinceYourLastTurn' /* edh-next-135 */, 'feature:trigger.batch', 'feature:trigger.limit',
       // FAST4 T27: a condition of the trigger event, "for the first time each turn" (triggers/collect.ts) and "if you cast it" (the cast record's caster)
       'feature:trigger.while', 'feature:trigger.first', 'feature:wasCast.by',
+      'feature:wasCast.nth', // edh-d-111: "if it was the second spell you cast this turn" (the cast record's place among its caster's spells, CR 601.2i)
       'feature:ev.counters.by', 'feature:trigger.limit.action', // FAST5X E21: "whenever you put ... counters" (CR 122.6), "Do this only once each turn" (CR 603.2h)
       'feature:ev.counters.byController' /* edhn63: "an opponent puts one or more counters on a creature they control" (triggers/match.ts) */,
       // WP11: the replacement effects of an object's own abilities about itself (not those of other objects: milestone 6)
@@ -279,6 +287,8 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:rulemod.rollOption.oncePerTurn', // edh-d-49: "Do this only once each turn" / "Once each turn" of the after-roll options (statics/hooks.ts, effects/roll-options.ts, CR 706.2)
       'feature:activate.xIs', // edh-next-132: "X is the mana value of that card" of an activation cost (Prototype Portal), CR 107.3c, 607.2a (actions/activate.ts#definedX)
       'feature:ev.action.discard.by', // edh-next-132: "when a spell or ability an opponent controls causes you to discard ~" (Orvar, the All-Form), CR 701.9a (triggers/match.ts)
+      'feature:ev.dieRoll.visit', // edhe34: "roll to visit your Attractions" (CR 701.52a)
+      'feature:ev.dieRoll.nth', // edhe34: "whenever you roll your third die each turn" (Resolute Veggiesaur), CR 706.2 (triggers/normalize.ts numbers the dice, match.ts reads it)
       'feature:rulemod.revealFirstDraw.optional', // edh-next-132: "You may reveal the first card you draw each turn as you draw it" (God-Eternal Kefnet), CR 701.20a (triggers/reveal-draw.ts)
       'feature:rulemod.maxHandSize.delta', // std-ry3: "your maximum hand size is increased|reduced by N" (statics/hooks.ts#maxHandSize, CR 402.2)
       'feature:costMod.abilities.keyword', // FAST5 T60: "Exhaust abilities of other permanents you control cost {2} less to activate" (actions/activate.ts#costChangeOf, CR 601.2f, 602.2b)
@@ -305,9 +315,9 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:replace.on.life', 'feature:replace.on.step', 'feature:replace.on.zoneChange',
       // M6-1 (m6 design 3.1, 3.2, 7): other objects' replacement effects, "if an effect would" (CR 614.16), shields of every body, phases and turns (CR 614.10)
       'feature:replace.foreign', 'feature:replace.byEffect', 'feature:replace.byOpponent', 'feature:replace.on.phase', 'feature:replace.on.loseGame' /* edh-replace-7 */, 'feature:replace.on.turn',
-      'feature:shield.enters', 'feature:shield.instead', 'feature:shield.modify', 'feature:shield.redirect', 'feature:shield.skip', 'feature:shield.batch' /* edh-next-122: CR 614.1c, 616.1 */,
+      'feature:shield.enters', 'feature:shield.instead', 'feature:shield.modify', 'feature:shield.redirect', 'feature:shield.skip', 'feature:shield.batch' /* edh-next-122: CR 614.1c, 616.1 */, 'feature:shield.each' /* edh-d-103: CR 615.7 */,
       // WP14: the events its handlers emit (countered, attached, transformed, copies of spells; "unattached" waits for the zone-change and SBA paths, CR 701.3d)
-      'feature:ev.action.counter', 'feature:ev.becomes.attached', 'feature:ev.becomes.transformed', 'feature:ev.becomes.unattached' /* edh-perms-10, CR 701.3d */, 'feature:ev.cast.nthAnyCaster' /* edh-next-91 */, 'feature:ev.cast.nthMatching' /* FAST5X E18 */, 'feature:ev.cast.orCopy', 'feature:ev.cast.copyOnly' /* edh-b-13, CR 707.10 */, 'feature:ev.damage.excess' /* FAST5X E16, CR 120.10 */,
+      'feature:ev.action.counter', 'feature:ev.becomes.attached', 'feature:ev.becomes.transformed', 'feature:ev.becomes.unattached' /* edh-perms-10, CR 701.3d */, 'feature:ev.cast.nthAnyCaster' /* edh-next-91 */, 'feature:ev.cast.nthMatching', 'feature:ev.cast.nthMatching.from' /* FAST5X E18 */, 'feature:ev.cast.orCopy', 'feature:ev.cast.copyOnly' /* edh-b-13, CR 707.10 */, 'feature:ev.damage.excess' /* FAST5X E16, CR 120.10 */,
       // std-rx28: damage equal to the recipient's toughness, damage to the source's own target, a described activated ability (CR 120.1, 115.9b, 602.2); land and
       // nonland card-name choices (CR 201.3); increases of other objects' activation costs, mana abilities paid by hand (CR 601.2f, 605.1a)
       'feature:ev.damage.amountIsToughness', 'feature:ev.damage.toSourceTarget', 'feature:ev.life.fromDamage' /* edh-players-3: CR 120.3a */, 'feature:ev.activate.activated', 'feature:choose.cardKind', 'feature:costMod.abilities.increase',
@@ -321,6 +331,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:action.native.manifest', 'feature:action.native.cloak', 'feature:action.native.manifestDread',
       // FAST5X E25: "manifest dread X times" (CR 701.62a), "shuffle that pile, then cloak them" (CR 701.58e), "whenever you manifest dread" (CR 701.62b)
       'feature:action.manifestDread.n', 'feature:action.cloak.shuffle', 'feature:ev.action.manifestDread',
+      'feature:action.faceDown.tapped', // edh-e-4 (CR 614.1c): Become Anonymous "They enter tapped." (effects/handlers/face-ops.ts)
       'feature:action.manifest.shuffle', 'feature:ev.becomes.phasedIn', 'feature:ev.becomes.phasedOut', // edh-d-39
       // M6-4 (m6 design 3.6, 7): converting and flipping (triggers/forms-dfc.ts), transforming as a replacement pattern (effects/proposal-kinds/transform.ts)
       'feature:ev.becomes.converted', 'feature:ev.becomes.flipped', 'feature:ev.becomes.melded', 'feature:replace.on.transform', 'feature:action.native.meld',
@@ -370,6 +381,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:rule.attackOption.then',
       'feature:action.native.planeswalk', 'feature:action.native.chaosEnsues', 'feature:vote.secret', // edhd19 (CR 701.31a, 311.7, 701.38a)
       'feature:vote.notSelf', 'feature:vote.upTo', // edhd27 (CR 701.38a-b)
+      'feature:populate.tappedAttacking', // edh-d-105 (CR 701.36a, 508.4)
       'feature:ev.action.votesFinished', // M12F: "whenever players finish voting" (CR 701.38a; effects/handlers/actions-native.ts and effects/manual.ts emit it)
       // FAST5X E17: "your second main phase" (CR 505.1b, core/turn.ts numbers the main phases), "if a creature you controlled was destroyed this way" (CR 608.2h)
       'feature:ev.step.nth', 'feature:did.which', 'feature:did.which.move' /* FAST5 T75 */,
@@ -442,6 +454,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:delay.batch',
       'feature:delay.batch.whole', // edh-players-13
       'feature:permit.cast.top.gainsThisTurn', // edh-cast-12: "If you cast a creature spell this way, it gains haste until end of turn" on a top-card cast permission (CR 611.2c, statics/play-permits.ts)
+      'feature:mod.protectionFromVotedColors', // edhe35 (CR 702.16a, 701.38a): effects/handlers/lasting.ts#expandVariants (Council Guardian)
       'feature:mod.protectionFromColorsOf', // edh-players-15: effects/handlers/lasting.ts#expandVariants (CR 702.16a, 105.1)
       // FAST5 T64: a copy effect that picks one of several objects ("a creature card exiled with it", effects/copy.ts, CR 607.2a)
       'feature:copy.choose',
@@ -460,6 +473,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       // cloud std-spm: "double the number of each kind of counter on ..." (effects/handlers/actions-native-counters.ts, CR 701.10e)
       'feature:action.native.doubleEachKind',
       'feature:action.native.anotherOfEachKind', // r5-refs: another counter of each kind (CR 122.6, 701.34a)
+      'feature:action.native.addOrRemoveEachKind', // edh-e-67: add or remove one counter of each kind (CR 122.1)
       'feature:lifeLost.who', // cloud std-spm: "if you lost life this way" (effects/eval.ts#QTY_FEATURES, CR 119.3)
       'feature:ev.action.playLand.from', // cloud std-spm: "whenever you play a land from exile" (triggers/forms.ts, CR 305.1)
       // CLOUD std-ecl: "activate only if you attacked with two or more creatures this turn" read from the history at announcement (actions/announce-cond.ts, CR 508.1, 602.5b)
@@ -530,6 +544,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:createToken.attackingWhom', // cmd1: tokens created attacking a named player (effects/handlers/tokens-create.ts, CR 508.4)
       'feature:createToken.exceptReplaced', // pc-tokens-2: a step of a token-creation replacement that skips the very token being replaced (effects/handlers/tokens-create.ts, CR 614.5)
       'feature:createToken.manaCost', // edh-next-64: a token given a mana cost (TokenDef.manaCost, CR 111.3; the Tarmogoyf token)
+      'feature:createToken.chosen', // edh-e-12: a token of the color and creature type the source chose (TokenDef.chosenColor, chosenSubtype; CR 607.2d)
       'feature:createToken.blocking', 'feature:createToken.perPlayerCount', // edh-combat-4: tokens put onto the battlefield blocking an attacker (effects/handlers/tokens-create.ts, CR 506.3e)
       'feature:wasCast.fromOwner', // Standard round 4, r4-trig: "if it was cast from your graveyard" (effects/eval.ts#wasCast, CR 400.3, 601.2a)
       // Standard round 4, r4-trig: a land played from anywhere other than the hand (CR 305.1) and a player who becomes the target (CR 115.1) as event forms (triggers/forms.ts)
@@ -552,15 +567,19 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:modes.triggerX',
       // r5-cost: "cost an additional 3 life to cast" (actions/cast.ts#modifiedPlan, CR 601.2f, 119.4)
       'feature:costMod.life',
+      'feature:costMod.spellTargets.enchantedPlayer', // edh-e-46: a cost change of spells that target the player the Aura is attached to (statics/costmods.ts#spellTargetsSource, CR 303.4, 601.2f)
+      'feature:costMod.life.times', // edh-e-46: the life of a cost increase paid once for each time (actions/cast.ts#modifiedPlan, CR 601.2f, 119.4)
       'feature:q.distinct.manaCosts', // edh-c-47: "for each different mana cost among nonland cards in your graveyard" (effects/eval.ts#QTY_FEATURES, statics/match.ts)
       'feature:q.distinct.planeswalkerTypes', // r5-fxb: "the number of planeswalker types among planeswalkers you control" (effects/eval.ts#QTY_FEATURES, CR 205.3j)
       'feature:target.sameController', // std-rx30: "controlled by the same opponent" (actions/announce.ts#FEATURES, CR 115.1)
       'feature:target.differentManaValues', // edh-top-3: "that each have a different mana value" (actions/announce.ts#FEATURES, CR 202.3, 115.1)
       'feature:target.perCardType', // std-cardcopy-7: "of each card type" (actions/announce.ts#FEATURES, CR 115.1, 205.2a)
       'feature:target.perPlayer', // r5-fxb: "for each player, ... up to one target creature that player controls" (actions/announce.ts#FEATURES, CR 601.2c)
+      'feature:target.perQuality', // edh-e-64: "one for each color" (actions/announce.ts#FEATURES, CR 105.1, 115.1)
       'feature:target.random', // p2-damage-2: "target creature an opponent controls chosen at random" (actions/announce.ts#FEATURES, CR 601.2c, 603.3d)
       'feature:ev.attacks.withOther', // edh-combat-5 (CR 508.1): "you attack with ~ and another legendary creature" (triggers/match.ts)
       'feature:keyword.likeAmong', // edh-combat-5: hexproof variants shared (effects/handlers/lasting.ts#expandVariants, CR 702.11d)
+      'feature:permit.play.exiledByOnly', // trek-23: "the player who exiled it may play it", one permission per exiler (effects/handlers/lasting.ts#exiledByPermits, CR 608.2c, 611.2a)
       'feature:delayed.event.or', // edh-next-74: "when you next cast an instant spell, cast a sorcery spell, or activate a loyalty ability this turn" (triggers/delayed.ts, CR 603.7)
       'feature:delayed.step.addedPhase', // edh-combat-5: "at the beginning of that combat" (triggers/delayed.ts#fires, CR 500.8)
       'feature:delayed.step.anyMain', // r5-fxb: "at the beginning of your next main phase" (triggers/delayed.ts#fires, CR 505.1)
@@ -597,6 +616,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:additionalCost.announceCount', // std-costs-1: the number announced with an optional cost (actions/cast-costs.ts, CR 601.2b)
       'feature:layer6.addActivatedOf.limit',
       'feature:layer6.removeAll.exceptMana', // edh-d-46: "lose all abilities except mana abilities", CR 613.1f, 605.1a // std-craft-2: "You may activate each of those abilities only once each turn" (statics/mods.ts#limitedEachTurn, CR 602.5b)
+      'feature:layer6.removeAbilities', // edh-e-48: "loses 'Prevent all damage that would be dealt to this creature.'", CR 613.1f (statics/mods.ts#abilityIdentity)
       'feature:layer6.removeEnchant', // edh-perms-4: "it loses \"enchant creature card in a graveyard\"" (statics/layers.ts#FEATURES, statics/mods.ts#layer6, CR 702.5a, 613.1f)
       'feature:layer6.addChosen', // edhd63: "have each of the chosen abilities" (statics/mods.ts#layer6, CR 702.1, 607.2d)
       'feature:layer6.protectionFromOwnColors', // edh-c-59: "each creature has protection from each of its colors" (statics/mods.ts#layer6, CR 702.16a)
@@ -707,6 +727,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:restrict.relativeToSubject.whenCast', // edh-next-12
       'feature:restrict.relativeToSubject.whenActivate', // edh-d-15 (City of Solitude)
       // edh-replace-5 (Izzet Generatorium): "activate only if you've paid or lost four or more {E} this turn", the turn's energy counters removed from you added up (actions/announce-cond.ts, model/forms.ts#isTurnEnergySpent, CR 107.14, 602.5b)
+      'feature:announce.qty.happenedCount.damageSourcesToYou', // edh-e-16
       'feature:announce.qty.happenedCount.energySpent',
       // edh-zones-11 (Vivien, Champion of the Wilds): "you may cast it if it's a creature spell" on a cast permission for named objects (statics/play-permits.ts#namedObjects, namedPermitTypesAllow; CR 601.3, 205.2)
       'feature:permit.cast.onlyTypes',
@@ -719,6 +740,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       // edh-zones-19 (Dissipation Field): "Whenever a permanent deals damage to you", the source was a permanent (triggers/match.ts, CR 109.2)
       'feature:ev.damage.sourcePermanent',
       'feature:ev.damage.toOtherThanSourceController', // edhd63: Bitter Feud (triggers/match.ts, effects/replacements.ts; CR 120.1, 109.4)
+      'feature:ev.damage.toDefendingPlayer', // edh-e-49: Latulla's Orders, Electryte (triggers/match.ts, CR 506.2, 510.2)
       'feature:target.player.dealtCombatDamageBySource', // edh-cast-13: "target player who was dealt combat damage by ~ this turn" (actions/announce.ts#FEATURES, rules/targets.ts, CR 115.1, 510.2)
       'feature:mana.restriction.costHasX', // edh-mana-keywords-11: "Spend this mana only on costs that contain {X}." (rules/sources.ts#spendAllows, CR 106.6, 107.3)
       'feature:target.player.dealtDamage', // edh-next-86: "any target that was dealt damage this turn" (actions/announce.ts#FEATURES, rules/targets.ts, CR 115.4, 120.1)
@@ -783,6 +805,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:copy.thisAbility.reflexive', // edh-next-133 (CR 707.9a, 603.12): "this ability" in a reflexive trigger (effects/handlers/lasting.ts#bakeThisAbility)
       'feature:action.native.rollPlanarDie', // edh-next-127 (CR 901.3, 706.7): no planar die outside Planechase (effects/handlers/planechase.ts)
       'feature:permit.play.onCast', 'feature:permit.cast.onCast', // edh-next-127 (CR 603.7a): "When you cast a spell this way, ..." (statics/play-permits.ts#onCastPermits)
+      'feature:permit.play.onCastLand', // edh-d-104 (CR 603.7a, 305.1): "When you play a card this way, ..." (actions/land.ts)
       'feature:target.eachWithOne', // edh-next-127 (CR 115.1, 601.2c): one target in each graveyard that has one (rules/targets.ts#targetRange)
       'feature:spell.xMin', // edh-d-98 (CR 107.3, 601.2b; Mind Grind): "X can't be 0." of a spell (actions/cast.ts)
       'feature:replace.draw.firstEachTurn', // edh-d-98 (CR 121.2, 614.1a; Scion of Halaster): "the first time you would draw a card each turn" (effects/replacements.ts#matchProposed)
@@ -800,6 +823,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:activate.attackedPlayerOnly', // edh-d-88 (CR 602.2; Capricopian): only the player the source attacks activates it (actions/activate.ts)
       'feature:ref.controlsAny.atLeast', // edh-d-88 (CR 109.4; Owlbear Cub): "a player who controls eight or more lands" (effects/refs.ts, triggers/filters.ts)
       'feature:require.allIfAny.attack', // edh-d-88 (CR 508.1d; War's Toll): "if a creature an opponent controls attacks, all creatures that opponent controls attack if able" (rules/requirements.ts)
+      'feature:choose.secret', // edhe35 (CR 614.12a, 608.2d): "As ~ enters, secretly choose an opponent." (effects/bodies/m5.ts; Guardian Archon)
       'feature:choose.chooser', // edh-d-72 (CR 614.12a, 608.2d): "As ~ enters, an opponent chooses a creature type." (effects/bodies/m5.ts; Callous Oppressor)
       'feature:costMod.abilities.targets.self', // edh-next-107 (CR 601.2c, 602.2b): "activated abilities of Equipment you control that target ~ cost {1} less" (actions/activate.ts#costChangeOf; Bladegraft Aspirant)
       'feature:announce.sref.event.chooser', 'feature:target.chooserElse', // edh-d-87 (CR 601.7a, 603.3d; Bladegriff Prototype): actions/announce-targets.ts#chooserOf
@@ -812,6 +836,11 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
       'feature:permit.play.linked.activePlayer', 'feature:permit.play.linked.oncePerTurn', 'feature:permit.play.linked.onUse', 'feature:permit.cast.linked.onUse', // edh-d-100 (Share the Spoils; statics/play-permits.ts#isLinkedRiderPermit)
       'feature:permit.play.linked.notOwn', 'feature:permit.play.linked.anyManaType', // edh-d-100: the same play form's other riders
       'feature:permit.play.reduce', 'feature:permit.cast.reduce', // edh-d-100 (Urianger Augurelt; statics/play-permits.ts#namedPermitReduce)
+      'feature:mana.manaCostOf', // edh-e-21: "add mana equal to enchanted permanent's mana cost" (effects/handlers/cards-mana.ts, CR 106.1, 202.1)
+      'feature:trigger.batch.mixedAction', // edh-d-112: a single action pattern beside "one or more" ones in one batch trigger (triggers/occurrences.ts#mixedActionOccurrences, CR 603.2c)
+      'feature:ev.attacks.withOtherAtLeast', 'feature:ev.attacks.withOtherDifferentPlayer', 'feature:ev.blocks.attackerAtLeast', 'feature:ev.damage.toSourceOwner', // edh-d-109 (triggers/match.ts)
+      'feature:history.yourLastTurn', // edh-d-109: "if it attacked during your last turn" (rules/history.ts#historyInScope, CR 500.1)
+      'feature:layer6.protectionFromColorsAmong', // edh-e-61: "protection from each color among permanents you control" (statics/mods.ts#layer6, CR 702.16a, 613.1f)
     ].sort());
   });
 
@@ -824,7 +853,7 @@ describe('ENGINE_CAPABILITIES (design 5.2) built from empty tables', () => {
   it('what milestones 3 and 4 implement is listed: the cost parts, target kinds, filter fields and every decision kind', () => {
     // WP7: every cost part kind of the model and every target kind is payable / announceable; the value forms are listed in COST_FORMS.
     expect(byPrefix.get('cost')!.filter((c) => !c.includes('.')).sort()).toEqual([
-      'cost:action', 'cost:addMana' /* edh-mana-keywords-12, CR 702.24a */, 'cost:behold' /* FAST5X E11, CR 701.4a */, 'cost:chooseObject' /* std-costs-2, CR 601.2b */, 'cost:discard', 'cost:draw' /* edh-c-48, CR 702.24a */, 'cost:exileFrom', 'cost:exileTop' /* edh-d-74, CR 701.13a */, 'cost:flipCoin' /* edh-d-74, CR 705.1 */, 'cost:getCounters' /* FAST5X E27, CR 122.1f */, 'cost:manual', 'cost:mill', 'cost:moveCards' /* edh-d-54, CR 118.3 */, 'cost:oneOf' /* FAST5X E27, CR 601.2b */, 'cost:opponentGainsLife' /* edh-cast-14, CR 118.1 */, 'cost:payEnergy', 'cost:payLife', 'cost:putCounters', 'cost:putIntoLibrary' /* trek-9, CR 118.3, 401.4 */, 'cost:removeCounters', 'cost:returnToHand', 'cost:reveal', 'cost:revealChosen' /* std-combat-5, CR 608.2d */, 'cost:rollDie' /* edh-d-49, CR 706.2, 118.3 */,
+      'cost:action', 'cost:addMana' /* edh-mana-keywords-12, CR 702.24a */, 'cost:behold' /* FAST5X E11, CR 701.4a */, 'cost:chooseObject' /* std-costs-2, CR 601.2b */, 'cost:discard', 'cost:draw' /* edh-c-48, CR 702.24a */, 'cost:eachOtherGainsLife' /* edh-e-16, CR 118.1 */, 'cost:exileFrom', 'cost:exileTop' /* edh-d-74, CR 701.13a */, 'cost:flipCoin' /* edh-d-74, CR 705.1 */, 'cost:getCounters' /* FAST5X E27, CR 122.1f */, 'cost:manual', 'cost:mill', 'cost:moveCards' /* edh-d-54, CR 118.3 */, 'cost:oneOf' /* FAST5X E27, CR 601.2b */, 'cost:opponentGainsLife' /* edh-cast-14, CR 118.1 */, 'cost:payEnergy', 'cost:payLife', 'cost:putCounters', 'cost:putIntoLibrary' /* trek-9, CR 118.3, 401.4 */, 'cost:removeCounters', 'cost:returnToHand', 'cost:reveal', 'cost:revealChosen' /* std-combat-5, CR 608.2d */, 'cost:rollDie' /* edh-d-49, CR 706.2, 118.3 */,
       'cost:sacrifice', 'cost:tapPower', 'cost:tapUntapped',
       'cost:unattach' /* edh-top-15, CR 701.3d, 118.3 */,
       'cost:untapTapped' /* p2-cost-parts-1, CR 701.26b */,

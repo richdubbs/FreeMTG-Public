@@ -44,6 +44,8 @@ import { applyTaint, untaintedProgram } from '../taint';
 import { NUMBER_WORDS, type AnaphorInfo } from '../holes/core';
 import { castOnly, castSpellMarker, resolveAnaphor, withoutKey } from './anaphora';
 import { lowerProgram } from './index';
+import { resolveStaticLifeLost } from './edhd110'; // edh-d-110
+import { joinEdhD110 } from './join-edhd110'; // edh-d-110
 import { joinEdhV19RevealPut, joinEdhV19TapHumans, joinEdhV19XCap } from './join-edhv19';
 import { joinEdhN120AllChoseOtherwise, joinEdhN120NextEndOtherwise } from './join-edhn120'; // edh-next-120
 import { joinEdhN128 } from './join-edhn128'; // edh-next-128
@@ -57,11 +59,16 @@ import { joinEdhN140ReturnAsAura } from './join-edhn140'; // edh-next-140
 import { joinEdhN126Vault } from './join-edhn126';
 import { joinEdhN138TokensLifeInstead } from './join-edhn138'; // edh-next-138
 import { joinEdhD99 } from './join-edhd99'; // edh-d-99
+import { joinEdhE40 } from './join-edhe40'; // edh-e-40
+import { joinEdhE46 } from './join-edhe46'; // edh-e-46
 import { joinEdhN135Auction, joinEdhN135GuessKind, joinEdhN135GuessManaValue, joinEdhN135OpponentChoosesFromHandCastOne, joinEdhN135SearchRevealOpponentChooses, joinEdhN135SearchShuffleOneCastOthers } from './join-edhn135'; // edh-next-135
+import { joinEdhE6OpponentChoosesTopTwo, joinEdhE6RevealOpponentMayGive } from './join-edhe6'; // edh-e-6
 import { joinEdhN139WolvesTrade } from './join-edhn139'; // edh-next-139
 import { joinEdhN143WarpWorld } from './join-edhn143'; // edh-next-143
 import { joinEdhN144ChooseAndOr, joinEdhN144RepeatProcess, joinEdhN144SacrificeReveal } from './join-edhn144'; // edh-next-144
 import { joinEdhD101 } from './join-edhd101'; // edh-d-101
+import { joinEdhD106 } from './join-edhd106'; // edh-d-106
+import { joinEdhD108 } from './join-edhd108'; // edh-d-108
 import { eventMentions, headsOfFilter } from './scope';
 import type { Draft, ManualInfo, Mention, ModesDraft, Range, Rec, Unit } from './types';
 import type { UnitEnv } from './units';
@@ -220,6 +227,7 @@ function discourseOf(before: readonly Unit[], condition?: Rec): Discourse {
   let milled = false;
   let seen = false;
   let handLook = false;
+  let pileLook = false; // edhe35: a look at the other of two given piles (holes/core.ts#Discourse.pileLook)
   let chose = false;
   let chosenObject = false; // edh-next-60: a non-target choice of one object (holes/core.ts#Discourse.chosenObject)
   let revealed = false;
@@ -250,6 +258,7 @@ function discourseOf(before: readonly Unit[], condition?: Rec): Discourse {
       if (n['op'] === 'look' && at?.['ref'] === 'each' && isRec(at['filter']) && at['filter']['zone'] === 'hand') handLook = true;
       // edh-next-41 (CR 701.20a, 402.3; Mindclaw Shaman): the same for a REVEAL of a player's hand ("Target opponent reveals their hand. You may cast ... from among those cards")
       else if (n['op'] === 'reveal' && isRec(n['what']) && n['what']['ref'] === 'each' && isRec(n['what']['filter']) && n['what']['filter']['zone'] === 'hand' && Object.keys(n['what']['filter']).sort().join() === 'owner,zone') handLook = true;
+      else if (n['op'] === 'look' && at?.['ref'] === 'bound' && at['name'] === 'otherPile' && Object.keys(at).length === 2) pileLook = true; // edhe35 (CR 700.3, 701.20e): no group of library cards
       else if (n['op'] === 'look' || n['op'] === 'reveal') seen = true;
       if (n['op'] === 'chooseObjects' && n['as'] === 'chosen' && n['min'] === 1 && n['max'] === 1) chosenObject = true; // edh-next-60
       if (n['op'] === 'action' && n['action'] === 'bolster') chosenObject = true; // edh-d-89 (CR 701.39a): a bolster chooses one creature, "the chosen creature"
@@ -260,7 +269,7 @@ function discourseOf(before: readonly Unit[], condition?: Rec): Discourse {
   const linkedCond = before.length === 0 && condition !== undefined && condition['cond'] === 'compare' && JSON.stringify(condition).includes('"ref":"linked","link":"exiled"');
   const revealStays = revealed && !others && !drew;
   const revealDrawn = revealed && !others && drew; // trek-17
-  return { milled, seen, ...(searched ? { searched } : {}), ...(exiledTop ? { exiledTop } : {}), ...(revealedUntil ? { revealedUntil } : {}), ...(revealStays ? { revealStays } : {}), ...(revealDrawn ? { revealDrawn } : {}), ...(handLook ? { handLook } : {}), ...(chose ? { chose } : {}), ...(chosenObject ? { chosenObject } : {}), ...(linkedCond ? { linkedCond } : {}), ...(before.length === 0 ? { first: true } : {}) /* edh-next-139 */ };
+  return { milled, seen, ...(searched ? { searched } : {}), ...(exiledTop ? { exiledTop } : {}), ...(revealedUntil ? { revealedUntil } : {}), ...(revealStays ? { revealStays } : {}), ...(revealDrawn ? { revealDrawn } : {}), ...(handLook ? { handLook } : {}), ...(pileLook ? { pileLook } : {}), ...(chose ? { chose } : {}), ...(chosenObject ? { chosenObject } : {}), ...(linkedCond ? { linkedCond } : {}), ...(before.length === 0 ? { first: true } : {}) /* edh-next-139 */ };
 }
 
 /** "Choose one --" and friends (CR 700.2); null when the header is not one the model can state. */
@@ -370,7 +379,7 @@ function buildProgram(pieces: ProgramPiece[], face: FaceInfo, ue: UnitEnv, acc: 
   };
   const sequence = (ps: readonly ProgramPiece[], prior: readonly Unit[] = []): Unit[] => {
     const us: Unit[] = [];
-    for (const p of joinEdhN138TokensLifeInstead(joinEdhN128(joinEdhD99(joinEdhD92(joinEdhD85(joinEdhN125ThosePermanents(joinEdhN120NextEndOtherwise(joinEdhN120AllChoseOtherwise(joinEdhN123(joinEdhD46(joinEdhN72(joinEdhD88(joinEdhD37(joinEdhV46(joinEdhV102(joinEdhV19TapHumans(joinEdhN94TapAny(joinEdhN110ChoosePlayers(joinEdhV19RevealPut(joinEdhV19XCap(joinEdhN16(joinEdhP23(joinEdhCb7Gambit(joinEdhZones27(joinTrek20Vow(joinEdhT5(joinEdhZones18(joinCounterExileSuspend(joinControllersSearchPut(joinGroupMayElse(joinChooseKeywordGain(joinCopyExiledCast(joinThoseSpellsGain(joinGainsSuspend(joinSpeedFloor(joinFightsDifferent(joinPreventedThisWay(joinChosenFromOutside(joinRevealedByTheOther(joinRoundDown(joinAlternatingPicks(joinOnlyAttackers(joinYouChooseKeepFour(joinChoosesDestroyRest(joinEdhN105ExileThenReturn(joinEdhN119ControlThenExtraTurn(joinEdhN144SacrificeReveal(joinEdhN144RepeatProcess(joinEdhN144ChooseAndOr(joinEdhD89MeldEntersAttacking(joinEdhN126Vault(joinEdhN134ChooseThenExchange(joinEdhN142SkipChosen(joinEdhN142SearchGive(joinEdhD94(joinEdhN135Auction(joinEdhN135GuessManaValue(joinEdhN135GuessKind(joinEdhN135OpponentChoosesFromHandCastOne(joinEdhN135SearchRevealOpponentChooses(joinEdhN135SearchShuffleOneCastOthers(joinEdhN139WolvesTrade(joinEdhN143WarpWorld(joinEdhN140ReturnAsAura(joinEdhD91(joinEdhD101(ps))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) us.push(unitOf(p, [...prior, ...us]));
+    for (const p of joinEdhD106(joinEdhE40(joinEdhN138TokensLifeInstead(joinEdhN128(joinEdhE6OpponentChoosesTopTwo(joinEdhE6RevealOpponentMayGive(joinEdhD99(joinEdhD92(joinEdhD85(joinEdhN125ThosePermanents(joinEdhN120NextEndOtherwise(joinEdhN120AllChoseOtherwise(joinEdhN123(joinEdhD46(joinEdhN72(joinEdhD88(joinEdhD37(joinEdhV46(joinEdhV102(joinEdhV19TapHumans(joinEdhN94TapAny(joinEdhN110ChoosePlayers(joinEdhV19RevealPut(joinEdhV19XCap(joinEdhN16(joinEdhP23(joinEdhCb7Gambit(joinEdhZones27(joinTrek20Vow(joinEdhT5(joinEdhZones18(joinCounterExileSuspend(joinControllersSearchPut(joinGroupMayElse(joinChooseKeywordGain(joinCopyExiledCast(joinThoseSpellsGain(joinGainsSuspend(joinSpeedFloor(joinFightsDifferent(joinPreventedThisWay(joinChosenFromOutside(joinRevealedByTheOther(joinRoundDown(joinAlternatingPicks(joinOnlyAttackers(joinYouChooseKeepFour(joinChoosesDestroyRest(joinEdhN105ExileThenReturn(joinEdhN119ControlThenExtraTurn(joinEdhN144SacrificeReveal(joinEdhN144RepeatProcess(joinEdhN144ChooseAndOr(joinEdhD89MeldEntersAttacking(joinEdhN126Vault(joinEdhN134ChooseThenExchange(joinEdhN142SkipChosen(joinEdhN142SearchGive(joinEdhD94(joinEdhN135Auction(joinEdhN135GuessManaValue(joinEdhN135GuessKind(joinEdhN135OpponentChoosesFromHandCastOne(joinEdhN135SearchRevealOpponentChooses(joinEdhN135SearchShuffleOneCastOthers(joinEdhN139WolvesTrade(joinEdhN143WarpWorld(joinEdhN140ReturnAsAura(joinEdhD91(joinEdhD101(joinEdhD108(joinEdhE47b(joinEdhE47(joinEdhE46(joinEdhD110(ps)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) us.push(unitOf(p, [...prior, ...us]));
     // CLOUD std-fra (guard G10): a sentence-initial "Then if ..." that eff.stdfra.then.effects reads stays a sentence the parser does not understand where an "If you do"
     // sentence follows it (a conditional instruction is not an instruction done "you do": the "if you do" would read it)
     return us.map((u, i) => {
@@ -1080,6 +1089,20 @@ function joinPreventedThisWay<P extends { tokens: Tok[] }>(pieces: readonly P[])
       i++;
       continue;
     }
+    // edh-e-18 (CR 615.5, 615.7, 119.3; Candles' Glow): "Prevent the next 3 damage that would be dealt to any target this turn. You gain life equal to the damage prevented this way." is one
+    // prevention shield with its additional instruction (eff.edhe18.prevent.next.anyTarget.gainLife)
+    if (next !== undefined && /^prevent the next \S+ damage that would be dealt to [^.]* \.$/.test(words) && after === 'you gain life equal to the damage prevented this way .') {
+      out.push({ ...p, tokens: [...p.tokens, ...next.tokens] });
+      i++;
+      continue;
+    }
+    // edh-e-18 (CR 609.7a, 615.5, 615.7, 608.2h; Refraction Trap): "Prevent the next 3 damage that a source of your choice would deal to you and/or permanents you control this turn. If damage is
+    // prevented this way, ~ deals that much damage to any target." (eff.edhe18.prevent.next.fromSourceOfChoice.youAndPerms.thenDamage)
+    if (next !== undefined && /^prevent the next \S+ damage that a source of your choice would deal to [^.]* \.$/.test(words) && after.startsWith('if damage is prevented this way , ~ deals that much damage to ')) {
+      out.push({ ...p, tokens: [...p.tokens, ...next.tokens] });
+      i++;
+      continue;
+    }
     // edh-next-60 (CR 615.5, 615.7, 119.3; Awe Strike): "The next time target creature would deal damage this turn, prevent that damage. You gain life equal to the damage prevented this way."
     // is one prevention shield with its additional instruction (eff.edhn60.prevent.nextTime.objWouldDeal.gainLife)
     // edh-next-60 (Ria Ivor, Bane of Bladehold): "..., the next time target creature would deal combat damage to one or more players this combat, prevent that damage. If damage is prevented this way,
@@ -1093,6 +1116,29 @@ function joinPreventedThisWay<P extends { tokens: Tok[] }>(pieces: readonly P[])
     // edh-next-60 (CR 615.5, 603.12; Judgment of Alexander): "Prevent all damage that would be dealt to you this turn by sources your opponents control. Whenever damage from a creature is prevented
     // this way, each commander creature you control deals damage equal to its power to that creature." is one prevention with its additional instruction (eff.edhn60.prevent.toYou.byFilter.whenPrevented.eachDealsPower)
     if (next !== undefined && /^prevent all damage that would be dealt to you [^.]* by [^.]* \.$/.test(words) && after.startsWith('whenever damage from a creature is prevented this way , each ')) {
+      out.push({ ...p, tokens: [...p.tokens, ...next.tokens] });
+      i++;
+      continue;
+    }
+    // edh-d-103 (CR 615.5, 105.2, 603.12; Honorable Passage, Samite Ministration): a prevention from a source of your choice with an additional instruction about the damage of a source of a
+    // color: "... , prevent that damage. If damage from a red source is prevented this way, ~ deals that much damage to the source's controller." and "Prevent all damage that would be dealt
+    // to you this turn by a source of your choice. Whenever damage from a black or red source is prevented this way this turn, you gain that much life." (eff.edhd103.*): only those exact pairs
+    if (next !== undefined && /(^|, )the next time a source of your choice would deal damage to [^.,]* , prevent that damage \.$/.test(words)
+      && /^if damage from an? \S+ source is prevented this way , ~ deals that much damage to the source 's controller \.$/.test(after)) {
+      out.push({ ...p, tokens: [...p.tokens, ...next.tokens] });
+      i++;
+      continue;
+    }
+    // edh-d-103 (CR 615.5, 603.5; Channel Harm): "Prevent all damage that would be dealt to you and permanents you control this turn by sources you don't control. If damage is prevented this
+    // way, you may have ~ deal that much damage to target creature." (eff.edhd103.preventAll.youAndPerms.bySourcesNotYours.mayDamageBack)
+    if (next !== undefined && /^prevent all damage that would be dealt to you and permanents you control [^.,]* by sources you don't control \.$/.test(words)
+      && after.startsWith('if damage is prevented this way , you may have ~ deal that much damage to ')) {
+      out.push({ ...p, tokens: [...p.tokens, ...next.tokens] });
+      i++;
+      continue;
+    }
+    if (next !== undefined && /^prevent all damage that would be dealt to you [^.,]* by a source of your choice \.$/.test(words)
+      && /^whenever damage from a \S+ or \S+ source is prevented this way this turn , you gain that much life \.$/.test(after)) {
       out.push({ ...p, tokens: [...p.tokens, ...next.tokens] });
       i++;
       continue;
@@ -1430,6 +1476,45 @@ function joinEdhZones27<P extends { tokens: Tok[] }>(pieces: readonly P[]): P[] 
 }
 
 /**
+ * edh-e-47 (CR 701.8a, 701.19c, 608.2d; Porphyry Nodes): "Destroy the creature with the least power. It can't be regenerated. If two or more creatures are tied for least power, you
+ * choose one of them." is one instruction, the choice among the tied creatures and the destruction: the three sentences are joined, so one template reads them (eff.edhe47.destroy.leastPower.youChooseTie).
+ * Any other sentences are left as they are.
+ */
+function joinEdhE47<P extends { tokens: Tok[] }>(pieces: readonly P[]): P[] {
+  const out: P[] = [];
+  for (let i = 0; i < pieces.length; i++) {
+    const p = pieces[i]!;
+    const [b, c] = [pieces[i + 1], pieces[i + 2]];
+    if (b !== undefined && c !== undefined && norms(p.tokens) === 'destroy the creature with the least power .' && norms(b.tokens) === "it can't be regenerated ." && norms(c.tokens) === 'if two or more creatures are tied for least power , you choose one of them .') {
+      out.push({ ...p, tokens: [...p.tokens, ...b.tokens, ...c.tokens] });
+      i += 2;
+      continue;
+    }
+    out.push(p);
+  }
+  return out;
+}
+
+/**
+ * edh-e-47 (CR 701.6a, 608.2c; Fold into Aether): "Counter target spell. If that spell is countered this way, its controller may put a creature card from their hand onto the battlefield." is one
+ * instruction, the counter and what its controller may do when it was countered: the two sentences are joined, so one template reads them (eff.edhe47.counter.ifCountered.controllerMayPutFromHand).
+ */
+function joinEdhE47b<P extends { tokens: Tok[] }>(pieces: readonly P[]): P[] {
+  const out: P[] = [];
+  for (let i = 0; i < pieces.length; i++) {
+    const p = pieces[i]!;
+    const next = pieces[i + 1];
+    if (next !== undefined && norms(p.tokens) === 'counter target spell .' && norms(next.tokens).startsWith('if that spell is countered this way , its controller may put ') && norms(next.tokens).endsWith(' card from their hand onto the battlefield .')) {
+      out.push({ ...p, tokens: [...p.tokens, ...next.tokens] });
+      i++;
+      continue;
+    }
+    out.push(p);
+  }
+  return out;
+}
+
+/**
  * p2-damage-2 (CR 701.14a, 608.2d): "For each creature your opponents control, create a 4/4 ... token. Each of those tokens fights a different one of those
  * creatures." (Ezuri's Predation) is one instruction: "those creatures" are the creatures the first sentence counts and "those tokens" the tokens it creates, so the
  * sentence is joined to that exact next one and one template reads both (eff.p2damage2.forEach.token.fightsDifferent). Any other sentences are left as they are.
@@ -1556,12 +1641,17 @@ function sharedInstructionModes(header: readonly Tok[], instr: readonly Tok[], o
  * "Create a 3/1 red and white Human Warrior creature token with trample and haste.", the borrowed words placed at the bullet's start so the bullet is what the mode's sentence claims. Only
  * bullets of a power/toughness, one to three capitalized subtypes, and nothing or "with ..." after them; any other wording is null.
  */
-function tokenCharacteristicModes(header: readonly Tok[], instr: readonly Tok[], options: { tokens: Tok[] }[][]): { options: { tokens: Tok[] }[][] } | null {
-  if (norms(header) !== 'choose one at random .' || options.length < 2) return null;
+function tokenCharacteristicModes(header: readonly Tok[], instr: readonly Tok[], options: { tokens: Tok[] }[][]): { options: { tokens: Tok[] }[][]; unchosen?: 'turn' } | null {
+  // edh-d-106 (CR 700.2, 111.1, 603.3c; Genku, Future Shaper): also under "choose one that hasn't been chosen this turn." (`ModeSpec.unchosen` 'turn'), and with no color in the shared
+  // sentence ("Create a creature token with those characteristics."): each bullet then names its own color ("• 2/2 white Fox with vigilance."), one to two color words after the size
+  const unchosen = norms(header) === "choose one that hasn't been chosen this turn .";
+  if (!(unchosen || norms(header) === 'choose one at random .') || options.length < 2) return null;
   const words = instr.map((t) => t.norm);
   const m = /^create a ((?:[a-z]+ and )?[a-z]+) creature token with those characteristics \.$/.exec(words.join(' '));
-  if (m === null) return null;
-  const colorToks = instr.slice(2, 2 + m[1]!.split(' ').length);
+  const bare = words.join(' ') === 'create a creature token with those characteristics .';
+  if (m === null && !bare) return null;
+  if (bare) return ownColorTokenModes(instr, options, unchosen);
+  const colorToks = instr.slice(2, 2 + m![1]!.split(' ').length);
   const out: { tokens: Tok[] }[][] = [];
   for (const o of options) {
     const t = o.length === 1 ? o[0]!.tokens : undefined;
@@ -1577,7 +1667,34 @@ function tokenCharacteristicModes(header: readonly Tok[], instr: readonly Tok[],
     const noun = [instr[2 + colorToks.length]!, instr[3 + colorToks.length]!].map((x) => ({ ...x, start: t[k - 1]!.end, end: t[k - 1]!.end }));
     out.push([{ tokens: [...lead, pt, ...colors, ...subs, ...noun, ...t.slice(k)] }]);
   }
-  return { options: out };
+  return { options: out, ...(unchosen ? { unchosen: 'turn' as const } : {}) };
+}
+
+const TOKEN_COLOR_WORDS = new Set(['white', 'blue', 'black', 'red', 'green', 'colorless']);
+
+/**
+ * edh-d-106 (CR 700.2, 111.1, 111.4; Genku, Future Shaper): "Create a creature token with those characteristics." over bullets that each name a size, the token's own colors and its
+ * subtypes ("• 2/2 white Fox with vigilance.", "• 1/1 white and black Rat."): each mode is read as "Create a 2/2 white Fox creature token with vigilance.", the borrowed words placed at
+ * the bullet's start or after its subtypes. A bullet with no color word, a third color or anything else between the size and the subtypes is null.
+ */
+function ownColorTokenModes(instr: readonly Tok[], options: { tokens: Tok[] }[][], unchosen: boolean): { options: { tokens: Tok[] }[][]; unchosen?: 'turn' } | null {
+  const out: { tokens: Tok[] }[][] = [];
+  for (const o of options) {
+    const t = o.length === 1 ? o[0]!.tokens : undefined;
+    if (t === undefined || t.length < 4 || t[0]!.kind !== 'PT' || !(t[t.length - 1]!.norm === '.' || t[t.length - 1]!.kind === 'QUOTE')) return null;
+    let c = 1;
+    if (!(t[c]!.kind === 'WORD' && TOKEN_COLOR_WORDS.has(t[c]!.norm))) return null;
+    c++;
+    if (t[c]?.norm === 'and' && t[c + 1]?.kind === 'WORD' && TOKEN_COLOR_WORDS.has(t[c + 1]!.norm)) c += 2;
+    let k = c;
+    while (k < t.length - 1 && t[k]!.kind === 'WORD' && /^[A-Z]/.test(t[k]!.text) && k - c < 3) k++;
+    if (k === c || !(t[k]!.norm === 'with' || t[k]!.norm === '.')) return null;
+    const at = (x: Tok): Tok => ({ ...x, start: t[0]!.start, end: t[0]!.start });
+    const lead = [instr[0]!, instr[1]!].map(at);
+    const noun = [instr[2]!, instr[3]!].map((x) => ({ ...x, start: t[k - 1]!.end, end: t[k - 1]!.end }));
+    out.push([{ tokens: [...lead, ...t.slice(0, k), ...noun, ...t.slice(k)] }]);
+  }
+  return { options: out, ...(unchosen ? { unchosen: 'turn' as const } : {}) };
 }
 
 /**
@@ -1743,7 +1860,7 @@ function withModes(seg: AbilitySegment, pieces: Tok[][], face?: FaceInfo, labelF
     // std-costs-2 (CR 700.2, 115.1, 608.2c): "Choose up to two. Return those cards from your graveyard to your hand." over bullets that are only targets
     // edh-next-129 (CR 700.2, 111.1; Outlaws' Merriment): "choose one at random. Create a red and white creature token with those characteristics." over token characteristics
     const chars = tokenCharacteristicModes(pieces[0]!, pieces[1]!, options);
-    if (chars !== null) return { pieces: [], modes: { header: [span(pieces[0]!)[0], span(pieces[1]!)[1]], min: 1, max: 1, random: true, tokenChars: true, options: chars.options, ...withLabels } };
+    if (chars !== null) return { pieces: [], modes: { header: [span(pieces[0]!)[0], span(pieces[1]!)[1]], min: 1, max: 1, ...(chars.unchosen !== undefined ? { unchosen: chars.unchosen } : { random: true as const }), tokenChars: true, options: chars.options, ...withLabels } }; // edh-d-106: or one that hasn't been chosen this turn
     const shared = sharedInstructionModes(pieces[0]!, pieces[1]!, options);
     if (shared !== null) return { pieces: [], modes: { header: [span(pieces[0]!)[0], span(pieces[1]!)[1]], ...shared, shared: true, ...withLabels } };
     // std-blb (CR 700.2d): "Choose three. You may choose the same mode more than once." over bullets (the Confluences): the modes may repeat
@@ -1973,7 +2090,7 @@ const hasAddMana = (p: EffectProgram): boolean =>
  * there without a word, so such a mana ability is a manual one (WP23 review).
  */
 const onlyAddMana = (p: EffectProgram): boolean =>
-  p.modes === undefined && p.steps.length > 0 && p.steps.some((st) => plainAddMana(st) || manaBranch(st)) && p.steps.every((st) => plainAddMana(st) || selfCounters(st) || selfDamageToYou(st) || gainLifeYou(st) || gainLifeIfYouControl(st) /* edh-next-140 */ || youGetPlayerCounters(st) /* edh-next-140 */ || gainLifeOpponents(st) || loseLifeFixed(st) || selfSacrificeNoCounters(st) || selfNoUntapNext(st) || delayedDrawYou(st) || delayedSelfControlToOpponent(st) || manaBranch(st) || reflexiveAfterMana(st, p.steps) || selfManaColor(st, p.steps) || youRollOneDie(st) || handRevealChoice(st, p.steps) || nextSpellSunburst(st) || isNextCastRider(st));
+  p.modes === undefined && p.steps.length > 0 && p.steps.some((st) => plainAddMana(st) || manaBranch(st)) && p.steps.every((st) => plainAddMana(st) || selfCounters(st) || selfDamageToYou(st) || gainLifeYou(st) || gainLifeIfYouControl(st) /* edh-next-140 */ || damageIfYouControlNo(st) /* edh-e-21 */ || youGetPlayerCounters(st) /* edh-next-140 */ || gainLifeOpponents(st) || loseLifeFixed(st) || selfSacrificeNoCounters(st) || selfNoUntapNext(st) || delayedDrawYou(st) || delayedSelfControlToOpponent(st) || manaBranch(st) || reflexiveAfterMana(st, p.steps) || selfManaColor(st, p.steps) || youRollOneDie(st) || handRevealChoice(st, p.steps) || nextSpellSunburst(st) || isNextCastRider(st));
 /**
  * r3-cost (CR 605.3b, 603.12, 605.5a-like: "{T}, Exile a card from your graveyard: Add {R}. When you do, this creature deals 1 damage to each opponent.", Rubble Rouser):
  * a reflexive trigger of the mana the ability adds; the trigger is not a mana ability and goes on the stack the next time a player would receive priority
@@ -2056,6 +2173,17 @@ const youGetPlayerCounters = (st: EffectProgram['steps'][number]): boolean => {
   const x = st as { op: string; on?: unknown; kind?: unknown; count?: unknown; guard?: unknown; as?: unknown };
   return x.op === 'putCounters' && JSON.stringify(x.on) === '{"ref":"you"}' && typeof x.kind === 'string' && PLAYER_COUNTER_KINDS.has(x.kind) && typeof x.count === 'number' && x.count > 0 && x.guard === undefined && x.as === undefined
     && Object.keys(st).every((k) => ['op', 'on', 'kind', 'count', 'src', 'span'].includes(k));
+};
+/**
+ * edh-e-21 (CR 605.3b, 608.2c, 120.3; mirrors model/cap-walk.ts#nativeManaEffect; Tomb of Urami: "{T}: Add {B}. ~ deals 1 damage to you if you don't control an Ogre."): beside adding mana, the
+ * source deals a fixed amount of damage to its controller unless that player controls a permanent of one of the descriptions: an `if` with no else whose condition is the negation of
+ * "you control one" (youControlExists) and whose one instruction is selfDamageToYou's. Run like gainLifeIfYouControl: the resolver runs every step in order, the condition read as
+ * the ability resolves; the player activates it by hand.
+ */
+const damageIfYouControlNo = (st: EffectProgram['steps'][number]): boolean => {
+  if (st.op !== 'if' || st.guard !== undefined || (st as { as?: unknown }).as !== undefined || st.else !== undefined) return false;
+  const c = st.cond as { cond?: string; of?: unknown };
+  return c.cond === 'not' && youControlExists(c.of) && st.then.length === 1 && selfDamageToYou(st.then[0]!);
 };
 const gainLifeIfYouControl = (st: EffectProgram['steps'][number]): boolean => {
   if (st.op !== 'if' || st.guard !== undefined || (st as { as?: unknown }).as !== undefined || st.else !== undefined) return false;
@@ -2165,6 +2293,7 @@ const RESOLVED_DYNAMIC: ReadonlySet<string> = new Set([
   'commanderIdentity', // M11-4
   'couldProduce', // p2-mana-1: CR 106.7, gated by feature:mana.couldProduce
   'devotionColor', // p2-mana-2: CR 700.5, gated by feature:mana.devotionColor
+  'manaCostOf', // edh-e-21: CR 106.1, 202.1, gated by feature:mana.manaCostOf
 ]);
 const resolvedDynamic = (st: EffectProgram['steps'][number]): boolean => {
   const d = (st as { dynamic?: { kind?: unknown } }).dynamic;
@@ -2401,6 +2530,14 @@ function activated(seg: AbilitySegment, face: FaceInfo, ue: UnitEnv, acc: Acc): 
   if ('manual' in where) return manual(where.manual);
   if (wrapClash) return manual(`the keyword ${seg.wrapper!.keyword} gives this ability its restrictions, and the ability states restrictions of its own (CR 702.177a, 602.5b)`);
   if (typeof modal === 'string') return manual(modal);
+  // edh-d-106 (CR 107.3a, 602.2b, 700.2; Marath, Will of the Wild): "X can't be 0." printed after EVERY mode of a modal ability with X in its cost is the least X of the ability
+  // whatever mode is chosen (ActivatedAbilityDef.xMin, as std-rx12's sentence after the effect): each such last sentence is taken out of its mode. Only when every mode (two or
+  // more) ends with it, the cost has an X and no other sentence set a least X; a mode without it leaves the sentences where they are (manual).
+  const eachModeX = (o: { tokens: Tok[] }[]): boolean => o.length >= 2 && norms(o[o.length - 1]!.tokens) === "x can't be 0 .";
+  if (modal.modes !== undefined && fields.xMin === undefined && modal.pieces.length === 0 && modal.modes.options.length >= 2 && modal.modes.options.every(eachModeX) && /\{x\}/i.test(textAt(face, span(costToks)))) {
+    for (const o of modal.modes.options) claim(scratch, span(o.pop()!.tokens), 'consumed', 'activation-limit');
+    (fields as { xMin?: number }).xMin = 1;
+  }
   const built = buildProgram(modal.pieces.map((tokens) => ({ tokens })), face, ue, scratch, { ...(modal.modes ? { modes: modal.modes } : {}), mentions: costMentions(cost.cost, face) });
   for (const m of cost.manual) scratch.diagnostics.push({ level: 'manual', code: 'no-template', message: `cost: ${m.reason}: "${textAt(face, m.range)}"`, range: m.range });
   if (cost.understood === 0 && !built.understood) return manual(cost.manual[0]?.reason ?? 'not understood');
@@ -2695,10 +2832,19 @@ function otherThanEventSubject(value: unknown, trigger: TriggerDef, face: Pick<F
   const p = trigger.on.length === 1 ? trigger.on[0]! : undefined;
   if (p?.ev !== 'zoneChange' || p.to !== 'battlefield' || p.from !== undefined || p.subject.self === true || p.subject.other === true) return value;
   const subjectSubtypes = p.subject.subtypes ?? [];
-  if (subjectSubtypes.length === 0) return value;
+  // edh-e-58 (CR 603.4, 608.2; Portcullis, rulings 2004-10-04): and by card type when the subject names no subtype ("Whenever a creature enters, if there are two or more other creatures on the
+  // battlefield"): the creature that entered is not counted, whatever the source is, as long as the source's own face could not be one of those types (an artifact, never a creature)
+  const subjectTypes = subjectSubtypes.length === 0 ? (p.subject.types ?? []) : [];
+  if (subjectSubtypes.length === 0 && subjectTypes.length === 0) return value;
   return rewrite(value, (node) => {
     if (node['other'] !== true || node['not'] !== undefined || node['is'] !== undefined || node['anyOf'] !== undefined) return undefined;
     const subs = Array.isArray(node['subtypes']) ? (node['subtypes'] as string[]) : [];
+    if (subjectTypes.length > 0) {
+      const types = Array.isArray(node['types']) ? (node['types'] as string[]) : [];
+      if (subs.length > 0 || types.length === 0 || !types.every((x) => subjectTypes.includes(x)) || types.some((x) => face.selfHeads.includes(x.toLowerCase()))) return undefined;
+      const { other: _o, ...restT } = node;
+      return { ...restT, not: { is: { ref: 'event', role: 'subject' } } };
+    }
     if (subs.length === 0 || !subs.every((x) => subjectSubtypes.includes(x)) || subs.some((x) => face.selfHeads.includes(x.toLowerCase()))) return undefined;
     const { other: _other, ...rest } = node;
     return { ...rest, not: { is: { ref: 'event', role: 'subject' } } };
@@ -3272,7 +3418,9 @@ function staticAbilityBase(seg: AbilitySegment, face: FaceInfo, ue: UnitEnv, acc
     const exertIt = r1.ok && leftoverMarker(r1.value) === '$anaphor' && JSON.stringify(r1.value).includes('"rule":"mayExertAsAttacks"') ? resolveStaticIt(r1.value) : null;
     // edh-zones-16 (CR 608.2c; Abundance): and the "that card" / "all other cards revealed this way" of the sentence after a replacement's reveal (lower/static-anaphora.ts)
     const insteadReveal = r1.ok && exertIt === null && leftoverMarker(r1.value) === '$anaphor' ? resolveInsteadReveal(r1.value) : null;
-    const r = r1.ok && exertIt !== null ? { ...r1, value: exertIt } : r1.ok && insteadReveal !== null ? { ...r1, value: insteadReveal } : r1;
+    // edh-d-110 (CR 119.3, 608.2c, 603.7a; Chancellor of the Dross): and "the life lost this way" in the body of a pregame delayed trigger (lower/edhd110.ts)
+    const lifeLost = r1.ok && exertIt === null && insteadReveal === null && leftoverMarker(r1.value) === '$step' ? resolveStaticLifeLost(r1.value) : null;
+    const r = r1.ok && exertIt !== null ? { ...r1, value: exertIt } : r1.ok && insteadReveal !== null ? { ...r1, value: insteadReveal } : r1.ok && lifeLost !== null ? { ...r1, value: lifeLost } : r1;
     const lv = r.ok && leftoverMarker(r.value) === null ? abilityLevel(r.value) : null;
     if (r.ok && lv !== null && isStaticEffects(lv.effects)) {
       use(acc, r.d.templatesUsed, r.d.experimental);

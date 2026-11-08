@@ -1,0 +1,801 @@
+[
+  {
+    "id": "eff.edhe18.prevent.next.anyTarget.bySourceOfChoice",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 609.7a",
+      "CR 615.1",
+      "CR 615.7",
+      "CR 611.2a"
+    ],
+    "pattern": "prevent the next {n:Qty} damage that would be dealt to {r:AnyTarget} {d:Dur} by a source of your choice",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "zone": [
+              "battlefield",
+              "stack",
+              "command"
+            ]
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "damageSource": true,
+        "as": "damageSource"
+      },
+      {
+        "op": "effect",
+        "duration": "$d",
+        "effects": [
+          {
+            "s": "replace",
+            "replaces": {
+              "ev": "damage",
+              "source": {
+                "is": {
+                  "ref": "bound",
+                  "name": "damageSource"
+                }
+              },
+              "recipient": {
+                "object": {
+                  "is": "$r"
+                },
+                "player": "$r"
+              }
+            },
+            "body": {
+              "b": "prevent",
+              "amount": "$n"
+            },
+            "shield": {
+              "uses": "all"
+            }
+          }
+        ]
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "prevent",
+      "next",
+      "would",
+      "choice"
+    ],
+    "examples": [
+      {
+        "text": "Prevent the next 4 damage that would be dealt to any target this turn by a source of your choice."
+      },
+      {
+        "text": "Prevent the next 6 damage that would be dealt to any target this turn by a source of your choice."
+      }
+    ],
+    "counterExamples": [
+      "Prevent the next 4 damage that would be dealt to any target by a source of your choice.",
+      "Prevent the next 4 damage that would be dealt to any target this turn by a source you control.",
+      "Prevent the next 14 damage that would be dealt to any target this turn."
+    ]
+  },
+  {
+    "id": "eff.edhe18.prevent.next.anyTarget.gainLife",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 615.1",
+      "CR 615.5",
+      "CR 615.7",
+      "CR 119.3"
+    ],
+    "pattern": "prevent the next {n:Qty} damage that would be dealt to {r:AnyTarget} {d:Dur} . you gain life equal to the damage prevented this way",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "recipient": {
+              "object": {
+                "is": "$r"
+              },
+              "player": "$r"
+            }
+          },
+          "body": {
+            "b": "prevent",
+            "amount": "$n",
+            "then": [
+              {
+                "op": "gainLife",
+                "who": {
+                  "ref": "you"
+                },
+                "amount": {
+                  "q": "preventedAmount"
+                }
+              }
+            ]
+          },
+          "shield": {
+            "uses": "all"
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "prevent",
+      "next",
+      "would",
+      "this way"
+    ],
+    "examples": [
+      {
+        "text": "Prevent the next 4 damage that would be dealt to any target this turn. You gain life equal to the damage prevented this way."
+      },
+      {
+        "text": "Prevent the next 2 damage that would be dealt to any target this turn. You gain life equal to the damage prevented this way."
+      }
+    ],
+    "counterExamples": [
+      "Prevent the next 4 damage that would be dealt to any target. You gain life equal to the damage prevented this way.",
+      "Prevent the next 4 damage that would be dealt to any target this turn. You gain 4 life.",
+      "Prevent the next 4 damage that would be dealt to any target this turn. Target player gains life equal to the damage prevented this way."
+    ],
+    "priority": 2
+  },
+  {
+    "id": "eff.edhe18.redirect.all.bySourceOfChoice.obj",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 609.7a",
+      "CR 614.9",
+      "CR 611.2a"
+    ],
+    "pattern": "all damage that would be dealt {d:Dur} to {o:Obj} by a source of your choice is dealt to {t:Obj} instead",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "zone": [
+              "battlefield",
+              "stack",
+              "command"
+            ]
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "damageSource": true,
+        "as": "damageSource"
+      },
+      {
+        "op": "effect",
+        "duration": "$d",
+        "effects": [
+          {
+            "s": "replace",
+            "replaces": {
+              "ev": "damage",
+              "source": {
+                "is": {
+                  "ref": "bound",
+                  "name": "damageSource"
+                }
+              },
+              "recipient": {
+                "object": {
+                  "is": "$o"
+                }
+              }
+            },
+            "body": {
+              "b": "redirect",
+              "to": "$t"
+            }
+          }
+        ]
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "all",
+      "would",
+      "instead",
+      "choice"
+    ],
+    "examples": [
+      {
+        "text": "All damage that would be dealt this turn to target creature an opponent controls by a source of your choice is dealt to another target creature instead."
+      },
+      {
+        "text": "All damage that would be dealt this turn to target Wizard by a source of your choice is dealt to another target creature instead."
+      }
+    ],
+    "counterExamples": [
+      "All damage that would be dealt to target creature an opponent controls by a source of your choice is dealt to another target creature instead.",
+      "All damage that would be dealt this turn to target creature an opponent controls by a source of your choice is dealt to another target creature.",
+      "All damage that would be dealt this turn to target creature an opponent controls by a source you control is dealt to another target creature instead."
+    ]
+  },
+  {
+    "id": "eff.edhe18.redirect.next.fromSourceOfChoice.youAndPerms",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 609.7a",
+      "CR 614.9",
+      "CR 615.7",
+      "CR 611.2a"
+    ],
+    "pattern": "the next {n:Qty} damage that a source of your choice would deal to you and/or permanents you control {d:Dur} is dealt to {t:Recipient} instead",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "zone": [
+              "battlefield",
+              "stack",
+              "command"
+            ]
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "damageSource": true,
+        "as": "damageSource"
+      },
+      {
+        "op": "effect",
+        "duration": "$d",
+        "effects": [
+          {
+            "s": "replace",
+            "replaces": {
+              "ev": "damage",
+              "source": {
+                "is": {
+                  "ref": "bound",
+                  "name": "damageSource"
+                }
+              },
+              "recipient": {
+                "player": "you",
+                "object": {
+                  "controller": "you"
+                }
+              }
+            },
+            "body": {
+              "b": "redirect",
+              "to": "$t",
+              "amount": "$n"
+            },
+            "shield": {
+              "uses": "all",
+              "amount": "$n"
+            }
+          }
+        ]
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "next",
+      "would",
+      "instead",
+      "choice"
+    ],
+    "examples": [
+      {
+        "text": "The next 4 damage that a source of your choice would deal to you and/or permanents you control this turn is dealt to any target instead."
+      },
+      {
+        "text": "The next 1 damage that a source of your choice would deal to you and/or permanents you control this turn is dealt to target creature instead."
+      }
+    ],
+    "counterExamples": [
+      "The next 4 damage that a source of your choice would deal to you and/or permanents you control is dealt to any target instead.",
+      "The next 4 damage that a source of your choice would deal to you this turn is dealt to any target instead.",
+      "The next 4 damage that a source you control would deal to you and/or permanents you control this turn is dealt to any target instead."
+    ]
+  },
+  {
+    "id": "eff.edhe18.prevent.all.twoGroupsWould.dur",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 615.1a",
+      "CR 611.2a",
+      "CR 120.2"
+    ],
+    "pattern": "prevent all damage that {f:Filter} and {g:Filter} would deal {d:Dur}",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "source": {
+              "anyOf": [
+                "$f",
+                "$g"
+              ]
+            }
+          },
+          "body": {
+            "b": "prevent",
+            "amount": "all"
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "prevent",
+      "all",
+      "would"
+    ],
+    "examples": [
+      {
+        "text": "Prevent all damage that green sources and blue sources would deal this turn."
+      },
+      {
+        "text": "Prevent all damage that white creatures and artifact creatures would deal this turn."
+      }
+    ],
+    "counterExamples": [
+      "Prevent all damage that green sources would deal this turn.",
+      "Prevent all combat damage that green sources and blue sources would deal this turn.",
+      "Prevent all damage that green sources and blue sources would be dealt this turn."
+    ]
+  },
+  {
+    "id": "eff.edhe18.prevent.next.fromSourceOfChoice.youAndPerms.thenDamage",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 609.7a",
+      "CR 615.1a",
+      "CR 615.5",
+      "CR 615.7",
+      "CR 120.3",
+      "CR 608.2h"
+    ],
+    "pattern": "prevent the next {n:Qty} damage that a source of your choice would deal to you and/or permanents you control {d:Dur} . if damage is prevented this way , ~ deals that much damage to {t:Recipient}",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "zone": [
+              "battlefield",
+              "stack",
+              "command"
+            ]
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "damageSource": true,
+        "as": "damageSource"
+      },
+      {
+        "op": "effect",
+        "duration": "$d",
+        "effects": [
+          {
+            "s": "replace",
+            "replaces": {
+              "ev": "damage",
+              "source": {
+                "is": {
+                  "ref": "bound",
+                  "name": "damageSource"
+                }
+              },
+              "recipient": {
+                "player": "you",
+                "object": {
+                  "controller": "you"
+                }
+              }
+            },
+            "body": {
+              "b": "prevent",
+              "amount": "$n",
+              "then": [
+                {
+                  "op": "damage",
+                  "source": {
+                    "ref": "self"
+                  },
+                  "to": "$t",
+                  "amount": {
+                    "q": "preventedAmount"
+                  }
+                }
+              ]
+            },
+            "shield": {
+              "uses": "all"
+            }
+          }
+        ]
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "prevent",
+      "next",
+      "would",
+      "choice",
+      "if",
+      "this way",
+      "that much"
+    ],
+    "examples": [
+      {
+        "text": "Prevent the next 5 damage that a source of your choice would deal to you and/or permanents you control this turn. If damage is prevented this way, ~ deals that much damage to any target."
+      },
+      {
+        "text": "Prevent the next 2 damage that a source of your choice would deal to you and/or permanents you control this turn. If damage is prevented this way, ~ deals that much damage to target creature."
+      }
+    ],
+    "counterExamples": [
+      "Prevent the next 5 damage that would be dealt to you and/or permanents you control this turn. If damage is prevented this way, ~ deals that much damage to any target.",
+      "Prevent the next 5 damage that a source of your choice would deal to you and/or permanents you control this turn. ~ deals that much damage to any target.",
+      "Prevent the next 5 damage that a source of your choice would deal to you this turn. If damage is prevented this way, ~ deals that much damage to any target."
+    ]
+  },
+  {
+    "id": "eff.edhe18.prevent.all.toObj.dur.byFilter",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 615.1a",
+      "CR 611.2a",
+      "CR 120.3",
+      "CR 109.4"
+    ],
+    "pattern": "prevent all damage that would be dealt to {o:Obj} {d:Dur} by {g:Filter}",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "source": "$g",
+            "recipient": {
+              "object": {
+                "is": "$o"
+              }
+            }
+          },
+          "body": {
+            "b": "prevent",
+            "amount": "all"
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "prevent",
+      "all",
+      "would"
+    ],
+    "examples": [
+      {
+        "text": "Prevent all damage that would be dealt to target creature this turn by white sources."
+      },
+      {
+        "text": "Prevent all damage that would be dealt to target creature you control this turn by colorless sources."
+      }
+    ],
+    "counterExamples": [
+      "Prevent all damage that would be dealt to target creature by white sources.",
+      "Prevent all damage that would be dealt to target creature this turn by a source of your choice.",
+      "Prevent all damage that would be dealt to target creature you control this turn."
+    ]
+  },
+  {
+    "id": "sta.edhe18.asLongAs.redirectAllToYouBy.toObj",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 614.9",
+      "CR 614.1a",
+      "CR 604.1",
+      "CR 506.4",
+      "CR 120.3"
+    ],
+    "pattern": "as long as {c:Cond} , all damage that would be dealt to you by {g:Filter} is dealt to {t:Obj} instead",
+    "build": {
+      "kind": "static",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "source": "$g",
+            "recipient": {
+              "player": "you"
+            }
+          },
+          "body": {
+            "b": "redirect",
+            "to": "$t"
+          },
+          "condition": "$c"
+        }
+      ]
+    },
+    "consumes": [
+      "as long as",
+      "all",
+      "would",
+      "instead"
+    ],
+    "examples": [
+      {
+        "text": "As long as this creature is untapped, all damage that would be dealt to you by attacking creatures is dealt to this creature instead."
+      },
+      {
+        "text": "As long as you control a Forest, all damage that would be dealt to you by red creatures is dealt to this creature instead."
+      }
+    ],
+    "counterExamples": [
+      "As long as this creature is untapped, all combat damage that would be dealt to you by attacking creatures is dealt to this creature instead.",
+      "As long as this creature is untapped, all damage that would be dealt to you by attacking creatures is dealt to this creature.",
+      "As long as this creature is untapped, all damage that would be dealt to creatures you control by attacking creatures is dealt to this creature instead."
+    ]
+  },
+  {
+    "id": "sta.edhe18.asLongAs.redirectAllCombatToYouBy.toObj",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 614.9",
+      "CR 614.1a",
+      "CR 604.1",
+      "CR 506.4",
+      "CR 120.3"
+    ],
+    "pattern": "as long as {c:Cond} , all combat damage that would be dealt to you by {g:Filter} is dealt to {t:Obj} instead",
+    "build": {
+      "kind": "static",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "combat": true,
+            "source": "$g",
+            "recipient": {
+              "player": "you"
+            }
+          },
+          "body": {
+            "b": "redirect",
+            "to": "$t"
+          },
+          "condition": "$c"
+        }
+      ]
+    },
+    "consumes": [
+      "as long as",
+      "all",
+      "would",
+      "instead"
+    ],
+    "examples": [
+      {
+        "text": "As long as this creature is untapped, all combat damage that would be dealt to you by attacking creatures is dealt to this creature instead."
+      },
+      {
+        "text": "As long as you control a Forest, all combat damage that would be dealt to you by red creatures is dealt to this creature instead."
+      }
+    ],
+    "counterExamples": [
+      "As long as this creature is untapped, all damage that would be dealt to you by attacking creatures is dealt to this creature instead.",
+      "As long as this creature is untapped, all combat damage that would be dealt to you by attacking creatures is dealt to this creature.",
+      "As long as this creature is untapped, all combat damage that would be dealt to creatures you control by attacking creatures is dealt to this creature instead."
+    ]
+  },
+  {
+    "id": "eff.edhe18.redirect.allCombat.toYouBy.dur",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 614.9",
+      "CR 611.2a",
+      "CR 506.4",
+      "CR 120.3"
+    ],
+    "pattern": "all combat damage that would be dealt to you by {g:Filter} {d:Dur} is dealt to {t:Obj} instead",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "combat": true,
+            "source": "$g",
+            "recipient": {
+              "player": "you"
+            }
+          },
+          "body": {
+            "b": "redirect",
+            "to": "$t"
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "all",
+      "would",
+      "instead"
+    ],
+    "examples": [
+      {
+        "text": "{T}: All combat damage that would be dealt to you by attacking creatures this turn is dealt to this creature instead."
+      },
+      {
+        "text": "{1}: All combat damage that would be dealt to you by green creatures this turn is dealt to target creature you control instead."
+      }
+    ],
+    "counterExamples": [
+      "{T}: All damage that would be dealt to you by attacking creatures this turn is dealt to this creature instead.",
+      "{T}: All combat damage that would be dealt to you by attacking creatures is dealt to this creature instead.",
+      "{T}: All combat damage that would be dealt to you by attacking creatures this turn is dealt to this creature."
+    ]
+  },
+  {
+    "id": "eff.edhe18.redirect.all.byObj.dur",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 614.9",
+      "CR 611.2a",
+      "CR 120.3",
+      "CR 115.1"
+    ],
+    "pattern": "all damage that would be dealt {d:Dur} by {o:Obj} is dealt to {t:Player} instead",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "source": {
+              "is": "$o"
+            }
+          },
+          "body": {
+            "b": "redirect",
+            "to": "$t"
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "all",
+      "would",
+      "instead"
+    ],
+    "examples": [
+      {
+        "text": "All damage that would be dealt this turn by target instant spell is dealt to that spell's controller instead."
+      },
+      {
+        "text": "All damage that would be dealt this turn by target creature is dealt to you instead."
+      }
+    ],
+    "counterExamples": [
+      "All damage that would be dealt by target creature is dealt to you instead.",
+      "All damage that would be dealt this turn by target creature is dealt to you.",
+      "All combat damage that would be dealt this turn by target creature is dealt to you instead."
+    ]
+  },
+  {
+    "id": "sta.edhe18.prevent.all.toEnchanted.byFilter",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 615.1a",
+      "CR 303.4",
+      "CR 120.3",
+      "CR 614.12"
+    ],
+    "pattern": "prevent all damage that would be dealt to enchanted creature by {g:Filter}",
+    "build": {
+      "kind": "static",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "source": "$g",
+            "recipient": {
+              "object": {
+                "is": {
+                  "ref": "attachedTo"
+                }
+              }
+            }
+          },
+          "body": {
+            "b": "prevent",
+            "amount": "all"
+          }
+        }
+      ]
+    },
+    "consumes": [
+      "all",
+      "would"
+    ],
+    "examples": [
+      {
+        "text": "Prevent all damage that would be dealt to enchanted creature by green sources."
+      },
+      {
+        "text": "Prevent all damage that would be dealt to enchanted creature by Elves you control."
+      }
+    ],
+    "counterExamples": [
+      "Prevent all damage that would be dealt to enchanted creature by green sources this turn.",
+      "Prevent all damage that would be dealt to you by green sources.",
+      "Prevent all combat damage that would be dealt to enchanted creature by green sources."
+    ]
+  }
+]

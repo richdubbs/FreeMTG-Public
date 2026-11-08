@@ -139,7 +139,7 @@ export function resolveAnaphor(a: AnaphorInfo, mentions: readonly Mention[]): Re
   // the same referent reached twice (a target that a later step also touched) is one candidate
   const seen = new Map<string, Mention>();
   // edh-zones-16: a player named twice by the same reference (the opponent who controls a target and the player a reveal until of that target's controller is the instruction of) is one candidate
-  for (const h of hits) seen.set(JSON.stringify(h.ref) + (h.sort === 'player' && h.origin !== 'opaque' ? '' : h.origin === 'step' ? `@${(h as StepMention).path}#${h.unit}` : h.origin === 'opaque' ? `#${h.unit}` : ''), h);
+  for (const h of hits) seen.set(JSON.stringify(h.ref) + (h.sort === 'player' && h.origin !== 'opaque' ? '' : h.origin === 'step' ? `@${(h as StepMention).path}#${h.unit}` : h.origin === 'opaque' ? `#${h.unit}` : h.movedBy !== undefined && h.origin === 'event' ? '@moved' /* edh-e-58: the event object an earlier instruction moved is no second reach of the same reference as the delayed trigger's own event object */ : ''), h);
   const uniq = [...seen.values()];
   if (uniq.some((m) => m.origin === 'opaque')) return { ok: false, count: uniq.length, opaque: true };
   // edh-zones-9 (CR 608.2c; Sword of Hearth and Home): "both cards" names exactly two single cards that earlier instructions produced; with any other number of candidates it is unresolved
@@ -149,6 +149,12 @@ export function resolveAnaphor(a: AnaphorInfo, mentions: readonly Mention[]): Re
     if (singles.length !== 2) return { ok: false, count: singles.length };
     const [x, y] = singles as [Mention, Mention];
     return { ok: true, mention: { ...y, number: 'plural', heads: x.heads.filter((h) => y.heads.includes(h)), ref: { ref: 'union', of: [clone(x.ref), clone(y.ref)] }, bindKey: 'both', parts: [x, y] } };
+  }
+  // trek-23 (CR 608.2c, 406.1; Vulcan Mind-Meld): "for each card exiled this way" after several instructions that each exiled cards names every card they exiled: two or more
+  // candidates, each the result of an instruction of this ability (no target, event object, cost or opaque mention among them), are one group, the union of their results
+  if (a.every === true && uniq.length >= 2 && uniq.every((m) => m.origin === 'step' && m.linked !== true && m.fallback !== true)) {
+    const [first, ...more] = uniq as [Mention, ...Mention[]];
+    return { ok: true, mention: { ...first, number: 'plural', heads: first.heads.filter((h) => more.every((x) => x.heads.includes(h))), ref: { ref: 'union', of: uniq.map((m) => clone(m.ref)) }, bindKey: 'both', parts: uniq } };
   }
   // PUSH1 T2: a fallback mention (the object an activation cost names) is a candidate only when nothing else is
   // LNK1: ... and the player another ability targeted (Mention.linked, CR 607.1) only when nothing of this ability is, not even a fallback
@@ -165,6 +171,7 @@ export function resolveAnaphor(a: AnaphorInfo, mentions: readonly Mention[]): Re
   // p2-refs-2: ~ named only by a condition about its own cast (Mention.condSelf) is a candidate only when nothing else is
   // edh-perms-12 (CR 201.5, 115.1; Phelia): ... and so is the object of its own event that leaves it where it is ('selfObject': "Whenever ~ attacks"), for a bare pronoun after a
   // target: "exile up to one other target nonland permanent. ... If it entered under your control" is the target, the permanent itself would be "~" or "this creature"
+  const revealedTop = own.filter((m) => m.origin === 'step' && m.fallback !== true && m.selfEntered !== true && m.number === 'singular' && m.sort === 'object' && (m.verbs ?? []).includes('revealed') && (m.verbs ?? []).includes('seen') && m.heads.includes('card')).length === 1; // edh-e-10
   const revealedChoice = own.some((m) => m.origin === 'step' && m.fallback !== true && m.selfEntered !== true && (m.verbs ?? []).includes('chosen') && (m.verbs ?? []).includes('revealed'));
   const chosenExiled = own.filter((m) => m.origin === 'step' && m.fallback !== true && m.selfEntered !== true && m.number === 'singular' && m.sort === 'object' && (m.verbs ?? []).includes('chosen') && isRec(m.ref) && m.ref['ref'] === 'bound' && m.ref['name'] === 'exiled').length === 1; // edh-d-66
   const demote = (m: Mention): boolean => (m.selfEntered === true && (a.head !== undefined || targeted)) || (m.enteredObject === true && a.head !== undefined && a.text.startsWith('that ') && own.some((x) => x.origin === 'target' && x.onBattlefield === true)) || m.condSelf === true || (targeted && m.selfObject === true && m.origin === 'event')
@@ -175,6 +182,9 @@ export function resolveAnaphor(a: AnaphorInfo, mentions: readonly Mention[]): Re
     // edh-d-66 (CR 608.2c, 601.2i; The Master, Formed Anew): "When you cast this spell, you may exile a creature you control and put a takeover counter on it.": a bare "it" after an instruction
     // that chose and exiled an object of the ability is that object, never the spell the cast trigger is about (Oracle says "that spell" or "this spell" for the spell)
     || (a.head === undefined && a.text === 'it' && m.origin === 'event' && chosenExiled && isRec(m.ref) && m.ref['ref'] === 'event' && m.ref['role'] === 'spell')
+    // edh-e-10 (CR 608.2c, 701.20a; Lost in the Woods, Hans Eriksson, Arbiter of the Ideal): "Whenever a creature attacks you, reveal the top card of your library. If it's a Forest card, remove that creature
+    // from combat.": a bare "it" after the reveal of exactly one top card is that card (Oracle names the creature "that creature"); the creature the trigger's event is about is no candidate
+    || (a.head === undefined && a.text === 'it' && m.origin === 'event' && revealedTop && isRec(m.ref) && (m.ref['role'] === 'subject' || m.ref['role'] === 'attacker'))
 ;
   const demoted = own.filter((m) => m.fallback !== true && demote(m));
   const primary = own.filter((m) => m.fallback !== true && !demote(m));
@@ -550,6 +560,9 @@ function bindMoved(m: Mention, d: Draft): Rec | null {
   return { ref: 'bound', name: at.step['as'] };
 }
 
+/** edh-d-104: the card types of a permanent face (lower/mentions.ts has its own set). */
+const SELF_PERMANENT_HEADS: readonly string[] = ['artifact', 'battle', 'creature', 'enchantment', 'land', 'planeswalker'];
+
 /**
  * Paths (in `rewrite`'s scheme) of the anaphor markers that are what a step acts on, not a property read ("return it" vs "its controller"); the object an
  * `effect` step's effects apply to ("it gets +2/+2") acts on it too (mentions.ts#actedOn, WP21 review).
@@ -914,6 +927,13 @@ function sentenceReferences(u: Unit, objectsOnly = false): Set<string> {
   visit([u.steps], (n) => { if (n['d'] === 'whileObject') whileObject = true; });
   const comma = whileObject && w[0] === 'for' && w[1] === 'as' && w[2] === 'long' && w[3] === 'as' && w[4] === 'that' ? w.indexOf(',') : -1;
   if (comma > 0) return referenceWords(toks.slice(comma + 1), objectsOnly);
+  // edh-e-2 (CR 611.2b; Rootwater Matriarch): the same for a trailing duration, "Gain control of target creature for as long as that creature is enchanted.": the demonstrative
+  // after "for as long as" is the duration's own object (parser/holes/dur.ts `whileObject`), resolved there; its words (up to the next comma or the end) are no second reference
+  const trail = whileObject && comma < 0 ? w.findIndex((x, i) => i > 0 && x === 'for' && w[i + 1] === 'as' && w[i + 2] === 'long' && w[i + 3] === 'as' && w[i + 4] === 'that') : -1;
+  if (trail > 0) {
+    const end = w.indexOf(',', trail);
+    return referenceWords(end < 0 ? toks.slice(0, trail) : [...toks.slice(0, trail), ...toks.slice(end)], objectsOnly);
+  }
   for (let i = 0; exiledFor && i + 2 < w.length; i++) {
     if (w[i] !== 'as' || w[i + 1] !== 'long' || w[i + 2] !== 'as') continue;
     const s = EXILED_SUBJECTS.find((x) => x.every((y, k) => w[i + 3 + k] === y) && w[i + 3 + x.length] === 'exiled');
@@ -1330,6 +1350,18 @@ function resolveIn(value: unknown, mentions: readonly Mention[], u: Unit, d: Dra
     // edh-perms-14 (CR 301.5, 303.4, 701.3a; Cori-Steel Cutter: "create a Monk token. You may attach this Equipment to it."): what an attachment is attached to is a permanent, so a spell or
     // an ability on the stack (the spell a cast trigger is about) is no antecedent of the pronoun at the `to` of an attach
     if (acting.has(path) && path.endsWith('/to') && stepAt(value, path)?.['op'] === 'attach') pool = pool.filter((m) => m.stackObject !== true && !(m.origin === 'event' && isRec(m.ref) && m.ref['ref'] === 'event' && m.ref['role'] === 'spell'));
+    // edh-d-104 (CR 305.1, 601.2a, 400.7; Daredevil, Fearless Fighter: "exile the top card of your library. ~ deals damage to you equal to that card's mana value. You may play it this turn."):
+    // what a play or cast permission names is a card, never the permanent itself where it is (only a card can be played or cast): only a tie-break, when more than one candidate is left
+    // and one of them is the object itself on the battlefield, unmoved (a permanent face: ~, or the trigger's own object, "~ attacks")
+    const permitAt = /\/effects\/(\d+)\/of\/is$/.exec(path);
+    if (acting.has(path) && permitAt !== null && a.head === undefined && stepAt(value, path)?.['op'] === 'effect' && SELF_PERMANENT_HEADS.some((h) => d.selfHeads.includes(h))) {
+      const e = (stepAt(value, path)!['effects'] as unknown[] | undefined)?.[Number(permitAt[1])];
+      if (isRec(e) && e['s'] === 'permit' && (e['action'] === 'play' || e['action'] === 'cast')) {
+        const live = pool.filter((m) => m.sort !== 'number' && compatible(a, m));
+        const unmovedSelf = (m: Mention): boolean => m.sort !== 'number' && m.movedBy === undefined && ((isRec(m.ref) && m.ref['ref'] === 'self' && Object.keys(m.ref).length === 1) || (m as { selfObject?: boolean }).selfObject === true);
+        if (live.length > 1 && live.some(unmovedSelf) && live.some((m) => !unmovedSelf(m))) pool = pool.filter((m) => !unmovedSelf(m));
+      }
+    }
     // std-craft-2 (CR 707.10, 602.2): what "copy it" copies as a spell is a spell or an ability on the stack: after "whenever you activate an ability", the ability, never
     // the object whose ability it is (the event's source, or ~); only a tie-break: when more than one candidate is left and at least one of them is a spell or an
     // ability, so a reading that resolved before stays as it was ("Exile ... card ... Copy it.": a card, CR 707.12, keeps its candidates)
@@ -2128,7 +2160,9 @@ function resolveEventDelay(step: Rec, mentions: readonly Mention[], u: Unit, d: 
   // target, a bound name), so it is not a second candidate for the same object. The event's role stays: it is read as the object last was when the event happened
   // (the look-back information of the event, CR 603.10a, 608.2h), which a handle fixed as the delayed trigger was created cannot give once the object has left
   const named = [...eventObjectRefs(event)].filter(([role]) => own.some((m) => m.sort !== 'number' && isRec(m.ref) && m.ref['ref'] === 'event' && m.ref['role'] === role)).map(([, ref]) => ref);
-  const outer = mentions.filter((m) => m.sort === 'number' || !(isRec(m.ref) && (m.ref['ref'] === 'event' || named.some((r) => sameJson(r, m.ref)))));
+  // edh-e-58 (CR 603.7c, 400.7; Portcullis): an object of the creating ability's event that an earlier instruction MOVED stays a candidate: "that card" is the card it became, which the delayed trigger
+  // moves again by the binding name of that move (bindMoved, captured by the delay), never the delay's own event
+  const outer = mentions.filter((m) => m.sort === 'number' || (m.movedBy !== undefined && !named.some((r) => sameJson(r, m.ref))) || !(isRec(m.ref) && (m.ref['ref'] === 'event' || named.some((r) => sameJson(r, m.ref)))));
   // std-rx11 (CR 603.7c, 201.5): the event's object that IS a target of the creating ability stands for that target (Mention.forTarget)
   const targetRoles = new Set([...eventObjectRefs(event)].filter(([, ref]) => isRec(ref) && ref['ref'] === 'target').map(([role]) => role));
   // edh-c-77 (CR 603.7c, 109.5; Mage Hunters' Onslaught): the object the delayed trigger's own event is about, said by its description ("Whenever a creature blocks this turn,
@@ -2296,8 +2330,25 @@ function resolveUnit(u: Unit, seq: Unit[], at: number, d: Draft, prefix: Unit[])
     }
     // edh-d-95 (Shilgengar, Sire of Famine): the creature the cost sacrificed, which the rider's own condition names, for a bare pronoun of its branch (sacrificedRiderMention)
     const sacrificed = sacrificedRiderMention(u.rider.patch, u, seq, at, prefix, pool);
-    const patch = resolveIn(patchIn, pool, u, d, undefined, ef, ef !== undefined && (looksAtOneCard(beforeIf) || revealsOneCard(beforeIf)), undefined, undefined, sacrificed ?? undefined);
+    // edh-d-110 (CR 701.20a, 402.3, 608.2c; Gruesome Discovery, Devour Intellect): the hand an earlier instruction of the same branch revealed ("If a creature died this turn, instead that
+    // player reveals their hand, you choose two cards from it, then that player discards those cards"), and the card(s) chosen from it ("that card"), as mentionsInside gives them for an instruction of the ability's own list
+    const handInside = (path: string): Mention[] => mentionsInside({ ...u, steps: [patchIn] } as Unit, 0, path, pool, d).filter((m) => m.origin === 'step' && ((m as StepMention).handOnly === true || (m.verbs?.includes('chosen') === true && m.sort === 'object')));
+    // edh-d-104 (CR 608.2c, 400.7; Heaven Sent: "Otherwise, exile this Saga and you may cast it this turn."): what an earlier instruction of the "otherwise" sentence's own list
+    // moved or made is a candidate for a later one, as for any list of instructions (mentionsInside, movedInside over the new `else` list)
+    const elseList = isRec(patchIn['else']) && Array.isArray(patchIn['else']['@new']) ? patchIn['else']['@new'] as unknown[] : undefined;
+    const elseUnit: Unit | undefined = elseList === undefined ? undefined : { ...u, steps: [{ op: 'if', else: elseList }] };
+    // (review, guard G10: only what the EARLIER top-level instructions of the list did, for a later top-level instruction; a list inside one instruction keeps the reading it had)
+    const elseInside: Inside | undefined = elseUnit === undefined ? undefined : (path, _a, got) => {
+      const k = /^\/else\/@new\/(\d+)(\/|$)/.exec(path);
+      if (k === null || Number(k[1]) < 1) return [];
+      const rel = `/else/${k[1]}`;
+      return [...mentionsInside(elseUnit, 0, rel, pool, d), ...movedInside(elseUnit, 0, rel, pool, (q) => got(q.replace(/^\/else\//, '/else/@new/')))];
+    };
+    // (D bundle 28: edh-d-110 and edh-d-104 both read this argument: a later instruction of the "otherwise" list takes edh-d-104's reading, everything else edh-d-110's)
+    const inside: Inside = (path, a, got) => (elseInside !== undefined && /^\/else\/@new\/\d+(\/|$)/.test(path) ? elseInside(path, a, got) : handInside(path));
+    const patch = resolveIn(patchIn, pool, u, d, undefined, ef, ef !== undefined && (looksAtOneCard(beforeIf) || revealsOneCard(beforeIf)), inside, undefined, sacrificed ?? undefined);
     if (patch === null) return false;
+    carryNames(patchIn, patch); // edh-d-110: a name bind() gave to the revealing instruction lands on the rewritten patch; edh-d-104: and a name bindMoved gave to an earlier instruction of the `else` list
     u.rider = { ...u.rider, patch: ownCastHistory(patch, castOnly(d.trigger?.on)) as Rec };
   }
   return true;
@@ -2627,7 +2678,9 @@ function hasOther(v: unknown): boolean {
   if (!isRec(v)) return false;
   if (typeof v['kind'] === 'string' && ABILITY_KINDS.has(v['kind'])) return false; // a granted ability's "other" is about the object that has it
   if (v['other'] === true) return true;
-  return Object.values(v).some(hasOther);
+  // edh-e-23 (CR 109.2, 205.3m; Crown of Fury): the `other` of `sharesWith` is "other than the object it is compared with" ("other creatures that share a creature type with it"),
+  // never "other than ~", so it names no second candidate for the word
+  return Object.entries(v).some(([k, x]) => k !== 'sharesWith' && hasOther(x));
 }
 
 /** CLOUD C4: does the value hold a template's "other" anaphor (`{ref:'bound', name:'', $anaphor:{text:'other'}}`, parser/chart.ts `$anaphor`)? */

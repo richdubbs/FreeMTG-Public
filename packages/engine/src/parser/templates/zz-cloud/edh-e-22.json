@@ -1,0 +1,656 @@
+[
+ {
+  "id": "eff.edhe22.becomes.subtype.basept.abilities",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 205.1a",
+   "CR 611.2a",
+   "CR 611.2c",
+   "CR 613.1d",
+   "CR 613.1e",
+   "CR 613.4b",
+   "CR 613.1f"
+  ],
+  "pattern": "{d:Dur} , {o:Obj} becomes ( a | an ) {st:Subtypes} with base power and toughness {pt:BasePT} , {a:Abilities}",
+  "build": {
+   "op": "effect",
+   "duration": "$d",
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": "$o",
+     "mods": [
+      {
+       "layer": 4,
+       "subtypes": {
+        "set": "$st"
+       }
+      },
+      {
+       "layer": 6,
+       "add": "$a"
+      },
+      {
+       "layer": "7b",
+       "power": "$pt.p",
+       "toughness": "$pt.t"
+      }
+     ]
+    }
+   ]
+  },
+  "subject": "object",
+  "consumes": [
+   "until"
+  ],
+  "examples": [
+   {
+    "text": "{2}: Until end of turn, ~ becomes a Golem with base power and toughness 3/3, trample, and haste."
+   },
+   {
+    "text": "Until end of turn, target creature becomes a Wurm with base power and toughness 5/5, reach, and lifelink."
+   }
+  ],
+  "counterExamples": [
+   "Until end of turn, target creature becomes a Wurm with base power and toughness 5/5.",
+   "Until end of turn, target creature becomes a Wurm with base power 5, reach, and lifelink.",
+   "Until end of turn, target creature becomes a Wurm, reach, and lifelink."
+  ]
+ },
+ {
+  "id": "eff.edhe22.becomes.oneColor.subtype.basept.loseAll.gains",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 205.1a",
+   "CR 611.2a",
+   "CR 611.2c",
+   "CR 613.1d",
+   "CR 613.1e",
+   "CR 613.4b",
+   "CR 613.1f"
+  ],
+  "pattern": "{d:Dur} , {o:Obj} becomes ( a | an ) {c:Color} {st:Subtypes} with base power and toughness {pt:BasePT} , loses all abilities , and gains {a:Abilities}",
+  "build": {
+   "op": "effect",
+   "duration": "$d",
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": "$o",
+     "mods": [
+      {
+       "layer": 4,
+       "subtypes": {
+        "set": "$st"
+       }
+      },
+      {
+       "layer": 5,
+       "colors": {
+        "set": [
+         "$c"
+        ]
+       }
+      },
+      {
+       "layer": 6,
+       "removeAll": true,
+       "add": "$a"
+      },
+      {
+       "layer": "7b",
+       "power": "$pt.p",
+       "toughness": "$pt.t"
+      }
+     ]
+    }
+   ]
+  },
+  "subject": "object",
+  "consumes": [
+   "until",
+   "all"
+  ],
+  "examples": [
+   {
+    "text": "Until end of turn, target creature you control becomes a green Ooze with base power and toughness 2/6, loses all abilities, and gains reach."
+   },
+   {
+    "text": "{1}{B}: Until end of turn, target creature becomes a black Zombie with base power and toughness 1/1, loses all abilities, and gains deathtouch."
+   }
+  ],
+  "counterExamples": [
+   "Until end of turn, target creature becomes a green Ooze with base power and toughness 2/6 and gains reach.",
+   "Until end of turn, target creature becomes a green Ooze with base power and toughness 2/6, loses all abilities.",
+   "Until end of turn, target creature becomes a green Ooze, loses all abilities, and gains reach."
+  ]
+ },
+ {
+  "id": "eff.edhe22.becomes.twoColor.subtype.basept.loseAll.gains",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 205.1a",
+   "CR 611.2a",
+   "CR 611.2c",
+   "CR 613.1d",
+   "CR 613.1e",
+   "CR 613.4b",
+   "CR 613.1f"
+  ],
+  "pattern": "{d:Dur} , {o:Obj} becomes ( a | an ) {c:Color} and {c2:Color} {st:Subtypes} with base power and toughness {pt:BasePT} , loses all abilities , and gains {a:Abilities}",
+  "build": {
+   "op": "effect",
+   "duration": "$d",
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": "$o",
+     "mods": [
+      {
+       "layer": 4,
+       "subtypes": {
+        "set": "$st"
+       }
+      },
+      {
+       "layer": 5,
+       "colors": {
+        "set": [
+         "$c",
+         "$c2"
+        ]
+       }
+      },
+      {
+       "layer": 6,
+       "removeAll": true,
+       "add": "$a"
+      },
+      {
+       "layer": "7b",
+       "power": "$pt.p",
+       "toughness": "$pt.t"
+      }
+     ]
+    }
+   ]
+  },
+  "subject": "object",
+  "consumes": [
+   "until",
+   "all"
+  ],
+  "examples": [
+   {
+    "text": "Until end of turn, target creature you control becomes a green and white Ooze with base power and toughness 2/6, loses all abilities, and gains reach."
+   },
+   {
+    "text": "{1}{B}: Until end of turn, target creature becomes a black and red Zombie with base power and toughness 1/1, loses all abilities, and gains deathtouch."
+   }
+  ],
+  "counterExamples": [
+   "Until end of turn, target creature becomes a green Ooze with base power and toughness 2/6 and gains reach.",
+   "Until end of turn, target creature becomes a green Ooze with base power and toughness 2/6, loses all abilities.",
+   "Until end of turn, target creature becomes a green Ooze, loses all abilities, and gains reach."
+  ]
+ },
+ {
+  "id": "eff.edhe22.becomes.basept.subtype.artifactCreature.gains",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 205.1a",
+   "CR 611.2a",
+   "CR 611.2c",
+   "CR 613.1d",
+   "CR 613.1e",
+   "CR 613.4b",
+   "CR 613.1f"
+  ],
+  "pattern": "{d:Dur} , {o:Obj} becomes ( a | an ) {pt:BasePT} {st:Subtypes} artifact creature and gains {a:Abilities}",
+  "build": {
+   "op": "effect",
+   "duration": {
+    "$when": "d",
+    "then": "$d",
+    "else": {
+     "d": "permanent"
+    }
+   },
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": "$o",
+     "mods": [
+      {
+       "layer": 4,
+       "types": {
+        "set": [
+         "Artifact",
+         "Creature"
+        ]
+       },
+       "subtypes": {
+        "set": "$st"
+       }
+      },
+      {
+       "layer": 6,
+       "add": "$a"
+      },
+      {
+       "layer": "7b",
+       "power": "$pt.p",
+       "toughness": "$pt.t"
+      }
+     ]
+    }
+   ]
+  },
+  "subject": "object",
+  "consumes": [
+   "until"
+  ],
+  "examples": [
+   {
+    "text": "Until end of turn, target artifact or creature becomes a 3/3 Golem artifact creature and gains trample."
+   },
+   {
+    "text": "{2}: Until end of turn, target artifact becomes a 2/2 Construct artifact creature and gains flying."
+   }
+  ],
+  "counterExamples": [
+   "Until end of turn, target artifact becomes a 3/3 Golem artifact creature.",
+   "Until end of turn, target artifact becomes a 3/3 Golem creature and gains trample.",
+   "Until end of turn, target artifact becomes a Golem artifact creature and gains trample."
+  ]
+ },
+ {
+  "id": "eff.edhe22.becomes.basept.artifactCreature.stillLand",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 205.1a",
+   "CR 611.2a",
+   "CR 611.2c",
+   "CR 613.1d",
+   "CR 613.1e",
+   "CR 613.4b",
+   "CR 613.1f"
+  ],
+  "pattern": "{o:Obj} becomes ( a | an ) {pt:BasePT} artifact creature that's still a land",
+  "build": {
+   "op": "effect",
+   "duration": {
+    "d": "permanent"
+   },
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": "$o",
+     "mods": [
+      {
+       "layer": 4,
+       "types": {
+        "add": [
+         "Artifact",
+         "Creature"
+        ]
+       }
+      },
+      {
+       "layer": "7b",
+       "power": "$pt.p",
+       "toughness": "$pt.t"
+      }
+     ]
+    }
+   ]
+  },
+  "subject": "object",
+  "consumes": [
+   "still"
+  ],
+  "examples": [
+   {
+    "text": "{T}: Target land becomes a 2/2 artifact creature that's still a land."
+   },
+   {
+    "text": "Target land you control becomes a 4/4 artifact creature that's still a land."
+   }
+  ],
+  "counterExamples": [
+   "Target land becomes a 2/2 artifact creature that's a land.",
+   "Target land becomes a 2/2 artifact creature.",
+   "Target land becomes a artifact creature that's still a land."
+  ],
+  "priority": 1
+ },
+ {
+  "id": "eff.edhe22.becomes.basept.colored.subtype.artifactCreature.trailingDur",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 205.1a",
+   "CR 611.2a",
+   "CR 611.2c",
+   "CR 613.1d",
+   "CR 613.1e",
+   "CR 613.4b",
+   "CR 613.1f"
+  ],
+  "pattern": "{o:Obj} becomes ( a | an ) {pt:BasePT} {c:Color} {st:Subtypes} artifact creature {d:Dur}",
+  "build": {
+   "op": "effect",
+   "duration": "$d",
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": "$o",
+     "mods": [
+      {
+       "layer": 4,
+       "types": {
+        "set": [
+         "Artifact",
+         "Creature"
+        ]
+       },
+       "subtypes": {
+        "set": "$st"
+       }
+      },
+      {
+       "layer": 5,
+       "colors": {
+        "set": [
+         "$c"
+        ]
+       }
+      },
+      {
+       "layer": "7b",
+       "power": "$pt.p",
+       "toughness": "$pt.t"
+      }
+     ]
+    }
+   ]
+  },
+  "subject": "object",
+  "consumes": [
+   "until"
+  ],
+  "examples": [
+   {
+    "text": "{1}{U}: ~ becomes a 2/2 blue Golem artifact creature until end of turn."
+   },
+   {
+    "text": "{2}: Target artifact becomes a 3/3 green Beast artifact creature until end of turn."
+   }
+  ],
+  "counterExamples": [
+   "{1}{U}: ~ becomes a 2/2 blue Golem artifact creature.",
+   "{1}{U}: ~ becomes a 2/2 Golem artifact creature until end of turn.",
+   "{1}{U}: ~ becomes a blue Golem artifact creature until end of turn."
+  ]
+ },
+ {
+  "id": "eff.edhe22.becomes.basept.subtype.artifactCreature.noLonger",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 205.1a",
+   "CR 611.2a",
+   "CR 611.2c",
+   "CR 613.1d",
+   "CR 613.1e",
+   "CR 613.4b",
+   "CR 613.1f"
+  ],
+  "pattern": "[ {d:Dur} , ] ~ becomes ( a | an ) {pt:BasePT} {st:Subtypes} artifact creature that's no longer ( a | an ) {r:Subtypes}",
+  "build": {
+   "op": "effect",
+   "duration": {
+    "$when": "d",
+    "then": "$d",
+    "else": {
+     "d": "permanent"
+    }
+   },
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": {
+      "ref": "self"
+     },
+     "mods": [
+      {
+       "layer": 4,
+       "types": {
+        "add": [
+         "Artifact",
+         "Creature"
+        ]
+       },
+       "subtypes": {
+        "add": "$st",
+        "remove": "$r"
+       }
+      },
+      {
+       "layer": "7b",
+       "power": "$pt.p",
+       "toughness": "$pt.t"
+      }
+     ]
+    }
+   ]
+  },
+  "subject": "object",
+  "consumes": [
+   "until",
+   "longer"
+  ],
+  "examples": [
+   {
+    "text": "{0}: Until end of turn, ~ becomes a 3/3 Golem artifact creature that's no longer a Vehicle."
+   },
+   {
+    "text": "Until end of turn, ~ becomes a 2/2 Spirit artifact creature that's no longer a Fortification."
+   }
+  ],
+  "counterExamples": [
+   "{0}: Until end of turn, ~ becomes a 3/3 Golem artifact creature that's a Vehicle.",
+   "{0}: Until end of turn, ~ becomes a 3/3 Golem artifact creature.",
+   "{0}: Until end of turn, ~ becomes a Golem artifact creature that's no longer a Vehicle."
+  ],
+  "priority": 1
+ },
+ {
+  "id": "eff.edhe22.basePT.become.equal.possessive",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 613.4b",
+   "CR 611.2a",
+   "CR 608.2h",
+   "CR 208.1"
+  ],
+  "pattern": "{o:Obj} 's base power and toughness become equal to {s:Obj} 's power and toughness {d:Dur}",
+  "build": {
+   "op": "effect",
+   "duration": "$d",
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": "$o",
+     "mods": [
+      {
+       "layer": "7b",
+       "power": {
+        "q": "stat",
+        "stat": "power",
+        "of": "$s"
+       },
+       "toughness": {
+        "q": "stat",
+        "stat": "toughness",
+        "of": "$s"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "subject": "object",
+  "consumes": [
+   "until"
+  ],
+  "examples": [
+   {
+    "text": "Whenever ~ blocks a creature, ~'s base power and toughness become equal to that creature's power and toughness until end of turn."
+   },
+   {
+    "text": "When ~ enters, ~'s base power and toughness become equal to target creature's power and toughness until end of turn."
+   }
+  ],
+  "counterExamples": [
+   "Whenever ~ blocks a creature, ~'s base power and toughness become equal to that creature's power and toughness.",
+   "Whenever ~ blocks a creature, ~'s base power becomes equal to that creature's power until end of turn.",
+   "Whenever ~ blocks a creature, ~'s base power and toughness become equal to that creature's toughness until end of turn."
+  ]
+ },
+ {
+  "id": "eff.edhe22.becomes.basept.creature.plain",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 205.1a",
+   "CR 611.2a",
+   "CR 611.2c",
+   "CR 613.1d",
+   "CR 613.1e",
+   "CR 613.4b",
+   "CR 613.1f"
+  ],
+  "pattern": "[ {d:Dur} , ] {o:Obj} becomes ( a | an ) {pt:BasePT} creature",
+  "build": {
+   "op": "effect",
+   "duration": {
+    "$when": "d",
+    "then": "$d",
+    "else": {
+     "d": "permanent"
+    }
+   },
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": "$o",
+     "mods": [
+      {
+       "layer": 4,
+       "types": {
+        "set": [
+         "Creature"
+        ]
+       }
+      },
+      {
+       "layer": "7b",
+       "power": "$pt.p",
+       "toughness": "$pt.t"
+      }
+     ]
+    }
+   ]
+  },
+  "subject": "object",
+  "consumes": [
+   "until"
+  ],
+  "examples": [
+   {
+    "text": "{1}{R}: Target Forest becomes a 4/2 creature. It's still a land."
+   },
+   {
+    "text": "Until end of turn, target artifact becomes a 3/3 creature."
+   }
+  ],
+  "counterExamples": [
+   "{1}{R}: Target Forest becomes a creature.",
+   "{1}{R}: Target Forest becomes a 4/2 creature with haste.",
+   "{1}{R}: Target Forest becomes a 4/2 artifact creature."
+  ]
+ },
+ {
+  "id": "eff.edhe22.it.becomes.subtype.andLoses.keyword",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 205.1b",
+   "CR 205.3m",
+   "CR 611.2a",
+   "CR 613.1d",
+   "CR 613.1f"
+  ],
+  "pattern": "{o:Obj} becomes ( a | an ) {st:Subtypes} , and it loses {k:Keyword}",
+  "build": {
+   "op": "effect",
+   "duration": {
+    "d": "permanent"
+   },
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": "$o",
+     "mods": [
+      {
+       "layer": 4,
+       "subtypes": {
+        "set": "$st"
+       }
+      },
+      {
+       "layer": 6,
+       "remove": [
+        "$k.keyword"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "subject": "object",
+  "consumes": [
+   "lose"
+  ],
+  "examples": [
+   {
+    "text": "When ~ blocks, it becomes a Golem Wizard, and it loses defender."
+   },
+   {
+    "text": "Whenever ~ attacks, it becomes a Wurm, and it loses flying."
+   }
+  ],
+  "counterExamples": [
+   "When ~ blocks, it becomes a Golem Wizard, and it gains flying.",
+   "When ~ blocks, it becomes a Golem Wizard, and loses defender.",
+   "When ~ blocks, it becomes a Golem Wizard, and it loses all abilities."
+  ]
+ }
+]

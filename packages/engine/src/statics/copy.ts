@@ -186,6 +186,8 @@ export function applyCopiable(c: Chars, cv: CopiableValues, subject: ObjectId, s
   for (const m of cv.except) {
     const rest = withoutAdds(m);
     if (rest && rest.layer !== '1a' && rest.layer !== '1b' && rest.layer !== 3) out = applyMods(out, [rest], subject, s, all, fx);
+    // edh-d-105 (CR 707.9b, 201.2; Mishra, Eminent One: "except its name is Mishra's Warform"): a name an exception gives is the copy's name, the one it is shown and called by
+    if (rest && rest.layer === 4 && typeof rest.named === 'string') out = { ...out, name: rest.named, names: [rest.named] };
   }
   return out;
 }

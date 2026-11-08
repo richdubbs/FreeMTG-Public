@@ -57,6 +57,7 @@ export const FEATURES: readonly string[] = [
   'target.differentControllers', // CLOUD std-tmt: actions/announce-targets.ts asks again when two targets have one controller (CR 115.1, 601.2c)
   'target.sameController', // std-rx30: actions/announce-targets.ts asks again when two targets have different controllers (CR 115.1, 601.2c)
   'target.perCardType', // std-cardcopy-7: actions/announce-targets.ts asks again when the targets can't be one of each card type (CR 115.1, 601.2c, 205.2a)
+  'target.perQuality', // edh-e-64: actions/announce-targets.ts asks again when the targets can't be one of each color / permanent type (CR 105.1, 110.4, 115.1, 601.2c)
   'modes.unchosen', // r3-choose (CR 700.2, 603.3c): "choose one that hasn't been chosen [this turn]" (usedModes, rememberModes)
   'modes.triggerX', // r5-cost (CR 107.3m, 603.3c): a triggered ability's "choose up to X --" reads the X its source was cast with (modeLimits)
   'modes.mayChoose', // edh-players-19 (CR 700.2, 603.3c): "you may choose two": no mode, or exactly `max` of them (chooseModes)

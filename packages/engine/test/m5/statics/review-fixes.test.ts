@@ -255,10 +255,13 @@ describe('design 5.2: the static side of the capability tables', () => {
   it('the filter fields the general table supports beyond the layer system are only the known ones (history, stack and cast fields, spell copies, keyword lists)', () => {
     const known = ['dealtDamageThisTurn', 'dealtDamageBySourceThisTurn' /* FAST3 T14 */, 'controllerDealtCombatDamageBySourceThisTurn' /* FAST5 T66 */, 'blockingObject' /* FAST3 T18 */, 'blockedThisTurn', 'stackKind', 'targets', 'abilitySource' /* FAST5 T45 */, 'targetsOnly' /* FAST5 T45 */, 'targetCount' /* FAST5 T45 */, 'adventure' /* FAST5 T49: a card's definition, CR 715.1 */, 'manaCostHasX' /* FAST5X E23, CR 107.3: a spell's mana cost, read by mana spending restrictions */, 'isCopy', 'keyword.list', 'notKeyword.list', // the last three are WP4's, added after WP9 was written
       'couldEnchant', // edh-d-24 (CR 303.4a, 702.5a): an Aura card's enchant restriction against one permanent, read by searches and puts (rules/filter.ts); a static ability does not read it
+      'auraMovesTo', // edh-e-53 (CR 701.3b, 303.4a): a permanent one Aura could be moved to, read by the choice of an attach step (rules/filter.ts); a static ability does not read it
       'hadToAttack', // edh-d-75 (CR 508.1d, 603.4): the creature had to attack this combat (CombatState.forced, rules/filter.ts); a static ability does not read it
+      'castNthThisTurn', // edh-e-17 (CR 601.2i): the Nth spell cast this turn by all players, read by targets (rules/filter.ts); a static ability does not read it
       'uncast', // edhd60 (CR 707.10, 707.12): a spell on the stack that was never cast, read by targets (rules/filter.ts); a static ability does not read it
       'loyaltyAbility', // edh-d-36 (CR 606.2): a loyalty ability on the stack, read by targets and searches (rules/filter.ts, rules/targets.ts); a static ability does not read it
       'warped', // std-costs-2 (CR 702.185a): a card in exile, read by costs and targets, never by a static ability's continuous effect
+      'controllerControls', // edhe33 (CR 109.4): its controller controls a permanent of a description, read by targets (rules/filter.ts); a static ability does not read it
       'controllerDealtCombatDamageBy', // edh-next-134 (CR 510.2, 120.1): a history field (rules/history.ts#combatDamageSourcesToPlayerThisTurn), read by targets; a static ability does not read it
       'controller.ref', 'owner.ref', 'attacking.defender', 'cmp.quantity', 'attacking.orPlaneswalker' /* std-combat-1 */, // advertised by WP30 (a FilterEnv at every call site); inside a static ability they need sfilter:, which the layers do not claim
       'dealtDamageAsSourceThisTurn' /* CLOUD std-mkm: a history field (rules/history.ts), "a creature that dealt damage this turn", CR 120.1 */,
@@ -283,12 +286,16 @@ describe('design 5.2: the static side of the capability tables', () => {
       'dealtDamageToYouThisTurn' /* edh-players-9: a creature that dealt (combat) damage to you this turn (rules/history.ts, CR 120.1, 510.2); a static ability does not read it (statics/match.ts), so it stays manual there */,
       'foughtThisTurn' /* edh-next-139: a creature that fought this turn (rules/history.ts, CR 701.14a); a static ability does not read it */,
       'dealtExcessDamageThisTurn' /* edh-d-38: dealt excess damage this turn (rules/history.ts, CR 120.10); a static ability does not read it (statics/match.ts) */,
+      'dealtNoncombatDamageThisTurn' /* edh-e-50: dealt noncombat damage this turn (rules/history.ts, CR 120.1, 510.2); a static ability does not read it (statics/match.ts) */,
+      'controlledSinceTurnStart' /* edh-e-50: its controller has controlled it since before this turn began (rules/filter.ts, CR 302.6, 400.7); a static ability does not read it (statics/match.ts) */,
       'manaValueVsGraveyard' /* edh-cast-12: a mana value against the cards in its controller's graveyard (rules/filter.ts, CR 202.3, 404.1); a static ability does not read it (statics/match.ts), so it stays manual there */,
       'wasBlockedThisTurn' /* edh-c-18: a creature that became blocked this turn (rules/history.ts, CR 509.1h); a static ability does not read it (statics/match.ts), so it stays manual there */,
+      'blockedWithThisTurn' /* edh-e-20: the block pairs of this turn (rules/history.ts, CR 509.1g-h); a static ability does not read it (statics/match.ts), so it stays manual there */,
       'onlyColorChosenByController' /* edh-players-17: exactly the one color the object's controller chose (CR 105.2a, 608.2d), read by a step's group; a static ability does not read it (statics/match.ts), so it stays manual there */,
       'abilityNotMana' /* edh-c-44: an activated ability that isn't a mana ability (CR 602.1, 605.1a), read by rules/filter.ts; a static ability does not read it (statics/match.ts), so it stays manual there */,
       'putThereThisCombat' /* edh-next-116: a card put into its zone during the current combat (rules/history.ts, CR 400.7, 506.1); a static ability does not read it (statics/match.ts), so it stays manual there */,
-      'targetsOnlyPlayer' /* edh-next-74: a player target also satisfies targetsOnly (rules/filter.ts, CR 115.9c); a static ability does not read it (statics/match.ts), so it stays manual there */];
+      'targetsOnlyPlayer' /* edh-next-74: a player target also satisfies targetsOnly (rules/filter.ts, CR 115.9c); a static ability does not read it (statics/match.ts), so it stays manual there */,
+      'enteredSinceYourLastTurn' /* edh-e-27: a creature that entered the battlefield after the end of its controller's last turn (rules/history.ts, CR 400.7, 500.1); a static ability does not read it */];
     // M6-0: the status fields (solved, prepared, prototyped, flipped) are advertised by their owners (rules/registries.ts#FILTER_PARTS) and read in the layers as
     // STATIC_STATUS_FIELDS (sfilter:, advertised the same way; M6-4: flipped)
     expect([...SUPPORTED_FILTER_FIELDS].filter((f) => !STATIC_FILTER_FIELDS.has(f) && !STATIC_STATUS_FIELDS.has(f) && !known.includes(f))).toEqual([]);

@@ -386,6 +386,7 @@
     "status": "stable",
     "subject": "none",
     "id": "eff.t43.dig.rest.bottomAny",
+    "priority": 1,
     "cr": [
       "CR 608.2c",
       "CR 401.4"

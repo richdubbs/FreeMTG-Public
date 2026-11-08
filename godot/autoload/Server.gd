@@ -43,6 +43,12 @@ var owns_process: bool = false
 var _pid: int = -1
 var _stdio: FileAccess = null
 var _reader: Thread = null
+## The server's error output, read on its own thread; and everything it prints, kept in user://logs/server.log (the run before in
+## server.old.log), so a server that stopped can be explained afterwards.
+var _stderr: FileAccess = null
+var _err_reader: Thread = null
+var _log: FileAccess = null
+const LOG_PATH: String = "user://logs/server.log"
 var _lines: Array[String] = []
 var _lines_mutex := Mutex.new()
 var _restarts: Array[float] = []
@@ -177,12 +183,31 @@ func _launch() -> void:
 	owns_process = true
 	_pid = Val.as_int(info.get("pid"), -1)
 	_stdio = info.get("stdio") as FileAccess
+	_stderr = info.get("stderr") as FileAccess
+	_open_log()
 	_waiting_first_line = true
 	_started_at = _now()
 	port = 0
 	token = ""
 	_reader = Thread.new()
 	_reader.start(_read_output.bind(_stdio))
+	if _stderr != null:
+		_err_reader = Thread.new()
+		_err_reader.start(_read_output.bind(_stderr))
+
+
+func _open_log() -> void:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://logs"))
+	if FileAccess.file_exists(LOG_PATH):
+		DirAccess.rename_absolute(ProjectSettings.globalize_path(LOG_PATH), ProjectSettings.globalize_path("user://logs/server.old.log"))
+	_log = FileAccess.open(LOG_PATH, FileAccess.WRITE)
+	_write_log("started %s" % Time.get_datetime_string_from_system())
+
+
+func _write_log(line: String) -> void:
+	if _log != null:
+		_log.store_line(line)
+		_log.flush()
 
 
 ## Runs on the reader thread: every line the server prints goes to `_lines` (read on the main thread). Reading all of them
@@ -220,6 +245,8 @@ func _drain_lines() -> void:
 	_lines.clear()
 	_lines_mutex.unlock()
 	for line: String in lines:
+		# The announcement carries the session's token: it stays out of the file.
+		_write_log("(address announced)" if line.contains("\"token\"") else line)
 		output.emit(line)
 		if _waiting_first_line:
 			_first_line(line)
@@ -273,6 +300,8 @@ func _on_exit() -> void:
 	is_ready = false
 	_pid = -1
 	_join_reader()
+	_drain_lines()
+	_write_log("stopped by itself %s" % Time.get_datetime_string_from_system())
 	lost.emit()
 	var now := _now()
 	var recent: Array[float] = []
@@ -292,6 +321,10 @@ func _join_reader() -> void:
 		_reader.wait_to_finish()
 	_reader = null
 	_stdio = null
+	if _err_reader != null and _err_reader.is_started():
+		_err_reader.wait_to_finish()
+	_err_reader = null
+	_stderr = null
 
 
 func _now() -> float:

@@ -12,8 +12,10 @@ import { COST_SELF, COST_SELF_MOVED } from './costs';
 import { actsOnlyOnNamed } from '../model/cost-antecedent';
 import { foldAt } from './fold';
 import { foldEdhZones25 } from './fold-edhzones25';
+import { foldEdhD107 } from './fold-edhd107'; // edh-d-107
 import { foldEdhN72 } from './fold-edhn72'; // edh-next-72
 import { foldEdhN83 } from './fold-edhn83'; // edh-next-83
+import { foldEdhE62 } from './fold-edhe62'; // edh-e-62
 import { K, type JoinOpts } from './kernel';
 import { CLAUSES_CARDS } from './steps-cards';
 import { CLAUSES_FLOW, payGuardInside, withAlso } from './steps-flow';
@@ -67,7 +69,7 @@ export const CLAUSES: Readonly<Partial<Record<EffectOp, ClauseFn>>> = {
 const PER_PLAYER_KEYS = ['what', 'on', 'to', 'object', 'subject'] as const;
 function perPlayerLead(step: EffectStep, st: RenderState): string | null {
   let any = false;
-  for (const spec of st.specs.values()) if (spec.perOpponent === true || spec.perPlayer === true) { any = true; break; }
+  for (const spec of st.specs.values()) if (spec.perOpponent === true || spec.perPlayer === true || spec.perQuality !== undefined) { any = true; break; }
   if (!any) return null; // the ability has no such target: nothing to look up (the render gate runs this for every step)
   const rec = step as unknown as Record<string, unknown>;
   const effects = step.op === 'effect' ? step.effects.map((e) => (e as { affects?: unknown }).affects) : []; // a continuous effect's object ("gain control of ...")
@@ -79,9 +81,11 @@ function perPlayerLead(step: EffectStep, st: RenderState): string | null {
     if (spec?.perOpponent === true && spec.min === 0 && spec.max === 1) upToOne = true;
     // edh-next-127 (CR 115.1, 404.1; Mysterious Stranger): one target in each graveyard that has a card of the description (`eachWithOne`): the lead names those graveyards
     if (spec?.perPlayer === true && spec.eachWithOne === true && spec.kind === 'object' && spec.filter?.zone === 'graveyard') eachGraveyard = K.np(spec.filter, cloneState(st), { det: 'a', noZone: true });
-    return spec?.perOpponent === true ? ['opponent'] : spec?.perPlayer === true ? ['player'] : [];
+    return spec?.perOpponent === true ? ['opponent'] : spec?.perPlayer === true ? ['player'] : spec?.perQuality !== undefined ? [spec.perQuality] : [];
   })[0];
   if (per === undefined) return null;
+  // edh-e-64 (CR 105.1, 115.1; All Suns' Dawn, Rogues' Gallery): one target for each color, "For each color, return up to one target card of that color ..."
+  if (per === 'color') return 'for each color, ';
   if (eachGraveyard !== null) return `for each graveyard with ${eachGraveyard as string} in it, `;
   // edh-d-96 (CR 601.2c, 122.1f; Geth's Summons): only the opponents with N or more poison counters as the spell is cast, "for each opponent who has three or more poison counters as you cast ~,"
   const poison = [...PER_PLAYER_KEYS.map((k) => rec[k])].map((v) => { const r = v as { ref?: string; id?: string } | undefined; return r?.ref === 'target' && r.id !== undefined ? st.specs.get(r.id)?.perOpponentPoison : undefined; }).find((x) => x !== undefined);
@@ -92,7 +96,7 @@ function perPlayerLead(step: EffectStep, st: RenderState): string | null {
   return per === 'opponent' ? `${upToOne ? alt('for each opponent', 'for each other player', 'for any number of opponents') : alt('for each opponent', 'for each other player')}, ` : `for each ${per}, `;
 }
 /** The lead is already said: plain, or as the alternatives above (merge wave 8: also "for each other player,"). */
-const LEAD_SAID = new RegExp(`^\\W*for (?:each (?:opponent|player|other player|graveyard with [^,]* in it)|any number of opponents)(?:,|${ALT_SEP})`); // edh-next-127: the graveyard lead
+const LEAD_SAID = new RegExp(`^\\W*for (?:each (?:opponent|player|other player|color|graveyard with [^,]* in it)|any number of opponents)(?:,|${ALT_SEP})`); // edh-next-127: the graveyard lead
 function withLead(lead: string | null, c: Clause): Clause {
   if (lead === null || c.empty || LEAD_SAID.test(c.sub)) return c;
   return { ...c, imp: `${lead}${c.imp}`, sub: `${lead}${c.sub}`, ...(c.have !== undefined ? { have: `${lead}${c.have}` } : {}) };
@@ -276,7 +280,7 @@ function condNamesSelf(step: EffectStep): boolean {
 }
 
 /** `foldAt`, after the folds of edh-zones-25 that print other steps through `clause` (they take it as a parameter: render/fold.ts is imported here, not the other way). */
-const foldHere = (list: EffectStep[], i: number, st: RenderState): ReturnType<typeof foldAt> => foldEdhZones25(list, i, st, { foldAt, clause, clausesOf }) ?? foldEdhN72(list, i, st, { foldAt, clause, clausesOf }) /* edh-next-72 */ ?? foldEdhN83(list, i) /* edh-next-83 */ ?? foldAt(list, i, st);
+const foldHere = (list: EffectStep[], i: number, st: RenderState): ReturnType<typeof foldAt> => foldEdhZones25(list, i, st, { foldAt, clause, clausesOf }) ?? foldEdhD107(list, i, st, { clausesOf }) /* edh-d-107 */ ?? foldEdhN72(list, i, st, { foldAt, clause, clausesOf }) /* edh-next-72 */ ?? foldEdhN83(list, i) /* edh-next-83 */ ?? foldEdhE62(list, i, st, { foldAt, clause, clausesOf }) /* edh-e-62 */ ?? foldAt(list, i, st);
 
 /** The clauses of a list of steps after folding. */
 function clausesOf(list: EffectStep[], st: RenderState): Clause[] {

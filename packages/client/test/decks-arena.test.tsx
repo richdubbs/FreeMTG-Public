@@ -214,11 +214,16 @@ describe('builder pool', () => {
     expect((screen.getByLabelText('Format') as HTMLSelectElement).value).toBe('modern');
     expect(screen.getByRole('region', { name: 'Format check' })).toBeTruthy();
     // The pills under the box.
-    for (const name of ['Edit deck', 'Export', 'Validate']) expect(screen.getByRole('button', { name })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
-    expect(screen.getByRole('dialog', { name: 'Export Gruul Test' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    for (const name of ['Edit deck', 'Validate']) expect(screen.getByRole('button', { name })).toBeTruthy();
+    // Export: the pill, and the title bar's, which stays in both views so the buttons never move (deck-art-1 part 0); both open the export panel.
+    const exports = screen.getAllByRole('button', { name: 'Export' });
+    expect(exports).toHaveLength(2);
+    for (const button of exports) {
+      fireEvent.click(button);
+      expect(screen.getByRole('dialog', { name: 'Export Gruul Test' })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+    }
     fireEvent.click(screen.getByRole('button', { name: 'Edit deck' }));
     expect(screen.getByRole('region', { name: 'Card search' })).toBeTruthy();
   });

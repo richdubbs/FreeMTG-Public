@@ -15,6 +15,7 @@
  *   - a player who acts is always named: `who`, `payer`, `source`, `caster` are REQUIRED wherever a wrong default
  *     would change the rules (a missing `who` is a compile error, not a silent "you").
  */
+import type { CardNameKind } from './card';
 import type { Color, ManaCost, ManaType } from './mana';
 import type { Step as TurnStep, ZoneKind } from './state';
 
@@ -214,8 +215,10 @@ export interface ActivatedAbilityDef extends AbilityBase {
    * card."): the value of the X of the activation cost that the ability's text defines: no X is announced, X is this number as the ability is activated (actions/activate.ts#definedX). Only
    * the mana value of the one card linked to the source by `link` that is still in exile; with no such card X is undefined and the ability can't be activated (ruling 2011-01-01).
    * Capability `feature:activate.xIs`.
+   * edh-d-111 INTERFACE CHANGE (additive), CR 107.3c, 602.2b, 122.1 (Voodoo Doll: "{X}{X}, {T}: ... X is the number of pin counters on this artifact."): or the number of counters of one kind on
+   * the source itself as the ability is activated (`q: 'counters'`, `on: {ref: 'self'}`; none is 0, and X is 0).
    */
-  xIs?: { q: 'stat'; stat: 'manaValue'; of: { ref: 'linked'; link: LinkId } };
+  xIs?: { q: 'stat'; stat: 'manaValue'; of: { ref: 'linked'; link: LinkId } } | { q: 'counters'; kind: CounterKind; on: { ref: 'self' } };
   /**
    * std-copy-1 INTERFACE CHANGE (additive): "This ability can't be copied." (CR 707.10, 101.2): the copy op puts no copy of this ability onto the stack
    * (effects/handlers/tokens-copy.ts#copySpells). Capability `feature:activate.uncopiable`.
@@ -571,7 +574,22 @@ export type CostPart =
      * them."): with `count: 'any'`, from your graveyard, the cards chosen have together at least `atLeast` different card types (the union of their card types, never a sum: an artifact
      * creature card counts two, two creature cards count one). A threshold part (rules/cost-pick.ts). Capability `cost:exileFrom.typesAmong`.
      */
-    typesAmong?: { atLeast: number }; faceUp?: true }
+    typesAmong?: { atLeast: number }; faceUp?: true;
+    /**
+     * edhe7 INTERFACE CHANGE (additive), CR 404.2, 118.3, 602.2b (Necratog, Nature's Kiss, Alms, Barrow Ghoul): `top`, "Exile the top creature card of your graveyard": from your graveyard
+     * (a graveyard is kept in order, the last card is the top), the one card on top of the cards of the filter (any card without one); nothing is chosen, and the part can't be paid with no
+     * such card. With `count: 1`, no `self`. Capability `cost:exileFrom.top`.
+     * edh-d-107 INTERFACE CHANGE (additive), CR 404.2, 118.3 (Spinning Darkness): with `count` N > 1, "Exile the top three black cards of your graveyard": the N topmost cards of the
+     * filter, nothing chosen; the part can't be paid with fewer such cards. Capability `cost:exileFrom.topCount`.
+     */
+    top?: true;
+    /**
+     * edh-d-107 INTERFACE CHANGE (additive), CR 118.3, 404.1, 602.2b (Thelon of Havenwood, Night Soil): `anyGraveyard`, "Exile a Fungus card from a graveyard": with `zone: 'graveyard'`,
+     * the cards are chosen from any player's graveyard, not only yours (a cost may exile cards other players own: nothing in CR 118 limits a cost to your own cards). With
+     * `singleGraveyard` too, "Exile two creature cards from a single graveyard": all of them from the same player's graveyard. Never with `self`, `top`, `orGraveyard` or a
+     * threshold. Capabilities `cost:exileFrom.anyGraveyard`, `cost:exileFrom.singleGraveyard`.
+     */
+    anyGraveyard?: true; singleGraveyard?: true }
   | { kind: 'tapUntapped'; filter: ObjectFilter; count: Count; other?: boolean }
   /**
    * p2-cost-parts-1 INTERFACE CHANGE (additive): "Untap two tapped creatures you control" (Halo Fountain; CR 118.3, 602.2b, 701.26b): untap that many tapped
@@ -595,8 +613,10 @@ export type CostPart =
    * kind on ~, written as the ability's X (`count: {q:'X'}`, `self`) with no choice: the X the activation announces is the number of those counters on ~
    * (actions/activate.ts#fixedCounterX), so "the number of charge counters removed this way" of the effect is that X (render/costs.ts). Capability
    * `cost:removeCounters.all`.
+   * edh-d-111 INTERFACE CHANGE (additive): `oneOrMore` with `anyNumber`, "Remove one or more +1/+1 counters from ~" (CR 107.1c, 107.3a, 602.2b; Arcee, Sharpshooter): as many as the payer
+   * chooses, at least one: the ability's X (`count: {q:'X'}`, `self`) is announced 1 or more (actions/activate.ts#leastX). Capability `cost:removeCounters.oneOrMore`.
    */
-  | { kind: 'removeCounters'; counter: CounterKind; count: Quantity; self?: boolean; filter?: ObjectFilter; among?: true; anyNumber?: true; all?: true }
+  | { kind: 'removeCounters'; counter: CounterKind; count: Quantity; self?: boolean; filter?: ObjectFilter; among?: true; anyNumber?: true; all?: true; oneOrMore?: true }
   | { kind: 'putCounters'; counter: CounterKind; count: Quantity; self?: boolean; filter?: ObjectFilter }
   /**
    * trek-1 INTERFACE CHANGE (additive): `beamUp`, the creature returned to its owner's hand to pay a beam me up cost (Star Trek keyword, reminder text: "You may cast
@@ -616,7 +636,12 @@ export type CostPart =
    * your hand on top of your library": the payer chooses `count` cards of `filter` in `from` ('exile': any player's, as the filter says; 'hand': their own) and each goes to
    * `to`: its owner's graveyard, or the top of its owner's library. Capability `cost:moveCards` (rules/cost.ts#toPlanPart, rules/pay-parts.ts).
    */
-  | { kind: 'moveCards'; from: 'exile' | 'hand'; filter?: ObjectFilter; count: Count; to: 'graveyard' | 'libraryTop' }
+  /**
+   * edh-e-37 INTERFACE CHANGE (additive), CR 118.3, 401.4, 400.3 (Anurid Scavenger, Gurzigost): `from: 'graveyard'` (your own) and `to: 'libraryBottom'`, "Put a card from your graveyard on the bottom of your
+   * library" / "Put two cards from your graveyard on the bottom of your library": the payer chooses the cards (no filter: any), each goes to the bottom of its owner's library, in the order picked.
+   * Capability `cost:moveCards.libraryBottom`.
+   */
+  | { kind: 'moveCards'; from: 'exile' | 'hand' | 'graveyard'; filter?: ObjectFilter; count: Count; to: 'graveyard' | 'libraryTop' | 'libraryBottom' }
   | { kind: 'reveal'; zone: 'hand'; filter?: ObjectFilter; count: Count; self?: boolean; /** edh-next-117 INTERFACE CHANGE (additive), CR 701.20a, 118.3 (Land Grant): `hand`, "reveal your hand": every card of the hand is revealed, nothing is chosen. Capability `cost:reveal.hand`. */ hand?: true }
   /** edh-mana-keywords-12 (CR 702.24a, 106.4, 118.1; Braid of Fire): "Cumulative upkeep--Add {R}.", a cost that is adding mana to your own pool; only a cumulative upkeep keyword's cost reads it (parser/holes/misc.ts#addManaCost). Capability `cost:addMana`. */
   | { kind: 'addMana'; mana: ManaType[] }
@@ -665,6 +690,11 @@ export type CostPart =
    * Capability `cost:opponentGainsLife`.
    */
   | { kind: 'opponentGainsLife'; amount: Quantity }
+  /**
+   * edh-e-16 INTERFACE CHANGE (additive), CR 118.1, 118.3, 119.3, 601.2b (Reverent Silence, Skyshroud Cutter): "you may have each other player gain 6 life" as a cost: every player
+   * other than the payer gains `amount` life as the cost is paid (no choice). A replacement of the gain does not stop the payment (CR 118.3); a player who can't gain life makes the cost unpayable (CR 119.7). Capability `cost:eachOtherGainsLife`.
+   */
+  | { kind: 'eachOtherGainsLife'; amount: Quantity }
   /**
    * edh-d-74 INTERFACE CHANGE (additive), CR 701.13a, 118.3, 702.24a (Thought Lash): "Exile the top card of your library" as a cost, "Cumulative upkeep--Exile the top card of your library." and
    * "Exile the top card of your library: Prevent the next 1 damage ...": the top `count` cards of the payer's library go to exile face up. It can't be paid with fewer cards in the library
@@ -879,6 +909,13 @@ export interface TargetSpec {
    * Capability `feature:target.perCardType`.
    */
   perCardType?: boolean;
+  /**
+   * edh-e-64 INTERFACE CHANGE (additive): "For each color, return up to one target card of that color from your graveyard to your hand" (All Suns' Dawn, Rogues' Gallery; CR 105.1,
+   * 115.1, 601.2c): at most `max` targets for EACH color: the objects chosen can be given distinct colors, each one a color of its own object (a multicolored card counts for one
+   * of its colors), at most `max` objects for a color. A colorless card has no color, so it is never one of them. Checked as the targets are announced (asked again when an
+   * answer breaks it). Capability `feature:target.perQuality`.
+   */
+  perQuality?: 'color';
   /** Required only if a condition holds at announcement (kicker, a mode, a cost paid; CR 601.2c, 700.2c). */
   onlyIf?: Condition;
   /** A player other than the controller chooses (CR 601.7). */
@@ -1210,7 +1247,21 @@ export type PlayerRef =
    * whose life total no other opponent exceeds (every one tied for the most), read as it is now (a static requirement: as attackers are declared; a step: as it is performed), in APNAP order.
    * Capability `ref:mostLife` (effects/refs.ts, statics/match.ts).
    */
-  | { ref: 'mostLife'; who: 'opponent' };
+  | { ref: 'mostLife'; who: 'opponent' }
+  /**
+   * edh-e-62 INTERFACE CHANGE (additive; CR 119.1, 402.1, 101.4, 608.2h; Wild Dogs, Sokenzan Renegade, Loxodon Peacekeeper): "the player with the most life" / "the player with the lowest life total" /
+   * "the player who has the most cards in hand" (`fewest`: the least): among the players still in the game, the ONE whose `stat` (`life`: life total; `hand`: number of cards in hand) no other player
+   * matches or beats, judged once as the instruction is performed. When two or more players are tied for it, nobody (the card says what then happens). With `tied`, the opposite: the players tied for
+   * it, when two or more are, else nobody ("If two or more players are tied for lowest life total, you choose one of them"). Steps and conditions only (effects/refs.ts); a static ability or a rule
+   * effect reads it as nobody (capability `feature:player.controlsMost.static`).
+   */
+  | { ref: 'extremePlayer'; stat: 'life' | 'hand'; fewest?: true; tied?: true }
+  /**
+   * edh-e-62 INTERFACE CHANGE (additive; CR 705.1, 705.2, 101.4, 608.2c; Goblin Assassin): "each player whose coin comes up tails" (`side: 'heads'`: "heads"): the players of the earlier `flipCoin` step named
+   * `step` (a flip by several players, each flipping one coin) whose coin came up that way, in APNAP order, as the flip made them; a flip that has not happened, or nobody's coin that way: nobody. Steps
+   * only (effects/refs.ts); a static ability or a rule effect reads it as nobody (capability `feature:player.controlsMost.static`).
+   */
+  | { ref: 'coinSide'; step: Name; side: 'heads' | 'tails' };
 
 /**
  * M12-1 (m12 design 4.3, review finding 6): the `PlayerRef` kinds that stand ONLY for players (no `ObjRef` has the same `ref`). Every reader that tells a
@@ -1238,6 +1289,8 @@ const PLAYER_ONLY_KINDS: Readonly<Record<Exclude<PlayerRef['ref'], ObjRef['ref']
   randomOpponent: true, // trek-17
   withLife: true, // edh-next-72
   mostLife: true, // edh-d-85
+  extremePlayer: true, // edh-e-62
+  coinSide: true, // edh-e-62
   grantCaster: true, // edh-next-146
 };
 export type PlayerOnlyRefKind = keyof typeof PLAYER_ONLY_KINDS;
@@ -1375,6 +1428,8 @@ export interface ObjectFilter {
   isCopy?: boolean;
   /** edhd60 (CR 707.10, 707.12, 601.2a; Errant, Street Artist): a spell on the stack that was not cast (a copy put on the stack, never a copy of a card that is cast). Read from `StackInfo.castOrdinal` (absent). Capability `filter:uncast`. */
   uncast?: true;
+  /** edh-e-17 (CR 601.2i; Second Guess): a spell on the stack that was the Nth spell cast this turn by all players (`StackInfo.castOrdinal.all`); a copy or an ability never was. Capability `filter:castNthThisTurn`. */
+  castNthThisTurn?: number;
   /**
    * std-combat-1 INTERFACE CHANGE (additive): `orPlaneswalker`, "attacking you and/or planeswalkers you control" (Tomik, Wielder of Law; CR 506.3, 508.1b, 508.5): the
    * creature attacks a player `defender` matches, or a planeswalker such a player controls (the defending player of an attacked planeswalker is its controller, CR
@@ -1498,6 +1553,13 @@ export interface ObjectFilter {
    */
   couldEnchant?: ObjRef;
   /**
+   * edh-e-53 INTERFACE CHANGE (additive), CR 701.3a-b, 303.4a, 303.4d, 702.5a (Crown of the Ages, Kitsune Mystic: "Attach target Aura attached to a creature to another creature"): a permanent
+   * the one Aura this names could be attached to and is not attached to now: the Aura is on the battlefield, attached to something else than the permanent, and its enchant
+   * restriction (and protection) accepts it. Nothing else matches, an Aura whose restriction the engine does not understand included. Evaluated by rules/filter.ts only (a static
+   * ability's filter never matches it). Capability `filter:auraMovesTo`.
+   */
+  auraMovesTo?: ObjRef;
+  /**
    * p2-damage-2 INTERFACE CHANGE (additive): is attached to a player the predicate names ("the number of Curses attached to them", Curse of Thirst; CR 303.4,
    * 702.5d: an Aura with enchant player is attached to a player), the attachment as it is when the filter is read. rules/filter.ts and statics/match.ts read it.
    */
@@ -1548,6 +1610,12 @@ export interface ObjectFilter {
   // history (read from GameState.history, CR 603.4 style "this turn" facts)
   enteredThisTurn?: boolean;
   /**
+   * edh-e-27 INTERFACE CHANGE (additive), CR 400.7, 500.1 (Premature Burial: "target nonblack creature that entered since your last turn ended"): the object entered the battlefield
+   * (as this object) in the entries of the history scope `sinceYourLastTurn` for "you", the filter's controller of the ability (rules/history.ts#enteredSinceYourLastTurn).
+   * Only `true` has a wording. Capability `filter:enteredSinceYourLastTurn`.
+   */
+  enteredSinceYourLastTurn?: true;
+  /**
    * std-rx12 INTERFACE CHANGE (additive): "each creature you control that you've put one or more +1/+1 counters on this turn" (Kid Loki): counters of `kind` (any kind
    * for 'any') were put on this object this turn by the player "you" names (the `by` fact of the history's `counters` entries, CLOUD std-msh; the object as the
    * object it is now, CR 400.7, 122.6). Read by rules/filter.ts and statics/match.ts.
@@ -1568,6 +1636,19 @@ export interface ObjectFilter {
    * event, CR 120.8). Only `true` has a wording. Capability `filter:dealtExcessDamageThisTurn`.
    */
   dealtExcessDamageThisTurn?: true;
+  /**
+   * edh-e-50 INTERFACE CHANGE (additive), CR 120.1, 510.2, 603.4 (Grisly Sigil: "If it was dealt noncombat damage this turn"): this object was dealt damage that was not combat damage
+   * at least once this turn, read from the `combat` fact of the damage entries of `GameState.history` (an amount of 0 is no event, CR 120.8). Only `true` has a wording.
+   * Capability `filter:dealtNoncombatDamageThisTurn`.
+   */
+  dealtNoncombatDamageThisTurn?: true;
+  /**
+   * edh-e-50 INTERFACE CHANGE (additive), CR 302.6, 400.7 (Nettling Imp, Norritt: "target non-Wall creature the active player has controlled continuously since the beginning of the
+   * turn"): the permanent's controller has controlled it since before the current turn began (`GameObject.controlledSinceTurn` is earlier than this turn's number: control that began
+   * during this turn, by entering or by a change of control, does not count). The controller is the filter's own `controller`. Read where the filter is read (rules/filter.ts); a
+   * static ability does not read it (statics/match.ts). Only `true` has a wording. Capability `filter:controlledSinceTurnStart`.
+   */
+  controlledSinceTurnStart?: true;
   /**
    * FAST3 T14 (INTERFACE CHANGE): "dealt damage by ~ this turn" (Sengir Vampire): this object was dealt damage this turn by the source of the ability (the
    * object itself, CR 400.7: not an earlier or later object it was). Read from `GameState.history` like `dealtDamageThisTurn`.
@@ -1657,10 +1738,22 @@ export interface ObjectFilter {
    * still matches does not matter). Capability `filter:controllerDealtCombatDamageBy`.
    */
   controllerDealtCombatDamageBy?: { atLeast: number; by: ObjectFilter };
+  /**
+   * edhe33 INTERFACE CHANGE (additive), CR 109.4, 108.1 (Seasinger): "target creature whose controller controls an Island": the object's controller (as it is now) controls at least
+   * one permanent that matches this filter (a plain description of permanents: types, subtypes, colors; it names no controller of its own). Capability `filter:controllerControls`.
+   */
+  controllerControls?: ObjectFilter;
   attackedThisTurn?: boolean;
   blockedThisTurn?: boolean;
   /** edh-c-18 INTERFACE CHANGE (additive), CR 509.1h, 506.4 (Heat Stroke: "each creature that blocked or was blocked this turn"): this creature was blocked by at least one creature this turn (a `becomesBlocked` entry of this turn whose subject is it, read like `blockedThisTurn`). Capability `filter:wasBlockedThisTurn`. */
   wasBlockedThisTurn?: boolean;
+  /**
+   * edh-e-20 INTERFACE CHANGE (additive), CR 509.1g-h, 506.4, 400.7 (You Cannot Pass!, Venomous Breath, Defiant Vanguard, Joven's Ferrets): this creature was in a block pair with
+   * one of `with` this turn (the `blocks` entries of this turn's history, one per blocker-attacker pair, kept by object id): `blocker` = it blocked one of them ("creatures that blocked ~ this
+   * turn"), `blocked` = one of them blocked it ("all creatures it blocked this turn"), `either` = either ("creatures that blocked or were blocked by it this turn"). A pair stays a pair after
+   * either creature left combat or the battlefield. Read where the filter is read (a set fixed as the effect resolves, CR 608.2h). Capability `filter:blockedWithThisTurn`.
+   */
+  blockedWithThisTurn?: { role: 'blocker' | 'blocked' | 'either'; with: ObjRef; /** only the combat phase in progress ("each creature it blocked this combat", Cathedral Membrane). */ combat?: true };
 
   /** Shares a quality with another object: "that shares a creature type with it". */
   /** std-rx32 INTERFACE CHANGE (additive): `other`, "another <set>": the object tested is not one of the set it is compared with (CR 201.2: "doesn't have the same name as another permanent you control"). */
@@ -2025,6 +2118,10 @@ export type Quantity =
    * the damage (the `source.id` fact), so a source that changed zones is another one. Statics never read it.
    */
   /**
+   * edh-e-16 INTERFACE CHANGE (additive; CR 120.1, 603.4; Inferno Trap): `per: 'source'` with a `damage` event and no `sum` is the number of different sources that dealt matching damage (an amount of 0 is
+   * not damage; a source that changed zones is another object, CR 400.7). Capability `feature:announce.qty.happenedCount.damageSourcesToYou`.
+   */
+  /**
    * edh-d-92 INTERFACE CHANGE (additive; CR 208.1, 700.4, 603.10a, 608.2h; Genesis of the Daleks): `sum: 'power'`, without `per`, of a `zoneChange` pattern: the powers of the matching
    * entries added up, each the object's power as it last existed (the entry's `power` fact; "the total power of Daleks that died this turn"). An entry without that fact fails closed.
    * Read by rules/history.ts#sumHistory (the history capability `q:happenedCount`); statics never read it.
@@ -2246,6 +2343,10 @@ export type Quantity =
    * from anywhere this turn (`turnStats.descended`); "you descended this turn" is this compared `>=` 1.
    */
   | { q: 'descendedThisTurn' }
+  /** edh-d-108 INTERFACE CHANGE (additive), CR 601.2, 602.2, 404.1 (Laboratory Drudge): the spells the controller cast from a graveyard this turn plus the abilities they activated of cards in
+   * a graveyard this turn (turnStats `castFromCount.graveyard` + `activatedFromGraveyard`); "if you've cast a spell from a graveyard or activated an ability of a card in a graveyard this turn"
+   * is this >= 1. Capability `qty:graveyardUsesThisTurn` */
+  | { q: 'graveyardUsesThisTurn' }
   /**
    * edh-combat-5 INTERFACE CHANGE (additive), CR 508.1, 500.8: "for each time it has attacked this turn" (Moraug, Fury of Akoum): the number of times the object `of` was declared
    * as an attacker this turn (one per declaration, so two with an added combat phase; history entries `attacks` of this turn whose subject is this object, as that object, CR 400.7).
@@ -2383,6 +2484,15 @@ export type Condition =
    * than 1 whose only divisors are 1 and itself; 0 and 1 are not prime). Evaluated by triggers/cond.ts and statics/match.ts; capability `cond:prime`.
    */
   | { cond: 'prime'; of: Quantity }
+  /**
+   * edhe7 INTERFACE CHANGE (additive), CR 404.1, 404.2, 400.3, 113.6m (Nether Spirit, Death Spark, Krovikan Horror, Nether Shadow): where the object itself sits in its owner's
+   * graveyard, which is kept in order (CR 404.2: the last card is the top, `GameState.zones.graveyard`). The condition is false unless the object is a card in a graveyard.
+   * `mode: 'only'`: "~ is the only creature card in your graveyard": the object matches `filter` and no other card of that graveyard does. `mode: 'directlyAbove'`: "~ is in your
+   * graveyard with a creature card directly above it": the card right on top of it matches `filter`. `mode: 'above'` with `atLeast`: "with three or more creature cards above it":
+   * at least that many cards above it (nearer the top) match `filter`. `filter` never names a zone or owner (the owner's graveyard is meant). Evaluated by triggers/cond.ts and
+   * effects/eval.ts (an intervening "if" or an "if" inside an effect); not by statics/match.ts (a static reading it would be false); capability `cond:graveyardPos`.
+   */
+  | { cond: 'graveyardPos'; mode: 'only' | 'directlyAbove' | 'above'; filter: ObjectFilter; atLeast?: number }
   /** "if you control a creature", "if an opponent has no cards in hand". */
   | { cond: 'exists'; of: ObjRef; atLeast?: Quantity }
   /**
@@ -2423,7 +2533,10 @@ export type Condition =
   // one alternative cost, as the condition's words state it. The engine reads `via` only (the cast record's alternative cost); parseCard keeps the condition only when the
   // face has exactly one alternative cost named `alternative` with this mana cost (parser/parse.ts#linkAltCostNamed), so the cost named here is the cost paid. The renderer
   // prints it back. No capability of its own: `via` is what the engine reads.
-  | { cond: 'wasCast'; kicked?: boolean | string; via?: string; viaCost?: ManaCost; from?: ZoneName; fromOwner?: 'you'; xAtLeast?: number; by?: 'you'; spent?: { color: Color | 'C'; atLeast: number }; object?: ObjRef; kept?: true }
+  // edh-d-111 INTERFACE CHANGE (additive): `nth`, with `by: 'you'`, "When this creature enters, if it was the second spell you cast this turn" (Codespell Cleric; CR 601.2i, 603.4): the spell
+  // this permanent was was the nth spell its caster cast that turn, and it was cast this turn (the cast record's `nth`, `StackInfo.castOrdinal.turn`). Read by triggers/cond.ts and
+  // effects/eval.ts; statics/match.ts and actions/announce-cond.ts refuse it (false). Capability `feature:wasCast.nth` (model/cap-walk.ts).
+  | { cond: 'wasCast'; kicked?: boolean | string; via?: string; viaCost?: ManaCost; from?: ZoneName; fromOwner?: 'you'; xAtLeast?: number; by?: 'you'; spent?: { color: Color | 'C'; atLeast: number }; object?: ObjRef; kept?: true; nth?: number }
   /** History queries over a scope: "if a creature died this turn", "if you've cast two spells this turn". */
   | { cond: 'happened'; event: EventPattern; scope: HistoryScope; times?: NumberCmp; by?: PlayerPred }
   /** Result of an earlier step: "if you do", "if you don't", "if that spell is countered this way" (CR 118.12, 603.12, 608.2c). */
@@ -2556,7 +2669,17 @@ export type Condition =
    * edh-players-18 INTERFACE CHANGE (additive), CR 102.3, 603.4 (Fevered Visions): "if the player is your opponent": every player `who` names is (`is: 'opponent'`) an opponent of
    * the controller, or is (`'you'`) the controller; at least one player is named. Capability `cond:playerIs`.
    */
-  | { cond: 'playerIs'; who: PlayerRef; is: 'you' | 'opponent' }
+  /**
+   * edh-e-4 INTERFACE CHANGE (additive), CR 608.2c, 608.2d (Menacing Ogre: "If you are one of those players, put two +1/+1 counters on this creature."): `among`, the group the
+   * player must belong to: a step's `if` holds when every player `who` stands for is one of the players `among` stands for as the step resolves (here the choosers of the
+   * highest number, `choseNumber`). Read in a resolving effect only (a trigger's or an announcement's condition cannot see the choice: fail closed). Capability `cond:playerIs.among`.
+   */
+  | { cond: 'playerIs'; who: PlayerRef; is: 'you' | 'opponent'; among?: PlayerRef }
+  /**
+   * edh-e-62 INTERFACE CHANGE (additive), CR 603.4, 608.2h (Wild Dogs: "if a player has more life than each other player"): the player reference `who` names at least one player now (for an
+   * `extremePlayer`: some player has more than each other player; with `tied`: two or more players are tied). Capability `cond:hasPlayer`.
+   */
+  | { cond: 'hasPlayer'; who: PlayerRef }
   /**
    * edh-next-53 INTERFACE CHANGE (additive), CR 506.2, 508.1b, 506.3; Suppressor Skyguard: "that player has another opponent who isn't being attacked": among the players still in the game other
    * than `of` (the attacking player) and the controller of the ability, at least one has no creature attacking them in this combat. A planeswalker or battle they control being attacked does
@@ -2586,7 +2709,11 @@ export type Condition =
  * (Marchesa, Resolute Monarch: "if you haven't been dealt combat damage since your last turn"): during your own turn, your turn before it (PlayerState.previousTurnStarted); during
  * another player's turn, your turn that began last. Before you had a turn that ended, the whole game. Capability `feature:history.sinceYourLastTurn`.
  */
-export type HistoryScope = 'turn' | 'combat' | 'game' | 'lastTurn' | 'sinceYourLastTurn';
+/**
+ * edh-d-109 INTERFACE CHANGE (additive), CR 500.1, 508.1: `yourLastTurn` = the entries of the controller's ("you") most recent turn before this one (during your own turn the one before it,
+ * otherwise the one that began last): "if it attacked during your last turn" (Giant Turtle). Before you had such a turn, none. Capability `feature:history.yourLastTurn`.
+ */
+export type HistoryScope = 'turn' | 'combat' | 'game' | 'lastTurn' | 'yourLastTurn' | 'sinceYourLastTurn';
 
 // ---- Durations -------------------------------------------------------------
 
@@ -2606,7 +2733,8 @@ export type Duration =
    * controller's next untap step): the `effect` handler then stores one record per object (effects/handlers/lasting.ts). A skipped untap step does not
    * end it (CR 500.11: a skipped step does not happen). Capability `dur:throughNextUntap`.
    */
-  | { d: 'throughNextUntap'; whose?: PlayerPred }
+  /** edh-e-25 INTERFACE CHANGE (additive): `steps` (2 or more, default 1) lasts through that many of the untap steps it applies in ("doesn't untap during its controller's next two untap steps", CR 502.3; Telekinesis). The per-object form only (no `whose`), checked by model/cap-walk.ts#throughNextUntapForms. */
+  | { d: 'throughNextUntap'; whose?: PlayerPred; steps?: number }
   | { d: 'asLongAs'; cond: Condition }
   /**
    * std-rx32 INTERFACE CHANGE (additive): "for as long as it remains tapped" / "for as long as it has a flood counter on it" about the object the effect is
@@ -2625,7 +2753,11 @@ export type Duration =
    * is carried to it with the effect's own, statics/spell-carry.ts#carried), and its caster has controlled it without a break (statics/match.ts#wasCastKept).
    * Written only by keyword expansions (keywords/data/suspend.json), never by the parser.
    */
-  | { d: 'whileObject'; object: ObjRef; as: 'tapped' | 'counter' | 'attached' | 'kept'; counter?: string; to?: ObjRef }
+  /**
+   * edh-e-2 INTERFACE CHANGE (additive): `as: 'enchanted'`, "for as long as that creature is enchanted" (Rootwater Matriarch; CR 611.2b, 303.4, 301.5): lasts while `object` (fixed as the effect
+   * begins) is still that object on the battlefield and has at least one Aura attached to it (statics/while-object.ts). Capability `dur:whileObject.enchanted`.
+   */
+  | { d: 'whileObject'; object: ObjRef; as: 'tapped' | 'counter' | 'attached' | 'kept' | 'enchanted'; counter?: string; to?: ObjRef }
   /**
    * FAST5X E29 INTERFACE CHANGE (additive): "until the end of your next turn" (CR 611.2a, 514.2): ends in the cleanup step of the next turn of `whose`, the
    * first turn of that player that BEGINS after the effect began. An effect that begins during that player's own turn lasts through this turn and all of the
@@ -2634,6 +2766,14 @@ export type Duration =
    * (effects/handlers/lasting-fix.ts#fixDuration). Capability `dur:endOfNextTurn`.
    */
   | { d: 'endOfNextTurn'; whose: PlayerRef }
+  /**
+   * edh-d-104 INTERFACE CHANGE (additive), CR 611.2a, 500.5a (Brazen Cannonade: "Until end of combat on your next turn, you may play that card."): lasts until the end of the first
+   * combat phase of the next turn of `whose` that BEGINS after the effect began (an added combat phase of that turn does not see it again), or until that turn's cleanup step if
+   * that turn has no combat phase. `whose` is fixed as the effect begins (effects/handlers/lasting-fix.ts#fixDuration); as that turn begins the record is armed with the turn's
+   * number (`turn`, core/durations.ts#lastTurnBegins) and the first end of a combat phase or the cleanup step of that turn ends it (core/durations.ts#expireSimple). Capability
+   * `dur:endOfCombatNextTurn`.
+   */
+  | { d: 'endOfCombatNextTurn'; whose: PlayerRef; turn?: number }
   /**
    * FAST5X E29 INTERFACE CHANGE (additive): "for as long as it remains exiled" / "for as long as that card remains exiled" (CR 611.2b, 400.7): lasts while
    * at least one of the objects the effect names is still the same object in exile. Only for an `effect` step whose effects are all permissions for named
@@ -2745,7 +2885,7 @@ export type EffectStep =
    * `who`: EVERY player of the group, in turn order beginning with the active player (CR 101.4), is offered the payment, also after one has paid; `then` runs once if at least one of them paid, `else`
    * is not used. Without it a group in `who` is offered the payment until one pays ("unless any player pays"). Capability `op:pay.everyPlayer` (effects/handlers/pay.ts#OP_FORMS).
    */
-  | (StepBase & { op: 'pay'; who: PlayerRef; cost: CostDef; times?: Quantity; /** edh-d-74 INTERFACE CHANGE (additive), CR 702.24a (Hibernation's End, Thought Lash): the payment is a cumulative upkeep's: whether the controller paid it is an event, `payCumulativeUpkeep` ("whenever you pay ~'s cumulative upkeep") or `failCumulativeUpkeep` ("when a player doesn't pay ~'s cumulative upkeep"), seen before the unpaid branch (the sacrifice) runs. Written by keywords/data/cumulative-upkeep.json only. Capability `op:pay.cumulativeUpkeep`. */ cumulativeUpkeep?: true; /** edh-d-45 INTERFACE CHANGE (additive), CR 118.12, 118.7 (Draco): "This cost is reduced by {2} for each basic land type among lands you control": the generic mana of `cost` is reduced by this amount (never below zero) as the payment is offered. Mana-only costs. Capability `op:pay.reduceBy`. */ reduceBy?: Quantity; upTo?: Quantity; anyAmount?: true; startingWith?: PlayerRef; mandatory?: boolean; then?: EffectStep[]; else?: EffectStep[]; xMax?: Quantity; everyPlayer?: true; /** edh-next-139 INTERFACE CHANGE (additive), CR 608.2c-d, 119.4 (Plague of Vermin): with `startingWith` and `anyAmount`, what EACH player paid is kept under this link for the rest of the resolution (`LinkValue.byPlayer`, added up over the runs of a repeated process; read by `chosenNumber` with `of`). Capability `op:pay.byPlayerLink`. */ link?: LinkId })
+  | (StepBase & { op: 'pay'; who: PlayerRef; cost: CostDef; times?: Quantity; /** edh-e-21 INTERFACE CHANGE (additive), CR 118.12, 202.1, 107.3 (Pendrell Flux, Essence Leak: "sacrifice this creature unless you pay its mana cost"; Tariff): the mana of the payment is the mana cost of this object (its last known information if it has left), added to `cost`; an {X} in it is 0 (CR 107.3h); an object with no mana cost, or none the step can find, is no payment (CR 202.1b, 608.2b): the unless branch happens. Mana-only costs. Capability `op:pay.manaCostOf`. */ manaCostOf?: ObjRef; /** edh-d-74 INTERFACE CHANGE (additive), CR 702.24a (Hibernation's End, Thought Lash): the payment is a cumulative upkeep's: whether the controller paid it is an event, `payCumulativeUpkeep` ("whenever you pay ~'s cumulative upkeep") or `failCumulativeUpkeep` ("when a player doesn't pay ~'s cumulative upkeep"), seen before the unpaid branch (the sacrifice) runs. Written by keywords/data/cumulative-upkeep.json only. Capability `op:pay.cumulativeUpkeep`. */ cumulativeUpkeep?: true; /** edh-d-45 INTERFACE CHANGE (additive), CR 118.12, 118.7 (Draco): "This cost is reduced by {2} for each basic land type among lands you control": the generic mana of `cost` is reduced by this amount (never below zero) as the payment is offered. Mana-only costs. Capability `op:pay.reduceBy`. */ reduceBy?: Quantity; upTo?: Quantity; anyAmount?: true; startingWith?: PlayerRef; mandatory?: boolean; then?: EffectStep[]; else?: EffectStep[]; xMax?: Quantity; everyPlayer?: true; /** edh-next-139 INTERFACE CHANGE (additive), CR 608.2c-d, 119.4 (Plague of Vermin): with `startingWith` and `anyAmount`, what EACH player paid is kept under this link for the rest of the resolution (`LinkValue.byPlayer`, added up over the runs of a repeated process; read by `chosenNumber` with `of`). Capability `op:pay.byPlayerLink`. */ link?: LinkId })
   /**
    * one at a time (CR 608.2f). std-rx32 INTERFACE CHANGE (additive): `gather`, the name a step of `do` binds in each iteration; after the loop it stands for what
    * every iteration bound under it, together ("For each creature card exiled this way, create a token that's a copy of it. ... sacrifice those tokens.")
@@ -2830,7 +2970,7 @@ export type EffectStep =
    * that hasn't been chosen."): `unchosen`, with `startingWith`: each player chooses only among the objects no player chose before in this step (a player left with none chooses nothing).
    * Capability `op:chooseObjects.unchosen`.
    */
-  | (StepBase & { op: 'chooseObjects'; who: PlayerRef; from: ObjRef; min: Count; max: Count; as: Name; random?: boolean; eachColorPair?: true; unchosen?: true; groupLimit?: { stat: 'power' | 'toughness' | 'manaValue'; cmp: NumberCmp }; perPlayer?: PlayerRef; startingWith?: PlayerRef; eachCardType?: true; link?: LinkId; distinct?: 'power' | 'toughness' | 'manaValue' | 'name'; /** edh-d-85 INTERFACE CHANGE (additive), CR 205.2a, 608.2d (Winter, Cynical Opportunist): "any number of cards ... with four or more card types among them": a nonempty set chosen must have at least this many different card types among its objects (a card of two types gives both); none chosen is always allowed. The chooser's answer is checked (core/validate.ts). Only without `perPlayer`, `startingWith`, `eachCardType`, `distinct`, `random`. Capability `op:chooseObjects.cardTypesAtLeast`. */ cardTypesAtLeast?: number; damageSource?: true })
+  | (StepBase & { op: 'chooseObjects'; who: PlayerRef; from: ObjRef; min: Count; max: Count; as: Name; random?: boolean; eachColorPair?: true; unchosen?: true; groupLimit?: { stat: 'power' | 'toughness' | 'manaValue'; cmp: NumberCmp }; perPlayer?: PlayerRef; startingWith?: PlayerRef; eachCardType?: true; link?: LinkId; distinct?: 'power' | 'toughness' | 'manaValue' | 'name'; /** edh-d-85 INTERFACE CHANGE (additive), CR 205.2a, 608.2d (Winter, Cynical Opportunist): "any number of cards ... with four or more card types among them": a nonempty set chosen must have at least this many different card types among its objects (a card of two types gives both); none chosen is always allowed. The chooser's answer is checked (core/validate.ts). Only without `perPlayer`, `startingWith`, `eachCardType`, `distinct`, `random`. Capability `op:chooseObjects.cardTypesAtLeast`. */ cardTypesAtLeast?: number; damageSource?: true; /** edh-d-107 INTERFACE CHANGE (additive), CR 608.2d, 609.3 (Egon, God of Death ruling 2021-02-05): with a fixed `min` (= `max`), when fewer objects than that can be chosen none is chosen ("exile two cards from your graveyard. If you can't, ..." exiles nothing with one card there). Capability `op:chooseObjects.allOrNone`. */ allOrNone?: true })
   /**
    * std-rx28 INTERFACE CHANGE (additive): `cardKind`, of a card name only: "choose a land card name" / "a nonland card name" (CR 201.3; ChooseNameDecision.cardKind).
    */
@@ -2844,7 +2984,7 @@ export type EffectStep =
    * only the players of the game whose life total is at least that of every other player in it are offered (every player when all are tied), as the choice is made; a
    * player who has left the game is not counted. Capability `op:chooseValue.mostLife` (effects/handlers/choose.ts#OP_FORMS).
    */
-  | (StepBase & { op: 'chooseValue'; who: PlayerRef; /** edh-next-129 INTERFACE CHANGE (additive), CR 506.1, 508.1, 608.2d (Territorial Hellkite; rulings 2017-08-25): with `what: 'opponent'`, "an opponent ... that this creature didn't attack during your last combat": the opponents this source (the same object) attacked as players during the latest combat phase of a turn of the chooser before the current one are never offered; a source that did not attack then, or no earlier combat of theirs, excludes nobody. With every opponent excluded nothing is chosen. Capability `op:chooseValue.notAttackedLastCombat`. */ notAttackedLastCombat?: true; /** edh-perms-15 INTERFACE CHANGE (additive): `counterKind`, "choose a counter on <permanent or player>" (CR 122.1, 608.2d): a kind of counter the `counterOn` holder has now; capability `op:chooseValue.counterKind` */ what: ChoiceKind | 'counterKind'; as: Name; link?: LinkId; /** edh-zones-26 INTERFACE CHANGE (additive), CR 608.2d (Tibalt's Trickery): with `what: 'number'`, the number from `min` to `max` is picked at random with the game's RNG, nobody chooses it ("Choose 1, 2, or 3 at random"); edh-c-14: also with `what: 'player' | 'opponent'` ("Choose an opponent at random", Ruhan of the Fomori); capability `op:chooseValue.random` */ random?: true; options?: string[]; min?: Quantity; max?: Quantity; exclude?: ChoiceExclusion[]; cardKind?: 'land' | 'nonland'; secret?: true; /** edh-next-120 INTERFACE CHANGE (additive), CR 608.2d (Wheel of Misfortune, Prisoner's Dilemma): with `secret` and several choosers, "..., then the choices are revealed": each player chooses without seeing the others' choices (logged to the chooser only), then, once every player has chosen, all the choices are revealed at once (logged to everyone, and the link keeps no `secret`). Capability `op:chooseValue.secretReveal` */ reveal?: true; mostLife?: true; /** edh-d-46 INTERFACE CHANGE (additive), CR 109.4, 608.2d (Boreas Charger): with `what: 'opponent'`, "choose an opponent who controls more lands than you": only the opponents who control more permanents matching the filter than the chooser (none: nothing is chosen and the later steps that read the choice do nothing). Capability `op:chooseValue.controlsMore` */ controlsMore?: ObjectFilter; /** edh-next-143 INTERFACE CHANGE (additive), CR 608.2d (Pir's Whim, Khorvath's Fury): "For each player, choose friend or foe.": the one chooser `who` makes a choice among `options` for each player of this group (APNAP order), and the link remembers the word chosen for each of them by player (the `chose` player reference reads it: "each friend"). Capability `op:chooseValue.forEachPlayer` */ forEachPlayer?: PlayerRef; /** edh-perms-15 (CR 122.1, 608.2d): with `what: 'counterKind'`, the holder whose counters are offered */ counterOn?: Ref; /** edh-next-128 INTERFACE CHANGE (additive), CR 122.1, 608.2d (Crystalline Giant: "choose a kind of counter at random that this creature doesn't have on it from among flying, first strike, ..., and +1/+1"): with `what: 'counterKind'` and `options` (and no `counterOn`), one of the listed kinds that this object has no counter of now (a keyword it has another way does not count, ruling 2020-04-17); every kind there already: nothing is chosen. Capability `op:chooseValue.counterKindNotOn` */ counterNotOn?: ObjRef })
+  | (StepBase & { op: 'chooseValue'; who: PlayerRef; /** edh-next-129 INTERFACE CHANGE (additive), CR 506.1, 508.1, 608.2d (Territorial Hellkite; rulings 2017-08-25): with `what: 'opponent'`, "an opponent ... that this creature didn't attack during your last combat": the opponents this source (the same object) attacked as players during the latest combat phase of a turn of the chooser before the current one are never offered; a source that did not attack then, or no earlier combat of theirs, excludes nobody. With every opponent excluded nothing is chosen. Capability `op:chooseValue.notAttackedLastCombat`. */ notAttackedLastCombat?: true; /** edh-perms-15 INTERFACE CHANGE (additive): `counterKind`, "choose a counter on <permanent or player>" (CR 122.1, 608.2d): a kind of counter the `counterOn` holder has now; capability `op:chooseValue.counterKind` */ what: ChoiceKind | 'counterKind'; as: Name; link?: LinkId; /** edh-e-62 INTERFACE CHANGE (additive), CR 608.2d, 119.1 (Loxodon Peacekeeper: "If two or more players are tied for lowest life total, you choose one of them"): with `what: 'player'`, only the players `among` names (as the choice is made) are offered; none: nothing is chosen. Capability `op:chooseValue.among`. */ among?: PlayerRef; /** edh-zones-26 INTERFACE CHANGE (additive), CR 608.2d (Tibalt's Trickery): with `what: 'number'`, the number from `min` to `max` is picked at random with the game's RNG, nobody chooses it ("Choose 1, 2, or 3 at random"); edh-c-14: also with `what: 'player' | 'opponent'` ("Choose an opponent at random", Ruhan of the Fomori); capability `op:chooseValue.random` */ random?: true; options?: string[]; min?: Quantity; max?: Quantity; exclude?: ChoiceExclusion[]; cardKind?: CardNameKind; secret?: true; /** edh-next-120 INTERFACE CHANGE (additive), CR 608.2d (Wheel of Misfortune, Prisoner's Dilemma): with `secret` and several choosers, "..., then the choices are revealed": each player chooses without seeing the others' choices (logged to the chooser only), then, once every player has chosen, all the choices are revealed at once (logged to everyone, and the link keeps no `secret`). Capability `op:chooseValue.secretReveal` */ reveal?: true; mostLife?: true; /** edh-d-46 INTERFACE CHANGE (additive), CR 109.4, 608.2d (Boreas Charger): with `what: 'opponent'`, "choose an opponent who controls more lands than you": only the opponents who control more permanents matching the filter than the chooser (none: nothing is chosen and the later steps that read the choice do nothing). Capability `op:chooseValue.controlsMore` */ controlsMore?: ObjectFilter; /** edh-next-143 INTERFACE CHANGE (additive), CR 608.2d (Pir's Whim, Khorvath's Fury): "For each player, choose friend or foe.": the one chooser `who` makes a choice among `options` for each player of this group (APNAP order), and the link remembers the word chosen for each of them by player (the `chose` player reference reads it: "each friend"). Capability `op:chooseValue.forEachPlayer` */ forEachPlayer?: PlayerRef; /** edh-perms-15 (CR 122.1, 608.2d): with `what: 'counterKind'`, the holder whose counters are offered */ counterOn?: Ref; /** edh-next-128 INTERFACE CHANGE (additive), CR 122.1, 608.2d (Crystalline Giant: "choose a kind of counter at random that this creature doesn't have on it from among flying, first strike, ..., and +1/+1"): with `what: 'counterKind'` and `options` (and no `counterOn`), one of the listed kinds that this object has no counter of now (a keyword it has another way does not count, ruling 2020-04-17); every kind there already: nothing is chosen. Capability `op:chooseValue.counterKindNotOn` */ counterNotOn?: ObjRef })
   /** Players resolve it by hand (manualResolve). `reminder` also leaves a chip for text that outlives the step (manual shields). */
   | (StepBase & { op: 'manual'; text: string; reason: string; reminder?: Duration })
   // --- damage and life ----------------------------------------------------------
@@ -2895,7 +3035,12 @@ export type EffectStep =
    */
   | (StepBase & { op: 'discard'; who: PlayerRef; count: Quantity | 'hand'; filter?: ObjectFilter; mode?: 'choose' | 'random' | 'opponentChooses'; cantAs?: Name })
   | (StepBase & { op: 'mill'; who: PlayerRef; count: Quantity })
-  | (StepBase & { op: 'scry'; who: PlayerRef; count: Quantity })
+  /**
+   * edhe58 INTERFACE CHANGE (additive), CR 701.29a, 701.22a (Mesmeric Sliver, Spin into Myth): `fateseal`, "fateseal 2" instead of "scry 2": `who` looks at
+   * the top `count` cards of an opponent's library (the opponent is chosen when the step resolves, one only when there is one) and puts any number of them on the bottom of that library and the rest back on
+   * top in any order. Fateseal is no scry: nothing that triggers on scrying triggers, and no replacement of scrying applies. Capability `op:scry.fateseal`.
+   */
+  | (StepBase & { op: 'scry'; who: PlayerRef; count: Quantity; fateseal?: true })
   | (StepBase & { op: 'surveil'; who: PlayerRef; count: Quantity })
   /**
    * edh-next-135 INTERFACE CHANGE (additive), CR 603.12, 701.20a (Invasion of Tarkir: "Reveal any number of Dragon cards from your hand. When you do, ..."; ruling 2023-04-14): `anyNumber`,
@@ -2994,7 +3139,12 @@ export type EffectStep =
    * CLOUD std-dft INTERFACE CHANGE (additive): `ifSearched`, "If you search your library this way, shuffle." (CR 701.23a, 701.24a): only a library a search of the
    * same resolution searched is shuffled (StepResult.searched). Capability `op:shuffle.ifSearched`.
    */
-  | (StepBase & { op: 'shuffle'; who: PlayerRef; ifSearched?: true })
+  /**
+   * edhe34 INTERFACE CHANGE (additive), CR 404.2 (a graveyard's order may not be changed unless an effect says so), 701.24a (random): `reorderGraveyard`, "reorder your graveyard at random"
+   * (Search for Survivors) / "reorder your graveyard as you choose" (Fossil Find): the order of each named player's graveyard (the array order, the first card the one put in first) is
+   * randomized with the game's generator, or put in the order the player chooses; no library is shuffled and no card changes zone or object. Capability `op:shuffle.reorderGraveyard`.
+   */
+  | (StepBase & { op: 'shuffle'; who: PlayerRef; ifSearched?: true; reorderGraveyard?: 'random' | 'chosen' })
   /** `separator` separates the cards into two piles, `chooser` picks one (Fact or Fiction; no dedicated CR rule, choices follow CR 608.2d). */
   /**
    * r5-dig INTERFACE CHANGE (additive), CR 700.3, 701.20a: `faceDown` "separate them into a face-down pile and a face-up pile" (Riddles in the Dark, Curator of
@@ -3014,7 +3164,13 @@ export type EffectStep =
    * (the new object, CR 400.7; read by its abilities as `{ref:'linked', link}`, CR 607.2a): craft's "the exiled cards used to craft it" (CR 702.167c).
    * Capability `op:move.remember`.
    */
-  | (StepBase & { op: 'move'; what: ObjRef; to: Destination; until?: Duration; link?: LinkId; remember?: { link: LinkId; what: ObjRef } })
+  /**
+   * trek-23 INTERFACE CHANGE (additive), CR 608.2c, 406.3 (Vulcan Mind-Meld): `by`, the player an instruction names as the one who exiles ("target opponent looks at the top card of your
+   * library, then exiles it face down"; "you look at the top two cards of their library, then exile them face down"): the resolution remembers that player as the one who exiled each card
+   * the move put into exile (`ExecCtx.exiledBy`), read by a play permission with `exiledByOnly` ("the player who exiled it may play it"). Who moves a card changes nothing else here
+   * (CR 406.1). On a move to exile only: capability `op:move.by` (any other destination is `op:move.by.other`, which nothing registers).
+   */
+  | (StepBase & { op: 'move'; what: ObjRef; to: Destination; until?: Duration; link?: LinkId; remember?: { link: LinkId; what: ObjRef }; by?: PlayerRef })
   /**
    * edh-mana-keywords-7 INTERFACE CHANGE (additive), CR 701.8a, 614.6, 608.2c (Terastodon: "For each permanent put into a graveyard this way, its controller creates ..."):
    * `boundTo: 'graveyard'`, the objects `as` binds are only those that went to a graveyard; one a replacement effect exiled instead (Rest in Peace) is not "put into a graveyard
@@ -3089,7 +3245,7 @@ export type EffectStep =
    * edh-perms-21 INTERFACE CHANGE (additive), CR 607.2c (objects "created with [this object]"), Faerie Artisans ruling 2016-11-08: with `result: 'token'`, `link`, the tokens this step creates are added to what the source object
    * remembers under this link, for a later read `{ref:'linked', link}` ("all other tokens created with ~"). Capability `op:copy.link`.
    */
-  | (StepBase & { op: 'copy'; /** edh-next-131 INTERFACE CHANGE (additive), CR 303.4f, 301.5c, 707.2 (Arna Kennerüd, Skycaptain): with `result: 'token'`, "a copy of that permanent attached to that creature": each token copy of an Aura or Equipment enters attached to that object (an Aura that can't enchant it is not created; an Equipment that can't equip it enters unattached). Capability `op:copy.attachTo` */ attachTo?: ObjRef; /** edh-next-137 INTERFACE CHANGE (additive), CR 707.9b, 707.10, 306.5b (Ob Nixilis, the Adversary): with `result: 'spell'`, "the copy has starting loyalty X": the copy's printed loyalty (a copiable value) is this amount, worked out as the copy is made; the token permanent it becomes enters with that many loyalty counters. Capability `op:copy.startingLoyalty`. edh-next-136 (CR 707.9b, 306.5b; Jace, Mirror Mage): with `result: 'token'`, "except ... its starting loyalty is 1": a fixed number only, the token copies' loyalty, a copiable value (statics/copy.ts, CopyExcept `startingLoyalty`; capability `op:copy.except`; any other amount on a token copy is `op:copy.startingLoyalty.other`, never registered) */ startingLoyalty?: Quantity; link?: LinkId; /** edh-next-114 INTERFACE CHANGE (additive), CR 707.9e, 122.6, 111.1 (Littjara Mirrorlake): with `result: 'token'`, "except it enters with an additional +1/+1 counter on it": the counters each token copy enters with, on top of the copiable values (not part of them). Capability `op:copy.counters` */ counters?: CounterSpec[]; what: ObjRef; result: 'spell' | 'token'; who: PlayerRef; count?: Quantity; newTargets?: boolean | 'may'; except?: Modification[]; noManaCost?: true; /** edh-next-122 INTERFACE CHANGE (additive), CR 702.128b: the tokens are "embalmed" (the embalm keyword's expansion, keywords/data/embalm.json): they enter with the `embalmed` fact and keep the mark. Capability `op:copy.embalmed` */ embalmed?: true; tapped?: boolean; attacking?: boolean | AttackingWhom; gains?: { add: AbilityDef[]; ifPermanent?: true }; /** edh-cast-14 INTERFACE CHANGE (additive), CR 707.10, 707.10c, 115.1, 601.2c (Zada, Hedron Grinder): with `result: 'spell'`, one copy of the spell for each object `retargetEach` names that is a legal target for every target the spell has; each copy targets only that object, in every place the original has a target (a different one for each copy), and its controller puts the copies onto the stack in the order they choose. Only a spell all of whose target lists have exactly one target and no `distinctFrom`; any other spell is copied by hand. Capability `op:copy.retargetEach`. */ retargetEach?: ObjRef; /** edh-next-74 INTERFACE CHANGE (additive), CR 707.10c, 115.1, 601.2c (Radiate, Radiant Performer): "copy that spell for each other permanent or player the spell could target. Each copy targets a different one of those permanents and players.": like `retargetEach` over every permanent and every player (not the object or player the original targets), of a spell OR ability on the stack. Needs `different`. Capability `op:copy.retargetAll`. */ retargetAll?: true; /** edhd60 INTERFACE CHANGE (additive), CR 707.10c, 115.1, 601.2c (Frontline Heroism): "Copy that spell. The copy targets that token.": with `result: 'spell'`, the one copy of the spell targets only this object in every place the original has a target; the object must be a legal target for each (else the copy is made by hand). Capability `op:copy.targetsObject` */ targetsObject?: ObjRef; /** edh-cast-14: with `retargetEach`, "Each copy targets a different one of those creatures." (written by the second sentence; the handler copies by hand without it) */ different?: true; /** edh-next-130 INTERFACE CHANGE (additive), CR 603.10a, 608.2h, 707.2 (Shelob, Child of Ungoliant; Hofri Ghostforge, ruling 2021-04-16: "the copiable values of the creature as it last existed on the battlefield before it died, not as it existed in the graveyard"): with `result: 'token'`, an object that has left the battlefield since is copied as it last existed THERE (its last known information on the battlefield, CR 400.7 links); one whose last battlefield form showed other characteristics than its card (it was a copy, or an effect changed it) is copied by hand. Capability `op:copy.lastOnBattlefield` */ lastOnBattlefield?: true; /** edh-next-130 INTERFACE CHANGE (additive), CR 607.2a, 607.1 (Hofri Ghostforge, ruling 2021-04-16: the token's granted ability "is linked to" the ability that made it; "Each Spirit token ... refers only to the card you exile during the resolution of the ability that created that token"): with `result: 'token'`, each token's own link store `linkCopied` holds the object it was copied from, where that object is now, when it is in exile (the granted ability's "the exiled card" reads it). Capability `op:copy.linkCopied` */ linkCopied?: LinkId; /** edh-cast-15 INTERFACE CHANGE (additive), CR 707.10, 113.7a: "copy all OTHER activated and triggered abilities you control" (Ulalek): the ability whose instructions these are, on the stack now, is not copied. Capability `op:copy.exceptThis` */ exceptThis?: true })
+  | (StepBase & { op: 'copy'; /** edh-e-62 INTERFACE CHANGE (additive), CR 707.10 (Parnesse, the Subtle Brush): `also`, "up to one target opponent may also copy that spell": the copy is made IN ADDITION to the copy the trigger is about; only said (render/steps-zones.ts#copy), never read by the handler. Only with `result: 'spell'`. */ also?: true; /** edh-next-131 INTERFACE CHANGE (additive), CR 303.4f, 301.5c, 707.2 (Arna Kennerüd, Skycaptain): with `result: 'token'`, "a copy of that permanent attached to that creature": each token copy of an Aura or Equipment enters attached to that object (an Aura that can't enchant it is not created; an Equipment that can't equip it enters unattached). Capability `op:copy.attachTo` */ attachTo?: ObjRef; /** edh-next-137 INTERFACE CHANGE (additive), CR 707.9b, 707.10, 306.5b (Ob Nixilis, the Adversary): with `result: 'spell'`, "the copy has starting loyalty X": the copy's printed loyalty (a copiable value) is this amount, worked out as the copy is made; the token permanent it becomes enters with that many loyalty counters. Capability `op:copy.startingLoyalty`. edh-next-136 (CR 707.9b, 306.5b; Jace, Mirror Mage): with `result: 'token'`, "except ... its starting loyalty is 1": a fixed number only, the token copies' loyalty, a copiable value (statics/copy.ts, CopyExcept `startingLoyalty`; capability `op:copy.except`; any other amount on a token copy is `op:copy.startingLoyalty.other`, never registered) */ startingLoyalty?: Quantity; link?: LinkId; /** edh-next-114 INTERFACE CHANGE (additive), CR 707.9e, 122.6, 111.1 (Littjara Mirrorlake): with `result: 'token'`, "except it enters with an additional +1/+1 counter on it": the counters each token copy enters with, on top of the copiable values (not part of them). Capability `op:copy.counters` */ counters?: CounterSpec[]; what: ObjRef; result: 'spell' | 'token'; who: PlayerRef; count?: Quantity; newTargets?: boolean | 'may'; except?: Modification[]; noManaCost?: true; /** edh-next-122 INTERFACE CHANGE (additive), CR 702.128b: the tokens are "embalmed" (the embalm keyword's expansion, keywords/data/embalm.json): they enter with the `embalmed` fact and keep the mark. Capability `op:copy.embalmed` */ embalmed?: true; tapped?: boolean; attacking?: boolean | AttackingWhom; gains?: { add: AbilityDef[]; ifPermanent?: true }; /** edh-cast-14 INTERFACE CHANGE (additive), CR 707.10, 707.10c, 115.1, 601.2c (Zada, Hedron Grinder): with `result: 'spell'`, one copy of the spell for each object `retargetEach` names that is a legal target for every target the spell has; each copy targets only that object, in every place the original has a target (a different one for each copy), and its controller puts the copies onto the stack in the order they choose. Only a spell all of whose target lists have exactly one target and no `distinctFrom`; any other spell is copied by hand. Capability `op:copy.retargetEach`. */ retargetEach?: ObjRef; /** edh-next-74 INTERFACE CHANGE (additive), CR 707.10c, 115.1, 601.2c (Radiate, Radiant Performer): "copy that spell for each other permanent or player the spell could target. Each copy targets a different one of those permanents and players.": like `retargetEach` over every permanent and every player (not the object or player the original targets), of a spell OR ability on the stack. Needs `different`. Capability `op:copy.retargetAll`. */ retargetAll?: true; /** edhd60 INTERFACE CHANGE (additive), CR 707.10c, 115.1, 601.2c (Frontline Heroism): "Copy that spell. The copy targets that token.": with `result: 'spell'`, the one copy of the spell targets only this object in every place the original has a target; the object must be a legal target for each (else the copy is made by hand). Capability `op:copy.targetsObject` */ targetsObject?: ObjRef; /** edh-cast-14: with `retargetEach`, "Each copy targets a different one of those creatures." (written by the second sentence; the handler copies by hand without it) */ different?: true; /** edh-next-130 INTERFACE CHANGE (additive), CR 603.10a, 608.2h, 707.2 (Shelob, Child of Ungoliant; Hofri Ghostforge, ruling 2021-04-16: "the copiable values of the creature as it last existed on the battlefield before it died, not as it existed in the graveyard"): with `result: 'token'`, an object that has left the battlefield since is copied as it last existed THERE (its last known information on the battlefield, CR 400.7 links); one whose last battlefield form showed other characteristics than its card (it was a copy, or an effect changed it) is copied by hand. Capability `op:copy.lastOnBattlefield` */ lastOnBattlefield?: true; /** edh-next-130 INTERFACE CHANGE (additive), CR 607.2a, 607.1 (Hofri Ghostforge, ruling 2021-04-16: the token's granted ability "is linked to" the ability that made it; "Each Spirit token ... refers only to the card you exile during the resolution of the ability that created that token"): with `result: 'token'`, each token's own link store `linkCopied` holds the object it was copied from, where that object is now, when it is in exile (the granted ability's "the exiled card" reads it). Capability `op:copy.linkCopied` */ linkCopied?: LinkId; /** edh-cast-15 INTERFACE CHANGE (additive), CR 707.10, 113.7a: "copy all OTHER activated and triggered abilities you control" (Ulalek): the ability whose instructions these are, on the stack now, is not copied. Capability `op:copy.exceptThis` */ exceptThis?: true })
   /**
    * r4-fxb INTERFACE CHANGE (additive): "Change the target of target spell or ability with a single target." (CR 115.7, 115.7a): `who` changes the one target of
    * each spell or ability `what` names to another legal target of it (legal for that spell or ability, as if it had been chosen for it); with no other legal
@@ -3192,8 +3348,9 @@ export type EffectStep =
    * edh-b-12 INTERFACE CHANGE (additive), CR 701.12a, 401.1 (Mordenkainen): `what: 'handLibrary'`, "exchange your hand and library": `a` is the one player (`b` equal to `a`); every card of their hand
    * is put into their library and every card of their library into their hand, together. Capability `op:exchange.handLibrary` (effects/handlers/zones-status.ts).
    * edh-c-113 INTERFACE CHANGE (additive), CR 701.12a, 400.1 (Harness Infinity): `what: 'handGraveyard'`, "exchange your hand and graveyard": the same shape with the graveyard for the library (no shuffle).
+   * edh-e-38 INTERFACE CHANGE (additive), CR 701.12a, 400.1, 404.1, 401.1 (Morality Shift): `what: 'graveyardLibrary'`, "exchange your graveyard and library": every card of the player's graveyard goes into their library and every card of their library into their graveyard, together. Capability `op:exchange.graveyardLibrary`.
    */
-  | (StepBase & { op: 'exchange'; a: Ref; b: Ref; what: 'control' | 'life' | 'sacrificeReturn' | 'hands' | 'powerToughness' | 'lifeToughness' | /** edh-next-89 INTERFACE CHANGE (additive), CR 701.12a, 613.4b (Evra, Halcyon Witness): `lifePower`, "exchange your life total with ~'s power", as `lifeToughness` with the creature's power (a layer-7b effect). Capability `op:exchange.lifePower`. */ 'lifePower' | 'power' | 'handLibrary' | 'handGraveyard'; duration?: Duration })
+  | (StepBase & { op: 'exchange'; a: Ref; b: Ref; what: 'control' | 'life' | 'sacrificeReturn' | 'hands' | 'powerToughness' | 'lifeToughness' | /** edh-next-89 INTERFACE CHANGE (additive), CR 701.12a, 613.4b (Evra, Halcyon Witness): `lifePower`, "exchange your life total with ~'s power", as `lifeToughness` with the creature's power (a layer-7b effect). Capability `op:exchange.lifePower`. */ 'lifePower' | 'power' | 'handLibrary' | 'handGraveyard' | 'graveyardLibrary'; duration?: Duration })
   /**
    * FXC INTERFACE CHANGE (additive): `transformed` casts a transforming double-faced card with its back face up (CR 712.11a, 712.8c: the back face's
    * characteristics, the front face's mana value); a card that isn't one can't be cast this way. First user: the Siege defeat trigger (CR 310.12b).
@@ -3258,7 +3415,7 @@ export type EffectStep =
    * CR 608.2c-d, 122.1; unverified cites): as the step resolves, the controller chooses one or more of the objects of `on` (an `each` set, at most `count` of
    * them) and divides `count` among them, each getting at least one (effects/handlers/counters.ts#distributedShares). Capability `op:putCounters.distribute`.
    */
-  | (StepBase & { op: 'putCounters'; on: Ref; kind: CounterKind; count: Quantity; distribute?: true; /** edh-d-89 INTERFACE CHANGE (additive), CR 122.1, 608.2c (Aven Courier): with `kindOfChoice`, "put a counter of that kind on <one object> if it doesn't have a counter of that kind on it": nothing is put on a recipient that already has one (judged as it resolves); capability op:putCounters.ifNone */ ifNone?: true; /** std-mana-2 (additive): "put up to N <kind> counters on <one object>": the controller chooses how many, 0 to N (CR 608.2d; capability op:putCounters.upTo) */ upTo?: true; /** edh-perms-15 INTERFACE CHANGE (additive), CR 122.1, 608.2d: "put another counter of that kind": the kind is the one a `chooseValue` with `what: 'counterKind'` chose for this link earlier in the resolution (`kind` is then ignored); capability `op:putCounters.kindOfChoice` */ kindOfChoice?: LinkId; /** edh-players-19 INTERFACE CHANGE (additive), CR 122.6, 608.2d: the player who puts the counters when it is not the controller ("target player puts a +1/+1 counter on each creature they control"); read by effects/handlers/counters.ts (the `by` of the counters events); capability `op:putCounters.by` */ by?: PlayerRef; /** edh-c-48 INTERFACE CHANGE (additive), CR 702.100a, 701.x (cites unverified: "evolves" is defined by Renegade Krasis's rulings): the counter is the one an evolve ability puts; when a counter is put, the creature "evolves" (the `action` event with the verb `evolve`, once however many counters); only the evolve keyword's own expansion writes it; capability `op:putCounters.evolve` */ evolve?: true; /** edhn63 INTERFACE CHANGE (additive), CR 122.1, 122.6, 608.2h: "put the same number and kind of counters on ~" (`same`) / "put one of each of those kinds of counters on it" (`oneEach`): the counters the triggering counters event put (`EventContext.counterKinds`); `kind` and `count` are then ignored (write 'any' and 1); capability `op:putCounters.ofEvent` */ ofEvent?: 'same' | 'oneEach'; /** edhn63 INTERFACE CHANGE (additive), CR 122.1, 122.6, 608.2h: "put the same number of each kind of counter on that creature" (Denry Klin): the counters of every kind the object `copyFrom` has as the step resolves (last known information if it left), the same number of each; `kind` and `count` are then ignored (write 'any' and 1); capability `op:putCounters.copyFrom` */ copyFrom?: ObjRef })
+  | (StepBase & { op: 'putCounters'; on: Ref; kind: CounterKind; count: Quantity; distribute?: true; /** edh-d-89 INTERFACE CHANGE (additive), CR 122.1, 608.2c (Aven Courier): with `kindOfChoice`, "put a counter of that kind on <one object> if it doesn't have a counter of that kind on it": nothing is put on a recipient that already has one (judged as it resolves); capability op:putCounters.ifNone */ ifNone?: true; /** std-mana-2 (additive): "put up to N <kind> counters on <one object>": the controller chooses how many, 0 to N (CR 608.2d; capability op:putCounters.upTo) */ upTo?: true; /** edh-e-14 INTERFACE CHANGE (additive), CR 122.1, 608.2d (Clockwork Avian): with `upTo`, "This ability can't cause the total number of <kind> counters on ~ to be greater than four": the number put is cut so that the holder has at most this many counters of the kind afterwards; capability `op:putCounters.maxTotal` */ maxTotal?: number; /** edh-perms-15 INTERFACE CHANGE (additive), CR 122.1, 608.2d: "put another counter of that kind": the kind is the one a `chooseValue` with `what: 'counterKind'` chose for this link earlier in the resolution (`kind` is then ignored); capability `op:putCounters.kindOfChoice` */ kindOfChoice?: LinkId; /** edh-players-19 INTERFACE CHANGE (additive), CR 122.6, 608.2d: the player who puts the counters when it is not the controller ("target player puts a +1/+1 counter on each creature they control"); read by effects/handlers/counters.ts (the `by` of the counters events); capability `op:putCounters.by` */ by?: PlayerRef; /** edh-c-48 INTERFACE CHANGE (additive), CR 702.100a, 701.x (cites unverified: "evolves" is defined by Renegade Krasis's rulings): the counter is the one an evolve ability puts; when a counter is put, the creature "evolves" (the `action` event with the verb `evolve`, once however many counters); only the evolve keyword's own expansion writes it; capability `op:putCounters.evolve` */ evolve?: true; /** edhn63 INTERFACE CHANGE (additive), CR 122.1, 122.6, 608.2h: "put the same number and kind of counters on ~" (`same`) / "put one of each of those kinds of counters on it" (`oneEach`): the counters the triggering counters event put (`EventContext.counterKinds`); `kind` and `count` are then ignored (write 'any' and 1); capability `op:putCounters.ofEvent` */ ofEvent?: 'same' | 'oneEach'; /** edhn63 INTERFACE CHANGE (additive), CR 122.1, 122.6, 608.2h: "put the same number of each kind of counter on that creature" (Denry Klin): the counters of every kind the object `copyFrom` has as the step resolves (last known information if it left), the same number of each; `kind` and `count` are then ignored (write 'any' and 1); capability `op:putCounters.copyFrom` */ copyFrom?: ObjRef })
   /**
    * FAST4 T31 INTERFACE CHANGE (additive): `upTo` = "remove up to N counters": the controller removes any number from 0 to N (CR 122.1, 608.2d: of any kinds
    * with `kind: 'any'`, choosing each counter's kind; capability `op:removeCounters.upTo`, effects/handlers/counters.ts#OP_FORMS).
@@ -3303,7 +3460,14 @@ export type EffectStep =
    */
   | (StepBase & { op: 'emptyManaPool'; who: PlayerRef })
   // --- durations, shields, delayed and reflexive triggers -----------------------------
-  | (StepBase & { op: 'effect'; effects: StaticEffect[]; duration: Duration })
+  /**
+   * edh-e-68 INTERFACE CHANGE (additive), CR 601.2d, 615.7, 609.7 (Embolden: "Prevent the next 4 damage that would be dealt this turn to any number of targets, divided as you choose"): with `divided`,
+   * the step's one `replace` effect is a prevention shield (`body: prevent` with an amount, `shield: { uses: 'all' }`) on the damage that would be dealt to the targets of ONE target spec (its
+   * recipient is `{ object: { is: target }, player: target }`), and its amount is the total divided among them: the division is announced with the targets (the spec's `divide`, set by the
+   * lowering), and each target that is still legal gets its own shield of exactly its share (a target that became illegal loses its share, CR 608.2b); no target, no shield.
+   * Capability `op:effect.divided` (effects/handlers/lasting.ts#dividedEffects).
+   */
+  | (StepBase & { op: 'effect'; effects: StaticEffect[]; duration: Duration; divided?: true })
   /**
    * FAST5 T45 INTERFACE CHANGE (additive): `once: true` makes a delayed trigger with a `duration` trigger only for the FIRST event that fits and then end
    * ("When you next cast an instant or sorcery spell this turn, copy that spell.", CR 603.7b: it triggers once; the duration only bounds how long it waits,
@@ -3410,7 +3574,7 @@ export type EffectStep =
    * the player has no such sticker left. The number of unique vowels on the sticker put is `{q:'stickerVowels'}` for the rest of the resolution (CR 123.6e).
    * Capability `op:putSticker`.
    */
-  | (StepBase & { op: 'putSticker'; who: PlayerRef; on: ObjRef; sticker: 'name' })
+  | (StepBase & { op: 'putSticker'; who: PlayerRef; on: ObjRef; sticker: 'name' | 'any' })
   /**
    * trek-18 INTERFACE CHANGE (additive), CR 508.7 (Tuvok, Chief Tactical Officer): "you may reselect which player or permanent that creature is attacking": the controller of the effect
    * chooses a new player, planeswalker or battle for each attacking creature `what` names (or keeps it as it is). The creature stays in combat and is not considered to have attacked
@@ -3455,7 +3619,7 @@ export type EffectStep =
    * every player of `who` has rolled ONE die each, the opponents of the roller's controller whose result equals the highest result of all the players are bound under `as` (the group is empty when only
    * the controller or nobody else had it). Only with one die each and no table. Capability `op:rollDie.highest`.
    */
-  | (StepBase & { op: 'rollDie'; who: PlayerRef; sides: number; count?: Quantity; modifier?: Quantity; chooseOne?: true; keepHighest?: true; afterRoll?: EffectStep[]; highest?: { as: Name }; table?: { min: number; max: number; do: EffectStep[]; /** edh-next-121 INTERFACE CHANGE (additive), CR 706.2, 706.3a, 608.2c (Delina, Wild Mage: "15-20 | Create one of those tokens. You may roll again."): after this row's instructions the roller may roll the same die again (with the same modifier), and the row of the new result happens, which may offer another roll. Only for the one die of one roller. Capability `op:rollDie.again`. */ again?: 'may' }[] })
+  | (StepBase & { op: 'rollDie'; who: PlayerRef; sides: number; /** edhe34 INTERFACE CHANGE (additive), CR 701.52a (Line Cutter): "Roll to visit your Attractions": the one six-sided die of one player, marked as rolled to visit (the dieRoll event's `visit`). Capability `op:rollDie.visit`. */ visit?: true; count?: Quantity; modifier?: Quantity; chooseOne?: true; keepHighest?: true; afterRoll?: EffectStep[]; highest?: { as: Name }; table?: { min: number; max: number; do: EffectStep[]; /** edh-next-121 INTERFACE CHANGE (additive), CR 706.2, 706.3a, 608.2c (Delina, Wild Mage: "15-20 | Create one of those tokens. You may roll again."): after this row's instructions the roller may roll the same die again (with the same modifier), and the row of the new result happens, which may offer another roll. Only for the one die of one roller. Capability `op:rollDie.again`. */ again?: 'may' }[] })
   /**
    * r4-mech INTERFACE CHANGE (additive): `count`, "Flip five coins." (CR 705.1): the player flips that many coins, one at a time; only without `onWin` / `onLose`
    * (parser/lower/coin-flip.ts folds those into a one-coin flip). The step's count is the flips won when they are called, else the coins that came up heads.
@@ -3533,6 +3697,15 @@ export type EffectStep =
   | (StepBase & {
     op: 'action'; action: KeywordActionName; subject?: Ref; who: PlayerRef; n?: Quantity; arg?: string; choices?: string[]; secret?: true; notSelf?: true; upTo?: true;
     /**
+     * edh-d-105 INTERFACE CHANGE (additive), CR 701.36a, 508.4, 110.5b (Ghired, Conclave Exile): of a populate only (no `n`), "populate. The token enters tapped and attacking.": the token
+     * copy enters tapped and attacking (the macro passes both flags to its `copy` step, keywords/actions/tokens.ts#POPULATE; the attacked player or planeswalker is chosen as for any
+     * creature put onto the battlefield attacking, CR 508.4). Capability `feature:populate.tappedAttacking`.
+     */
+    tapped?: true; attacking?: true;
+    /*
+     * (bundle merge: the one `tapped` above also serves) edh-e-4 INTERFACE CHANGE (additive), CR 614.1c, 701.40a, 701.58a (Become Anonymous: "..., then cloak those cards. They enter tapped."): `tapped`, of a manifest or cloak of the cards `subject` stands for: the cards (not a permanent turned face down where it is) enter the battlefield tapped. Capability `feature:action.faceDown.tapped`.
+     */
+    /**
      * edh-d-89 ADDITION (optional; `meldPair` only), CR 701.42a, 712.4a, 508.4 (Mishra, Claimed by Gix): `partner`, what else the meld partner must be (the one the condition named: "~ and a
      * creature named Phyrexian Dragon Engine are attacking": an attacking one); `entersAttacking`, "It enters tapped and attacking." (the melded permanent enters tapped and attacking, its
      * controller choosing what it attacks, CR 508.4; it was never declared as an attacker). Capability `feature:action.native.meldPair.attacking`.
@@ -3552,7 +3725,11 @@ export type EffectStep =
    * cards they own outside the game, no two with the same name (none when they can't), then `chooser` chooses one of them, and only that card is put into the hand;
    * the others stay outside the game. Only with `reveal`. Capability `op:fromOutside.chosenAmong`.
    */
-  | (StepBase & { op: 'fromOutside'; who: PlayerRef; filter?: ObjectFilter; reveal: boolean; exactly?: number; differentNames?: true; chooser?: PlayerRef });
+  /**
+   * edh-e-41 INTERFACE CHANGE (additive), CR 400.11b, 401.4: `top`, "You may put a card you own from outside the game on top of your library" (The Raven's Warning): the chosen card is put on top of its owner's library instead of into the hand
+   * (not revealed; only with `reveal: false`, no `exactly`).
+   */
+  | (StepBase & { op: 'fromOutside'; who: PlayerRef; filter?: ObjectFilter; reveal: boolean; exactly?: number; differentNames?: true; chooser?: PlayerRef; top?: true });
 
 export type EffectOp = EffectStep['op'];
 
@@ -3631,6 +3808,12 @@ export type KeywordActionName =
    * (effects/handlers/actions-native-counters.ts). `doubleCounters` with `arg` is the same action for one named kind.
    */
   | 'doubleEachKind'
+  /**
+   * edh-e-67 ADDITION (INTERFACE CHANGE, additive): "for each kind of counter on <subject>, put another counter of that kind on it or remove one from it" (CR 122.1, 122.6; Dramatist's Puppet,
+   * Quarry Hauler): the controller (`who`) chooses, for each kind of counter the holder has (the kinds read before any change), to add one or to remove one; the changes then happen
+   * (effects/handlers/actions-native-counters.ts).
+   */
+  | 'addOrRemoveEachKind'
   /**
    * Standard round 5, r5-refs ADDITION (INTERFACE CHANGE, additive): "for each kind of counter on <subject>, give that permanent or player another counter of that
    * kind" (CR 122.1, 122.6): one more counter of each kind each permanent or player of `subject` has, the kinds read before any counter is put (proliferate's
@@ -3850,7 +4033,14 @@ export type ManaProduction =
    * to Nyx; Nyx Lotus): the player chooses a color as the ability resolves, then adds that many mana of it as the mana symbols of that color among the mana costs of
    * the permanents `of` controls. Capability `feature:mana.devotionColor`.
    */
-  | { kind: 'devotionColor'; of: PlayerRef }; // std-mana-1: 'permanent', 'artifact token' ("whenever you tap an artifact token for mana", CR 106.12)
+  | { kind: 'devotionColor'; of: PlayerRef }
+  /**
+   * edh-e-21 INTERFACE CHANGE (additive), CR 106.1, 202.1, 107.4 (Elemental Resonance: "add mana equal to enchanted permanent's mana cost"): one mana for each mana symbol of the mana cost of the
+   * object `of` (as it is or was last known): a colored symbol its color, {C} and each generic mana {C}, an {X} none (X is 0 away from the stack), a hybrid symbol one of its colors as the player chooses
+   * when it resolves, a Phyrexian symbol its color. A symbol of another kind (a generic-hybrid, colorless-hybrid or snow symbol) makes the step manual (never a guess). No mana cost, no mana
+   * (CR 202.1b). Capability `feature:mana.manaCostOf`.
+   */
+  | { kind: 'manaCostOf'; of: ObjRef }; // std-mana-1: 'permanent', 'artifact token' ("whenever you tap an artifact token for mana", CR 106.12)
 
 /**
  * "Spend this mana only to cast creature spells" (Cavern of Souls, 177 cards). Structured so the payment code can ENFORCE it;
@@ -4002,6 +4192,13 @@ export interface TokenDef {
    * Tarmogoyf Nest): a token has no mana cost unless the effect gives it one, so its mana value is that cost's total (CR 202.3). Capability `feature:createToken.manaCost`.
    */
   manaCost?: ManaCost;
+  /**
+   * edh-e-12 INTERFACE CHANGE (additive), CR 111.3, 105.1, 205.3, 607.2d (Volrath's Laboratory, Riptide Replicator): "create a 2/2 creature token of the chosen color and type": the token is the one
+   * color the source kept under this link and has the one creature type it kept under `chosenSubtype` (an earlier "As this enters, choose a color and a creature type", the source's links).
+   * Without a kept choice nothing is created. Capability `feature:createToken.chosen`.
+   */
+  chosenColor?: LinkId;
+  chosenSubtype?: LinkId;
 }
 
 // ---------------------------------------------------------------------------
@@ -4102,7 +4299,7 @@ export type EventPattern =
    * std-rx28 INTERFACE CHANGE (additive): `activated`, a filter on the activated ability itself as it is put on the stack ("whenever you activate an ability that targets
    * a creature or player", Ertha Jo, Frontier Mentor; CR 602.2, 115.9b), read through the event's `spell` role. Capability `feature:ev.activate.activated`.
    */
-  | { ev: 'activate'; player?: PlayerPred; source?: ObjectFilter; manaAbility?: boolean; /** edh-next-74 INTERFACE CHANGE (additive), CR 602.2b, 118.3 (Verrak, Warped Sengir): "if life was paid to activate it": the cost of the activated ability paid life (the amount is the event's amount, "that much"). Capability `feature:trigger.activateLifePaid`. */ lifePaid?: true; /** edh-next-74 INTERFACE CHANGE (additive), CR 107.3a, 602.2b (Magus Lucea Kane, Unbound Flourishing): "activate an ability with {X} in its activation cost". Capability `feature:trigger.activateXInCost`. */ xInCost?: true; /** edh-d-50 INTERFACE CHANGE (additive), CR 602.2b, 106.3 (Dynaheir, Invoker Adept): "by spending four or more mana to activate it": the mana spent on the cost of the activation, counted as it was paid (the mana of a mana ability or a free cost is none). Capability `feature:trigger.activateManaSpent`. */ manaSpentAtLeast?: number; /** edh-next-67 INTERFACE CHANGE (additive), CR 115.1, 602.2b (Professor Hojo): the ability targeted a creature its controller controls (as it was activated: triggers/normalize.ts, the history fact `targetsOwnCreature`). Capability `feature:ev.activate.targetsYourCreature`. */ targetsYourCreature?: true; ability?: 'exhaust' | 'loyalty' | 'ninjutsu' /* edh-zones-19: CR 702.49a */ | 'boast' /* edh-c-104: CR 702.142a, Frenzied Raider */; activated?: ObjectFilter; /** std-mana-1 INTERFACE CHANGE (additive), CR 106.12: with `manaAbility`, "taps <a permanent> for mana": the mana ability had {T} in its cost. Capability `feature:trigger.tappedForMana`. */ tapped?: true; /** std-mana-1 INTERFACE CHANGE (additive), CR 106.12: with `manaAbility`, "taps a land for {C}": the activation produced mana of that type. Capability `feature:trigger.tappedForMana`. */ produced?: ManaType | /** edh-mana-keywords-5 INTERFACE CHANGE (additive), CR 106.4, 605.1b, 607.2d: the mana the activation produced includes mana of the color the trigger's own object chose as it entered (link `color`): "Whenever a land's ability causes you to add one or more mana of the chosen color" (Caged Sun), "whenever a basic land is tapped for mana of the chosen color" (Gauntlet of Power). Capability `feature:trigger.producedChosen`. */ 'chosen' }
+  | { ev: 'activate'; player?: PlayerPred; source?: ObjectFilter; manaAbility?: boolean; /** edh-next-74 INTERFACE CHANGE (additive), CR 602.2b, 118.3 (Verrak, Warped Sengir): "if life was paid to activate it": the cost of the activated ability paid life (the amount is the event's amount, "that much"). Capability `feature:trigger.activateLifePaid`. */ lifePaid?: true; /** edh-next-74 INTERFACE CHANGE (additive), CR 107.3a, 602.2b (Magus Lucea Kane, Unbound Flourishing): "activate an ability with {X} in its activation cost". Capability `feature:trigger.activateXInCost`. */ xInCost?: true; /** edh-d-50 INTERFACE CHANGE (additive), CR 602.2b, 106.3 (Dynaheir, Invoker Adept): "by spending four or more mana to activate it": the mana spent on the cost of the activation, counted as it was paid (the mana of a mana ability or a free cost is none). Capability `feature:trigger.activateManaSpent`. */ manaSpentAtLeast?: number; /** edh-next-67 INTERFACE CHANGE (additive), CR 115.1, 602.2b (Professor Hojo): the ability targeted a creature its controller controls (as it was activated: triggers/normalize.ts, the history fact `targetsOwnCreature`). Capability `feature:ev.activate.targetsYourCreature`. */ targetsYourCreature?: true; ability?: 'exhaust' | 'loyalty' | 'ninjutsu' /* edh-zones-19: CR 702.49a */ | 'boast' /* edh-c-104: CR 702.142a, Frenzied Raider */ | 'outlast' /* edh-e-43: CR 702.107a, Herald of Anafenza */; activated?: ObjectFilter; /** std-mana-1 INTERFACE CHANGE (additive), CR 106.12: with `manaAbility`, "taps <a permanent> for mana": the mana ability had {T} in its cost. Capability `feature:trigger.tappedForMana`. */ tapped?: true; /** std-mana-1 INTERFACE CHANGE (additive), CR 106.12: with `manaAbility`, "taps a land for {C}": the activation produced mana of that type. Capability `feature:trigger.tappedForMana`. */ produced?: ManaType | /** edh-mana-keywords-5 INTERFACE CHANGE (additive), CR 106.4, 605.1b, 607.2d: the mana the activation produced includes mana of the color the trigger's own object chose as it entered (link `color`): "Whenever a land's ability causes you to add one or more mana of the chosen color" (Caged Sun), "whenever a basic land is tapped for mana of the chosen color" (Gauntlet of Power). Capability `feature:trigger.producedChosen`. */ 'chosen' }
   /**
    * M12-3 INTERFACE CHANGE (additive): `orPlaneswalker`, with a player `defender`: "attacks you or a planeswalker you control" (CR 506.3, 508.1b): the attack is
    * on that player or on a planeswalker that player controls (as the attack is declared). A battle is not one (its protector is the defending player, CR 508.5,
@@ -4132,8 +4329,18 @@ export type EventPattern =
    * the filter (a description with `controller: 'you'`, read for the trigger's controller) was declared as an attacker in the same declaration, and there is at least one. Capability
    * `feature:ev.attacks.allAttack` (triggers/match.ts reads the declared ids normalize.ts carries; a history question about it is not answerable, rules/history.ts).
    */
-  | { ev: 'attacks'; attacker?: ObjectFilter; alone?: boolean; allAttack?: ObjectFilter; defender?: PlayerPred | 'planeswalker' | 'battle'; count?: NumberCmp; orPlaneswalker?: true; power?: NumberCmp; defending?: PlayerPred; withOther?: ObjectFilter; otherThanAttacker?: true }
-  | { ev: 'blocks'; blocker?: ObjectFilter; attacker?: ObjectFilter }
+  /**
+   * edh-d-109 INTERFACE CHANGE (additive): `withOtherAtLeast`, with `withOther`, "Whenever ~ and at least two Zombies attack" (Enkira, Hostile Scavenger; CR 508.1, 508.3a, 603.2c): at least this
+   * many creatures other than the attacker the event is about, declared in the same declaration, match `withOther` (read as the attack is declared). Capability `feature:ev.attacks.withOtherAtLeast`
+   * (triggers/match.ts; a history question about it is not answerable, rules/history.ts).
+   */
+  | { ev: 'attacks'; attacker?: ObjectFilter; alone?: boolean; allAttack?: ObjectFilter; defender?: PlayerPred | 'planeswalker' | 'battle'; count?: NumberCmp; orPlaneswalker?: true; power?: NumberCmp; defending?: PlayerPred; withOther?: ObjectFilter; withOtherAtLeast?: number; /** edh-d-109 INTERFACE CHANGE (additive), CR 508.1b, 506.2, 603.2c (Canal Courier: "Whenever ~ and another creature attack different players"): with `withOther`, the other declared creature attacks a PLAYER other than the player the attacker the event is about attacks (both attack players; a planeswalker or battle attacked does not count). Capability `feature:ev.attacks.withOtherDifferentPlayer` */ withOtherDifferentPlayer?: true; otherThanAttacker?: true }
+  /**
+   * edh-d-109 INTERFACE CHANGE (additive): `attackerAtLeast`, "Whenever ~ blocks two or more creatures" (Lairwatch Giant; CR 509.1a, 509.3a, 603.2c): one occurrence per blocker, when it is declared
+   * as a blocker of at least this many attacking creatures in one declaration of blockers (the first pair of the blocker carries the number, triggers/normalize.ts); a creature put onto the battlefield
+   * blocking never triggers it (CR 509.3a). Capability `feature:ev.blocks.attackerAtLeast` (triggers/match.ts; never matched by a history question, rules/history.ts).
+   */
+  | { ev: 'blocks'; blocker?: ObjectFilter; attacker?: ObjectFilter; attackerAtLeast?: number }
   /** edh-c-48 (CR 509.3e; Seifer, Balamb Rival): `byAtLeast` = "becomes blocked by two or more creatures": one occurrence per attacker, when the number of creatures blocking it first reaches that number; `by` describes each of them. Capability `event:becomesBlocked.byAtLeast`. */
   | { ev: 'becomesBlocked'; attacker?: ObjectFilter; by?: ObjectFilter; byAtLeast?: number }
   /**
@@ -4164,7 +4371,7 @@ export type EventPattern =
    * chosen players controls: the damaged player, or the controller of the damaged permanent, is a player other than the controller of the damage source (the source as it last existed if it has left). Used
    * with a `source` and a `recipient` that each name the chosen players (`linked`), so the two are the two different chosen players. Capability `feature:ev.damage.toOtherThanSourceController`.
    */
-  | { ev: 'damage'; source?: ObjectFilter; recipient?: { object?: ObjectFilter; player?: PlayerPred }; combat?: boolean; amount?: NumberCmp; excess?: true; amountIsToughness?: true; toSourceTarget?: true; sourcePermanent?: true; toOtherThanSourceController?: true }
+  | { ev: 'damage'; source?: ObjectFilter; recipient?: { object?: ObjectFilter; player?: PlayerPred }; combat?: boolean; amount?: NumberCmp; excess?: true; amountIsToughness?: true; toSourceTarget?: true; sourcePermanent?: true; toOtherThanSourceController?: true; /** edh-d-109 INTERFACE CHANGE (additive), CR 120.1, 108.3, 510.2 (The Beast, Deathless Prince: "Whenever a creature deals combat damage to its owner"): damage dealt to a PLAYER who is the owner of the damage source (the source as it last existed if it has left); damage to a permanent never matches. Capability `feature:ev.damage.toSourceOwner` */ toSourceOwner?: true; /** edh-e-49 INTERFACE CHANGE (additive), CR 506.2, 510.2, 508.5 (Latulla's Orders: "Whenever enchanted creature deals combat damage to defending player"): `combat` damage dealt by an attacking creature to the player it attacks (the `defendingPlayer` of its entry in the combat's attackers; damage to a planeswalker or battle is not dealt to a player). Only with `combat: true` and `recipient: {player: 'any'}`. Capability `feature:ev.damage.toDefendingPlayer`. */ toDefendingPlayer?: true }
   /**
    * edh-replace-3 INTERFACE CHANGE (additive), CR 615.13, 615.1: "Whenever damage that would be dealt to you is prevented" (Selfless Squire): a prevention effect was applied
    * to damage and prevented some or all of it. One occurrence for each prevention effect and recipient, the consecutive `damagePrevented` events of the simultaneous damage
@@ -4248,6 +4455,12 @@ export type EventPattern =
     /** FAST5X E20 INTERFACE CHANGE (additive): the N of "expend N" (CR 700.14): only with the verb `expend`, which needs it. */
     n?: number;
     /**
+     * edh-d-112 INTERFACE CHANGE (additive), CR 603.2, 603.2c (Lo and Li, Royal Advisors: "Whenever an opponent discards a card or mills one or more cards, ..."): in a batch trigger
+     * (`TriggerDef.batch`) whose other action patterns are "one or more" ones, this pattern is a single event: each event it matches is an occurrence of its own (each card
+     * discarded), the "one or more" patterns once for each player's batch (triggers/occurrences.ts#mixedActionOccurrences). Capability `feature:trigger.batch.mixedAction`.
+     */
+    single?: true;
+    /**
      * Cloud std-spm INTERFACE CHANGE (additive): with the verb `playLand`, the zone the land was played from ("whenever you play a land from exile", CR 305.1;
      * the `landPlayed` event's `from`). Capability `feature:ev.action.playLand.from`; on any other verb the matcher has nothing to read (never registered).
      */
@@ -4295,7 +4508,11 @@ export type EventPattern =
    * that does not state its natural result never matches.
    */
   /** edhn115 INTERFACE CHANGE (additive), CR 706.2, 603.2c: `natural`, "Whenever you roll a natural 20" (Critical Hit): the NATURAL result of the die (before any modifier) is exactly that number; matched by triggers/match.ts and rules/history.ts from the roll's `natural`, a roll that does not state it never matches. No capability of its own (as `highest`). */
-  | { ev: 'dieRoll'; player?: PlayerPred; result?: NumberCmp; highest?: true; natural?: number }
+  | { ev: 'dieRoll'; player?: PlayerPred; result?: NumberCmp; highest?: true; natural?: number;
+    /** edhe34 INTERFACE CHANGE (additive), CR 706.2, 603.2c (Resolute Veggiesaur, rulings 2022-10-07): `nth`, "Whenever you roll your third die each turn": the Nth die that player rolled this turn (turnStats.diceRolled; each die of a roll of several dice counts, an ignored die does not). Capability `feature:ev.dieRoll.nth`. */
+    nth?: number;
+    /** edhe34 INTERFACE CHANGE (additive), CR 701.52a, 603.2c ("Whenever you roll to visit your Attractions"): only a die rolled to visit its player's Attractions (the rollDie step's `visit`). Capability `feature:ev.dieRoll.visit`. */
+    visit?: true }
   /**
    * Cloud r3-mech INTERFACE CHANGE (additive), CR 705.2: "whenever you win a coin flip" (`won: true`), "whenever you lose a coin flip" (`won: false`): a flip a player
    * called (the effect cares who wins), from core/dice.ts#flipCoin's `coinFlipped` event. Without `won`, any called flip.
@@ -4466,7 +4683,7 @@ export type Modification =
    * color, or one that can't be found, gives none). Never stored (effects/handlers/lasting.ts#expandVariants); a static ability's modification never has it (capability
    * `feature:mod.protectionFromColorsOf`, `feature:mod.protectionFromColorsOf.static`).
    */
-  | { layer: 6; add?: AbilityDef[]; removeAll?: boolean; /** edh-d-46 INTERFACE CHANGE (additive), CR 613.1f, 605.1a (Blood Sun): with `removeAll`, "except mana abilities": the activated mana abilities stay. Capability `feature:layer6.removeAll.exceptMana`. */ exceptMana?: true; remove?: string[]; removeEnchant?: ObjectFilter; cantHave?: string[]; addActivatedOf?: ObjRef; /** edh-next-141 INTERFACE CHANGE (additive), CR 609.4b, 613.1f, 608.2h (Grell Philosopher): with `addActivatedOf` in a resolved effect, "You may spend <color> mana as though it were mana of any color to activate those abilities": each ability the effect copies (fixed as it begins, effects/handlers/lasting-fix.ts) gets `spendColorAsAny` (statics/mods.ts). Capability `feature:layer6.addActivatedOf.spendColorAsAny`. */ spendColorAsAny?: Color; /** edh-d-102 INTERFACE CHANGE (additive), CR 613.1f, 702.167c, 702.16a (Wretched Bonemass: "This creature has flying as long as an exiled card used to craft it has flying. The same is true for first strike, ..., protection, reach, trample, and vigilance."): `keywordsOf`, the objects whose keywords are shared: of the keywords named in `keywordsFirst` and `keywordsAmong` (by keyword name), each instance one of those objects has as this effect applies in layer 6 (their characteristics so far, the quality of "protection from red" or "hexproof from blue" kept), granted to the affected object; none of them having it, nothing. Capability `feature:layer6.keywordsOf`. */ keywordsOf?: ObjRef; keywordsFirst?: AbilityDef[]; keywordsAmong?: AbilityDef[]; otherAbilitiesOfCard?: true; activatedOfLimit?: { per: 'turn'; max: number }; alsoTriggered?: true; /** edh-next-124 INTERFACE CHANGE (additive), CR 606.1, 606.3, 613.1f (Nicol Bolas, Dragon-God; Scryfall rulings 2024-01-12): with `addActivatedOf`, "has all loyalty abilities of <objects>": only the loyalty abilities of those objects (an activated ability with `isLoyalty` or a loyalty cost), never their other activated, static or triggered abilities. Capability `feature:layer6.addActivatedOf.loyalty`. */ loyaltyOnly?: true; protectionFromColorsOf?: ObjRef; /** edhd63 INTERFACE CHANGE (additive), CR 702.1, 607.2d, 613.1f (Greymond, Avacyn's Stalwart): "have each of the chosen abilities": layer 6 gives the affected objects one simple keyword (flying, first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, vigilance) for each value the SOURCE's link `addChosen` holds (`chooseValue`/`enters.choose` with `what: 'option'`); a value that is not one of those is ignored. A static ability only. Capability `feature:layer6.addChosen`. */ addChosen?: LinkId }
+  | { layer: 6; add?: AbilityDef[]; /** edh-e-61 INTERFACE CHANGE (additive), CR 702.16a, 105.1, 613.1f (Empty-Shrine Kannushi: "This creature has protection from each color among permanents you control."): `protectionFromColorsAmong`, the objects whose colors are protected from: of the colors those objects have as this effect applies in layer 6 (settled by layer 5; the affected object itself counts when it is among them), one protection from each color word among them is granted to the affected object; none of them colored, nothing. A static ability's modification only (a resolved effect fixes nothing about it). Capability `feature:layer6.protectionFromColorsAmong`. */ protectionFromColorsAmong?: ObjRef; /** edh-e-48 INTERFACE CHANGE (additive), CR 613.1f, 113.10 (Glittering Lynx: "~ loses 'Prevent all damage that would be dealt to this creature.'"): the object loses each of its abilities that is the same ability as one of these (compared without display text); a keyword or other ability not among them stays. Capability `feature:layer6.removeAbilities`. */ removeAbilities?: AbilityDef[]; removeAll?: boolean; /** edh-d-46 INTERFACE CHANGE (additive), CR 613.1f, 605.1a (Blood Sun): with `removeAll`, "except mana abilities": the activated mana abilities stay. Capability `feature:layer6.removeAll.exceptMana`. */ exceptMana?: true; remove?: string[]; removeEnchant?: ObjectFilter; cantHave?: string[]; addActivatedOf?: ObjRef; /** edh-next-141 INTERFACE CHANGE (additive), CR 609.4b, 613.1f, 608.2h (Grell Philosopher): with `addActivatedOf` in a resolved effect, "You may spend <color> mana as though it were mana of any color to activate those abilities": each ability the effect copies (fixed as it begins, effects/handlers/lasting-fix.ts) gets `spendColorAsAny` (statics/mods.ts). Capability `feature:layer6.addActivatedOf.spendColorAsAny`. */ spendColorAsAny?: Color; /** edh-d-102 INTERFACE CHANGE (additive), CR 613.1f, 702.167c, 702.16a (Wretched Bonemass: "This creature has flying as long as an exiled card used to craft it has flying. The same is true for first strike, ..., protection, reach, trample, and vigilance."): `keywordsOf`, the objects whose keywords are shared: of the keywords named in `keywordsFirst` and `keywordsAmong` (by keyword name), each instance one of those objects has as this effect applies in layer 6 (their characteristics so far, the quality of "protection from red" or "hexproof from blue" kept), granted to the affected object; none of them having it, nothing. Capability `feature:layer6.keywordsOf`. */ keywordsOf?: ObjRef; keywordsFirst?: AbilityDef[]; keywordsAmong?: AbilityDef[]; otherAbilitiesOfCard?: true; activatedOfLimit?: { per: 'turn'; max: number }; alsoTriggered?: true; /** edh-next-124 INTERFACE CHANGE (additive), CR 606.1, 606.3, 613.1f (Nicol Bolas, Dragon-God; Scryfall rulings 2024-01-12): with `addActivatedOf`, "has all loyalty abilities of <objects>": only the loyalty abilities of those objects (an activated ability with `isLoyalty` or a loyalty cost), never their other activated, static or triggered abilities. Capability `feature:layer6.addActivatedOf.loyalty`. */ loyaltyOnly?: true; protectionFromColorsOf?: ObjRef; /** edhe35 INTERFACE CHANGE (additive), CR 702.16a, 701.38a-b, 608.2h (Council Guardian): `protectionFromVotedColors`, "protection from each color with the most votes or tied for most votes": as a resolved effect is created, it is replaced by `add` of one protection from each color word that got the most votes (and at least one) in the vote step `step` named (effects/handlers/lasting.ts#expandVariants); a vote that did not happen, or got no vote, gives none. Never stored; a static ability's modification never has it. Capability `feature:mod.protectionFromVotedColors`. */ protectionFromVotedColors?: { step: Name }; /** edhd63 INTERFACE CHANGE (additive), CR 702.1, 607.2d, 613.1f (Greymond, Avacyn's Stalwart): "have each of the chosen abilities": layer 6 gives the affected objects one simple keyword (flying, first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, vigilance) for each value the SOURCE's link `addChosen` holds (`chooseValue`/`enters.choose` with `what: 'option'`); a value that is not one of those is ignored. A static ability only. Capability `feature:layer6.addChosen`. */ addChosen?: LinkId }
   | { layer: '7a'; power?: Quantity; toughness?: Quantity }
   | { layer: '7b'; power?: Quantity; toughness?: Quantity }
   | { layer: '7c'; power?: Quantity; toughness?: Quantity }
@@ -4533,6 +4750,11 @@ export interface TypeChange {
    * `add` ("It's still a Shapeshifter") the added types stay. Nothing is changed while the reference stands for no object. Capability `feature:subtypes.setFrom`.
    */
   setFrom?: ObjRef;
+  /**
+   * edh-d-105 INTERFACE CHANGE (additive, subtypes only, with `set`), CR 707.9b, 205.1a (The Eleventh Hour, ruling 2023-10-13: "it will lose any non-Alien subtypes it has, such as Human or
+   * Vehicle"): the `set` subtypes replace EVERY subtype the object has, of every class, not only those of their own class (statics/mods.ts#layer4).
+   */
+  setAll?: true;
   removeAll?: 'creature' | 'land'; // std-mana-1 (additive): 'land', "loses all land types" (CR 205.3i, 305.7; statics/mods.ts#layer4)
   /** The type chosen by a linked ability (CR 607.2d). */
   chosen?: LinkId;
@@ -4831,6 +5053,11 @@ export type RuleAction =
    * `mode: 'cant'`, no `other`, `max` or `when`. Capability `rule:castAtInstantSpeed`.
    */
   | 'castAtInstantSpeed'
+  /**
+   * edh-e-25 INTERFACE CHANGE (additive): "Until your next upkeep, target permanent can't phase out." (CR 702.26b, 101.2): the permanent the subject describes
+   * does not phase out, whether an effect or its own phasing makes it (rules/phasing.ts#phaseOutPermanent asks statics/hooks.ts#phaseOutDenied). Capability `rule:phaseOut`.
+   */
+  | 'phaseOut'
   /** FAST5X E25 INTERFACE CHANGE (additive): "can't be turned face up" (CR 708.7, 101.2): the special action and every effect that turns a permanent face up. */
   | 'beTurnedFaceUp'
   /** std-mkm INTERFACE CHANGE (additive): "can't become suspected" (CR 701.60a, 101.2): every effect that would suspect the permanent (effects/handlers/levels.ts). */
@@ -4892,6 +5119,13 @@ export interface ReplacementDef {
      * that enter by the same instruction of a resolution (one step, or a run of plain token creations by one player) or that one move or creation outside a resolution puts onto the battlefield together (effects/entering-together.ts) and ends once they have entered; an object entering alone uses it up. Capability `feature:shield.batch`.
      */
     batch?: true;
+    /**
+     * edh-d-103 INTERFACE CHANGE (additive), CR 615.7, 611.2c (Kitsune Palliator ruling 2005-02-01): "Prevent the next 1 damage that would be dealt to each creature and each player this
+     * turn": a prevention shield (`body: {b:'prevent', amount: N}`, `uses: 'all'`) whose recipient is `{object: {types: ['Creature']}, player: 'any'}`: as the step resolves, each creature on
+     * the battlefield and each player in the game gets a shield of its own with the budget N (effects/handlers/lasting.ts#eachShields); a creature that enters later gets none. Capability
+     * `feature:shield.each`.
+     */
+    each?: true;
   };
 }
 
@@ -4994,6 +5228,12 @@ export type ReplacementBody =
      * (`{q:'chosenNumber', link}`, "the life paid as ~ entered"). Capability `body:enters.payLifeAny`.
      */
     payLifeAny?: { link: LinkId };
+    /**
+     * edh-e-23 INTERFACE CHANGE (additive), CR 614.12, 614.12a (cites unverified; Heightened Awareness, Overlaid Terrain): "As ~ enters, discard your hand." / "As ~ enters, sacrifice all lands you
+     * control.": an instruction the player it enters under carries out as it enters; the steps run, with that player as the controller, once it has entered (the same moment as `tappedMay.then`).
+     * Capability `body:enters.steps`.
+     */
+    steps?: EffectStep[];
     counters?: CounterSpec[];
     /**
      * CMD3 INTERFACE CHANGE (additive): counters it enters with only when the permanent, as it would exist on the battlefield (CR 614.12: with the continuous
@@ -5007,7 +5247,7 @@ export type ReplacementBody =
      * letters for a color choice. std-rx5 INTERFACE CHANGE (additive): `min` and `max` of a number choice, "As ~ enters, choose a number between 1 and 10"
      * (Talion, the Kindly Lord; CR 614.12a, 607.2d).
      */
-    choose?: { what: ChoiceKind; link: LinkId; options?: string[]; exclude?: string[]; min?: number; max?: number; cardKind?: 'land' | 'nonland' /* std-rx28: of a card name, CR 201.3 */; fromRevealed?: true /* edh-c-84: of a card name, among the cards `revealHands` revealed */; /** edh-d-72 INTERFACE CHANGE (additive), CR 614.12a, 608.2d (Callous Oppressor; no rule says which opponent chooses in a multiplayer game: the controller picks, a reading of "an opponent"): `chooser: 'opponent'`, "As ~ enters, an opponent chooses a creature type.": the player it enters under picks the opponent (the only one in a two-player game), and that opponent makes the choice. Capability `feature:choose.chooser`. */ chooser?: 'opponent' }[];
+    choose?: { what: ChoiceKind; link: LinkId; options?: string[]; exclude?: string[]; min?: number; max?: number; cardKind?: CardNameKind /* std-rx28: of a card name, CR 201.3 */; fromRevealed?: true /* edh-c-84: of a card name, among the cards `revealHands` revealed */; /** edh-d-72 INTERFACE CHANGE (additive), CR 614.12a, 608.2d (Callous Oppressor; no rule says which opponent chooses in a multiplayer game: the controller picks, a reading of "an opponent"): `chooser: 'opponent'`, "As ~ enters, an opponent chooses a creature type.": the player it enters under picks the opponent (the only one in a two-player game), and that opponent makes the choice. Capability `feature:choose.chooser`. */ chooser?: 'opponent'; /** edhe35 INTERFACE CHANGE (additive), CR 614.12a, 608.2d, 607.2d (Guardian Archon, Emissary of Grudges): `secret`, "As ~ enters, secretly choose an opponent.": the choice is known to the player it enters under only until a `revealChosen` cost reveals it (LinkValue.secret); the entering log does not name it. Only with `what: 'opponent'` or `'player'`. Capability `feature:choose.secret`. */ secret?: true }[];
     /**
      * std-rx6 INTERFACE CHANGE (additive): "As ~ enters, look at an opponent's hand, then choose any card name." (Sorcerous Spyglass): before the choices, the
      * player it enters under chooses an opponent and looks at that player's hand (CR 614.12a, 402.3, 701.20e). Capability `body:enters.lookAtHand`.
@@ -5103,7 +5343,7 @@ export type ReplacementBody =
      * `filter` (creatures for plain devour) and sacrifices them; it enters with `times` +1/+1 counters for each one actually sacrificed. Capability
      * `body:enters.devour`.
      */
-    devour?: { filter: ObjectFilter; times: Quantity; /** edh-c-35: the link the number devoured is kept under (copies rename links, CR 707.9; the keyword says `devoured`) */ link?: LinkId };
+    devour?: { filter: ObjectFilter; times: Quantity; /** edh-e-13 INTERFACE CHANGE (additive), CR 614.1c, 614.12a, 701.21a, 122.6 (Devouring Hellion: "enters with twice that many +1/+1 counters"): the kind of counter it enters with, +1/+1 when absent; capability `body:enters.devour.kind` */ kind?: CounterKind; /** edh-c-35: the link the number devoured is kept under (copies rename links, CR 707.9; the keyword says `devoured`) */ link?: LinkId };
     /**
      * edh-c-37 INTERFACE CHANGE (additive): tribute (CR 702.104a-b): "As this creature enters, choose an opponent. That player may put an additional N +1/+1 counters on it
      * as it enters." The player it enters under chooses an opponent (the only one with one opponent), who is asked whether to have it enter with `count` +1/+1 counters; the
@@ -5144,7 +5384,11 @@ export type ReplacementBody =
      * number of the permanents on the battlefield matching `filter` (any controller; the entering object is not on the battlefield yet) and every counter of every kind is removed from
      * each of them; it enters with `times` counters of `kind` for each counter actually removed. Capability `body:enters.removeCounters`.
      */
-    removeCounters?: { filter: ObjectFilter; kind: string; times: Quantity };
+    /**
+     * edh-e-66 (CR 614.12a, 122.1; Thief of Blood) INTERFACE CHANGE (additive): `all: true`, "As ~ enters, remove all counters from all permanents. ~ enters with a +1/+1 counter on it for each counter removed
+     * this way.": no choice, every counter of every kind is removed from every permanent on the battlefield that matches `filter`. Capability `body:enters.removeCounters.all`.
+     */
+    removeCounters?: { filter: ObjectFilter; kind: string; times: Quantity; all?: true };
     /**
      * edh-d-54 INTERFACE CHANGE (additive): "As ~ enters, you may put two cards your opponents own from exile into their owners' graveyards. If you do, ~ enters with four
      * +1/+1 counters on it." (Ulamog's Despoiler; CR 614.1c, 614.12a, 400.3): as it enters, the player it enters under may put exactly `count` cards that match `filter` (read
@@ -5178,6 +5422,12 @@ export type ReplacementBody =
      * which a copy of it copies (rulings 2024-06-07). Capability `body:enters.becomesOneOf`.
      */
     becomesOneOf?: { power: number; toughness: number; types: string[]; typesAdded?: true; subtypes?: string[]; add?: AbilityDef[] }[];
+    /**
+     * edhe28 INTERFACE CHANGE (additive), CR 614.1c, 614.12a, 701.17a, 702.33d (Urborg Lhurgoyf: "As this creature enters, mill three cards for each time it was kicked."; Monstrous War-Leech:
+     * "As this creature enters, if it was kicked, mill four cards."): the player it enters under mills `count` cards before it is on the battlefield (not a triggered ability: no one can
+     * respond, and what it mills is in the graveyard when its characteristic-defining abilities first count). With `if`, only when that condition holds (read for the entering object). Capability `body:enters.mill`.
+     */
+    mill?: { count: Quantity; if?: Condition };
     /**
      * edh-next-146 INTERFACE CHANGE (additive), CR 614.12a, 607.2d, 400.7 (Dauntless Bodyguard: "As this creature enters, choose another creature you control."): the player it enters under
      * chooses one permanent the filter matches that is on the battlefield as it enters (one entering at the same time is not there yet: ruling 2018-04-27); the permanent remembers it under
@@ -5290,6 +5540,12 @@ export interface PermissionDef {
    */
   spentType?: 'W' | 'U' | 'B' | 'R' | 'G';
   /**
+   * edh-e-51 INTERFACE CHANGE (additive), CR 609.4b (Sunglasses of Urza: "You may spend white mana as though it were red mana."): with `spendMana`, `asThough` 'a color' and `spentType`:
+   * mana of `spentType` may pay a cost symbol that asks for mana of this color, for every cost the player pays to cast a spell or activate an ability. A static ability of an object only
+   * (statics/play-permits.ts#staticSpendAsColors, read by rules/pay.ts and rules/cost-pick.ts via rules/sources.ts#spendOptions). Capability `permit:spendMana.asColor`.
+   */
+  asColor?: 'W' | 'U' | 'B' | 'R' | 'G';
+  /**
    * edhc5 INTERFACE CHANGE (additive), CR 118.1, 119.4, 107.4f: with `spendMana` and no `asThough`: "For each {B} in a cost, you may pay 2 life rather than pay that mana"
    * (K'rrik, Son of Yawgmoth): each symbol of the cost that asks for mana of `color` ({B}, {B/R}, the {B} of {2/B}) may be paid with 2 life instead. With `of` it is for
    * the spells that filter describes, and with `once` for one symbol of a spell: "As an additional cost to cast green permanent spells, you may pay 2 life. Those spells
@@ -5319,6 +5575,12 @@ export interface PermissionDef {
    * (statics/play-permits.ts#onCastPermits, actions/cast.ts); capability `feature:permit.<action>.onCast`.
    */
   onCast?: EffectStep[];
+  /**
+   * edh-d-104 INTERFACE CHANGE (additive), CR 603.7a, 305.1 (Fires of Mount Doom: "You may play that card this turn. When you play a card this way, ~ deals 2 damage to each player."): with `onCast` on a
+   * 'play' permission, the delayed trigger is "when you play a card this way": a land played using THIS permission triggers it too, once the land is on the battlefield (actions/land.ts; the
+   * event's `subject` is the land). Capability `feature:permit.play.onCastLand`.
+   */
+  onCastLand?: true;
   /**
    * FAST5X E14 INTERFACE CHANGE (additive): "from the top of your library" (CR 401.5, 601.3, 305.1). With `action` 'cast' or 'play' the permission is for
    * the card on top of each `who` player's own library, whichever card that is at the moment (re-evaluated as the top card changes: a static ability's
@@ -5568,6 +5830,13 @@ export interface PermissionDef {
    */
   // edh-d-102 (additive), CR 607.2a, 121.1 (Uba Mask): also on a static linked play permission of each player, "cards they exiled with ~ this turn" (statics/play-permits.ts#isLinkedOwnOnlyPermit), the linked cards the player owns
   ownOnly?: true;
+  /**
+   * trek-23 INTERFACE CHANGE (additive), CR 608.2c, 611.2a, 400.7 (Vulcan Mind-Meld): "For each card exiled this way, the player who exiled it may play it ...": of the named objects, each
+   * player of `who` may play only the ones a move of this resolution with `by` put into exile as that player's action (`ExecCtx.exiledBy`). Resolved as the effect begins
+   * (effects/handlers/lasting.ts#exiledByPermits): one permission for each such player, naming exactly the cards they exiled; a card whose exiler is not known gets none (fail closed).
+   * Only on the play permission of a resolved effect for named objects, `who` each player: capability `feature:permit.play.exiledByOnly` (any other is a `.other` form nothing registers).
+   */
+  exiledByOnly?: true;
   /**
    * edh-zones-11 INTERFACE CHANGE (additive), CR 601.3, 406.3a, 205.2: "For as long as it remains exiled, you may cast it if it's a creature spell." (Vivien, Champion of the
    * Wilds): the cast permission for the named objects covers only a spell of one of these card types, judged on the card as it would be cast (its printed face: a card exiled
@@ -5823,6 +6092,15 @@ export interface RuleModDef {
     // {C} for each mana it would produce, the amount unchanged. Read where the mana is added (rules/mana.ts#addMana via statics/hooks.ts#tappedManaOnlyColorless, installed by
     // effects/mana-ability.ts) and by the payment planner (rules/sources.ts). Capability `rulemod:tappedLandManaOnlyColorless`
     | 'tappedLandManaOnlyColorless'
+    // edh-e-48 INTERFACE CHANGE (additive), CR 106.12, 614.1a, 106.1b (Naked Singularity, Reality Twist): "If tapped for mana, Plains produce {R}, Islands produce {G}, ... instead of any other type."
+    // (`tappedLandManaByType`, `manaByLandType` the mana type per land subtype; every player's lands): a permanent with one of these land subtypes tapped for mana ({T} in the cost of its mana
+    // ability) produces that type for each mana it would produce, the amount unchanged. Read with the other tapped-land rules (statics/hooks.ts#tappedManaOnlyColorless). Capability `rulemod:tappedLandManaByType`
+    | 'tappedLandManaByType'
+    // edh-e-51 INTERFACE CHANGE (additive), CR 601.2h, 106.6, 609.4 (Myr Superion: "Spend only mana produced by creatures to cast this spell."; Imperiosaur): a rule of a SPELL (a static
+    // ability of the card, read in any zone it is cast from): the mana that pays the cost of casting this spell must be produced by a source `of` matches (read as the source is now,
+    // on the battlefield; mana whose source is gone or unknown is not allowed). It limits the mana only, never other costs (a {1}-life or discard cost is not mana). Read by the payment
+    // planner (rules/sources.ts#spendAllows `sourceOk`, #spellOnlyFrom). Capability `rulemod:spendManaOnlyFrom`
+    | 'spendManaOnlyFrom'
     // edh-next-45 INTERFACE CHANGE (additive), CR 106.12, 614.1a, 106.1b (Infernal Darkness): "If a land is tapped for mana, it produces {B} instead of any other type."
     // (`tappedLandManaOnlyType`, `manaType` the type, `player` whose lands, default you; Infernal Darkness says every player's): as `tappedLandManaOnlyColorless`, with the type named.
     // Read where the mana is added (rules/mana.ts#addMana via statics/hooks.ts#tappedManaOnlyColorless) and by the payment planner (rules/sources.ts). Capability `rulemod:tappedLandManaOnlyType`
@@ -5868,6 +6146,8 @@ export interface RuleModDef {
    * steps and phases end"); of `unspentManaBecomes`, the type the mana becomes. Any other rule has no `manaType`.
    */
   manaType?: ManaType;
+  /** edh-e-48 INTERFACE CHANGE (additive), CR 106.12, 614.1a: of `tappedLandManaByType`, the mana type a land of each subtype produces when tapped for mana ("Plains produce {R}"). */
+  manaByLandType?: Partial<Record<string, ManaType>>;
   value?: Quantity | 'none';
   /**
    * std-ry3 INTERFACE CHANGE (additive), CR 402.2: of `maxHandSize`, the value changes the player's maximum hand size instead of setting it: "Your maximum hand
@@ -6157,4 +6437,15 @@ export interface PregameDef {
    * `feature:pregame.reveal.delayed` (core/pregame.ts runs them).
    */
   then?: EffectStep[];
+}
+
+/**
+ * edh-d-112 (CR 603.2, 603.2c; Lo and Li, Royal Advisors: "Whenever an opponent discards a card or mills one or more cards"): a batch trigger's list of action patterns where some are single
+ * events (`single`, each matched event its own occurrence) and the others "one or more" ones (once for each player's batch): shared by the capability walker (model/cap-walk.ts) and the
+ * trigger collector (triggers/occurrences.ts#mixedActionOccurrences) so the two never disagree. Only action patterns with an actor, and at least one of each kind.
+ */
+export function isMixedActionList(patterns: readonly EventPattern[]): boolean {
+  if (patterns.length < 2 || !patterns.every((p) => p.ev === 'action' && p.actor !== undefined)) return false;
+  const singles = patterns.filter((p) => p.ev === 'action' && p.single === true).length;
+  return singles > 0 && singles < patterns.length;
 }

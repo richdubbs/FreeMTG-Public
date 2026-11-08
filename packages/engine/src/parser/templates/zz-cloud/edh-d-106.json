@@ -1,0 +1,412 @@
+[
+  {
+    "id": "eff.edhd106.eachOpp.chooseTarget.damageEach",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 115.1",
+      "CR 601.2c",
+      "CR 608.2c",
+      "CR 120.3"
+    ],
+    "pattern": "for each opponent , choose {o:OppTarget} . {src:Obj} deal[s] {n:Qty} damage to each of ( those | the chosen ) creatures",
+    "build": {
+      "op": "damage",
+      "source": "$src",
+      "to": "$o",
+      "amount": "$n"
+    },
+    "subject": "none",
+    "examples": [
+      {
+        "text": "For each opponent, choose up to one target creature that player controls. ~ deals 2 damage to each of those creatures."
+      },
+      {
+        "text": "For each opponent, choose up to one target creature that player controls. ~ deals 3 damage to each of the chosen creatures."
+      }
+    ],
+    "counterExamples": [
+      "For each opponent, choose up to one target creature you control. ~ deals 2 damage to each of those creatures.",
+      "For each opponent, choose up to one target creature that player controls. ~ deals 2 damage to each creature.",
+      "For each opponent, choose up to one target creature that player controls. ~ deals 2 damage to that player."
+    ],
+    "consumes": [
+      "each",
+      "chosen"
+    ]
+  },
+  {
+    "id": "eff.edhd106.eachOpp.chooseTarget.damageEqualEach",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 115.1",
+      "CR 601.2c",
+      "CR 608.2c",
+      "CR 120.3"
+    ],
+    "pattern": "for each opponent , choose {o:OppTarget} . {src:Obj} deal[s] damage equal to {n:Qty} to each of ( those | the chosen ) creatures",
+    "build": {
+      "op": "damage",
+      "source": "$src",
+      "to": "$o",
+      "amount": "$n"
+    },
+    "subject": "none",
+    "examples": [
+      {
+        "text": "For each opponent, choose up to one target creature that player controls. ~ deals damage equal to the number of cards in your hand to each of the chosen creatures."
+      },
+      {
+        "text": "For each opponent, choose up to one target creature that player controls. ~ deals damage equal to the greatest power among creatures you control to each of those creatures."
+      }
+    ],
+    "counterExamples": [
+      "For each opponent, choose up to one target creature you control. ~ deals damage equal to the number of cards in your hand to each of the chosen creatures.",
+      "For each opponent, choose up to one target creature that player controls. ~ deals damage equal to the number of cards in your hand to each creature.",
+      "For each opponent, choose up to one target creature that player controls. ~ deals damage equal to the number of cards in your hand to that player."
+    ],
+    "consumes": [
+      "each",
+      "equal",
+      "chosen"
+    ]
+  },
+  {
+    "id": "eff.edhd106.eachOpp.createAttackThatOpponent.haste",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 111.1",
+      "CR 508.1d",
+      "CR 611.2a",
+      "CR 702.10a"
+    ],
+    "pattern": "for each opponent , create {n:Qty} {t:TokenDesc} that attack[s] that opponent this turn if able . ( they gain | it gains ) haste until end of turn",
+    "build": {
+      "op": "forEach",
+      "over": {
+        "ref": "each",
+        "who": "opponent"
+      },
+      "as": "edhd106Opponent",
+      "do": [
+        {
+          "op": "createToken",
+          "who": {
+            "ref": "you"
+          },
+          "count": "$n",
+          "token": "$t",
+          "as": "edhd106Attackers"
+        },
+        {
+          "op": "effect",
+          "effects": [
+            {
+              "s": "restrict",
+              "subject": {
+                "ref": "bound",
+                "name": "edhd106Attackers"
+              },
+              "mode": "mustIfAble",
+              "action": "attack",
+              "otherPlayer": {
+                "ref": "iterating"
+              }
+            }
+          ],
+          "duration": {
+            "d": "endOfTurn"
+          }
+        },
+        {
+          "op": "effect",
+          "effects": [
+            {
+              "s": "continuous",
+              "affects": {
+                "ref": "bound",
+                "name": "edhd106Attackers"
+              },
+              "mods": [
+                {
+                  "layer": 6,
+                  "add": [
+                    {
+                      "kind": "keyword",
+                      "keyword": "haste",
+                      "text": "haste"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "duration": {
+            "d": "endOfTurn"
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "examples": [
+      {
+        "text": "For each opponent, create a 2/2 red Goblin creature token that attacks that opponent this turn if able. It gains haste until end of turn."
+      },
+      {
+        "text": "For each opponent, create two 1/1 white Soldier creature tokens that attack that opponent this turn if able. They gain haste until end of turn."
+      }
+    ],
+    "counterExamples": [
+      "For each opponent, create two 1/1 white Soldier creature tokens that attack that opponent this turn if able. They gain flying until end of turn.",
+      "For each opponent, create two 1/1 white Soldier creature tokens that attack this turn if able. They gain haste until end of turn.",
+      "For each opponent, create two 1/1 white Soldier creature tokens that attack you this turn if able. They gain haste until end of turn."
+    ],
+    "consumes": [
+      "each",
+      "if",
+      "if able",
+      "until"
+    ]
+  },
+  {
+    "id": "eff.edhd106.createForEach.creatureDealtCombatDamageToPlayer",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 111.1",
+      "CR 120.1",
+      "CR 510.2",
+      "CR 400.7",
+      "CR 608.2h"
+    ],
+    "pattern": "create ( a | an ) {t:TokenDesc} for each creature you controlled that dealt combat damage to a player this turn",
+    "build": {
+      "op": "createToken",
+      "who": {
+        "ref": "you"
+      },
+      "count": {
+        "q": "happenedCount",
+        "event": {
+          "ev": "damage",
+          "combat": true,
+          "source": {
+            "types": [
+              "Creature"
+            ],
+            "controller": "you"
+          },
+          "recipient": {
+            "player": "any"
+          }
+        },
+        "scope": "turn",
+        "per": "source"
+      },
+      "token": "$t"
+    },
+    "subject": "none",
+    "examples": [
+      {
+        "text": "Create a Food token for each creature you controlled that dealt combat damage to a player this turn."
+      },
+      {
+        "text": "Create a 1/1 white Spirit creature token for each creature you controlled that dealt combat damage to a player this turn."
+      }
+    ],
+    "counterExamples": [
+      "Create a Food token for each creature you controlled that dealt damage to a player this turn.",
+      "Create a Food token for each creature an opponent controlled that dealt combat damage to a player this turn.",
+      "Create a Food token for each creature you controlled that dealt combat damage to an opponent this turn."
+    ],
+    "consumes": [
+      "each"
+    ]
+  },
+  {
+    "id": "eff.edhd106.createThenEachChoiceOfThreeCounters",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 111.1",
+      "CR 122.1b",
+      "CR 608.2c",
+      "CR 700.2"
+    ],
+    "pattern": "create {n:Qty} {t:TokenDesc} . for each of them , put your choice of ( a | an ) {k1:ListedCounterKind} counter , ( a | an ) {k2:ListedCounterKind} counter , or ( a | an ) {k3:ListedCounterKind} counter on it",
+    "build": [
+      {
+        "op": "createToken",
+        "who": {
+          "ref": "you"
+        },
+        "count": "$n",
+        "token": "$t",
+        "as": "edhd106Made"
+      },
+      {
+        "op": "forEach",
+        "over": {
+          "ref": "bound",
+          "name": "edhd106Made"
+        },
+        "as": "edhd106Each",
+        "do": [
+          {
+            "op": "chooseValue",
+            "who": {
+              "ref": "you"
+            },
+            "what": "option",
+            "as": "counterChoice",
+            "link": "counterChoice",
+            "options": [
+              "$k1",
+              "$k2",
+              "$k3"
+            ]
+          },
+          {
+            "op": "if",
+            "cond": {
+              "cond": "chosen",
+              "link": "counterChoice",
+              "equals": "$k1"
+            },
+            "then": [
+              {
+                "op": "putCounters",
+                "on": {
+                  "ref": "bound",
+                  "name": "edhd106Each"
+                },
+                "kind": "$k1",
+                "count": 1
+              }
+            ]
+          },
+          {
+            "op": "if",
+            "cond": {
+              "cond": "chosen",
+              "link": "counterChoice",
+              "equals": "$k2"
+            },
+            "then": [
+              {
+                "op": "putCounters",
+                "on": {
+                  "ref": "bound",
+                  "name": "edhd106Each"
+                },
+                "kind": "$k2",
+                "count": 1
+              }
+            ]
+          },
+          {
+            "op": "if",
+            "cond": {
+              "cond": "chosen",
+              "link": "counterChoice",
+              "equals": "$k3"
+            },
+            "then": [
+              {
+                "op": "putCounters",
+                "on": {
+                  "ref": "bound",
+                  "name": "edhd106Each"
+                },
+                "kind": "$k3",
+                "count": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "subject": "none",
+    "examples": [
+      {
+        "text": "Create two 2/2 green Bear creature tokens. For each of them, put your choice of a flying counter, a lifelink counter, or a deathtouch counter on it."
+      },
+      {
+        "text": "Create three 1/1 white Spirit creature tokens. For each of them, put your choice of a menace counter, a deathtouch counter, or a lifelink counter on it."
+      }
+    ],
+    "counterExamples": [
+      "Create two 2/2 green Bear creature tokens. For each of them, put a flying counter on it.",
+      "Create two 2/2 green Bear creature tokens. For each of them, put your choice of a flying counter or a lifelink counter on it.",
+      "Create two 2/2 green Bear creature tokens. For each creature you control, put your choice of a flying counter, a lifelink counter, or a deathtouch counter on it."
+    ],
+    "consumes": [
+      "each",
+      "choice"
+    ]
+  },
+  {
+    "id": "eff.edhd106.sacrifice.theirChoice.forEach.thenAnother",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 701.21a",
+      "CR 608.2c",
+      "CR 608.2d",
+      "CR 107.3"
+    ],
+    "pattern": "{p:Player} sacrifice[s] ( a | an ) {f:Filter} of their choice for each {g:Filter} , then sacrifice[s] ( a | an ) {f2:Filter} of their choice for each {g2:Filter}",
+    "build": [
+      {
+        "op": "sacrificeChoice",
+        "who": "$p",
+        "filter": "$f",
+        "count": {
+          "q": "count",
+          "of": {
+            "ref": "each",
+            "filter": "$g"
+          }
+        }
+      },
+      {
+        "op": "sacrificeChoice",
+        "who": "$p",
+        "filter": "$f2",
+        "count": {
+          "q": "count",
+          "of": {
+            "ref": "each",
+            "filter": "$g2"
+          }
+        }
+      }
+    ],
+    "subject": "player",
+    "examples": [
+      {
+        "text": "Target player sacrifices a creature of their choice for each white creature you control, then sacrifices an artifact of their choice for each blue creature you control."
+      },
+      {
+        "text": "Each opponent sacrifices an enchantment of their choice for each Aura you control, then sacrifices a land of their choice for each Equipment you control."
+      }
+    ],
+    "counterExamples": [
+      "Target player sacrifices a creature of their choice for each white creature you control, then you sacrifice an artifact for each blue creature you control.",
+      "Target player sacrifices a creature of your choice for each white creature you control, then sacrifices an artifact of their choice for each blue creature you control.",
+      "Target player sacrifices two creatures of their choice for each white creature you control, then sacrifices an artifact of their choice for each blue creature you control."
+    ],
+    "consumes": [
+      "each",
+      "then"
+    ]
+  }
+]

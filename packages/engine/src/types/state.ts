@@ -147,7 +147,11 @@ export interface PlayerState {
   turnStats: {
     /** edh-d-98 INTERFACE CHANGE (additive), CR 121.2, 614.1a: the draws proposed for this player this turn, replaced or not (effects/propose.ts#runPipeline): "the first time you would draw a card each turn". Absent: none. */
     drawsProposed?: number;
+    /** edh-e-48 INTERFACE CHANGE (additive), CR 121.2, 504.1, 614.1a (Reed Richards, Smartest Man): the draws proposed this turn other than the draw step's first card (`drawsExceptDrawStep`), and whether that card was proposed (`drawStepProposed`). Absent: none. */
+    drawsExceptDrawStep?: number; drawStepProposed?: boolean;
     lifeGained: number; lifeLost: number; spellsCast: number; cardsDrawn: number; damageDealtToOpponents?: number; descended?: number; manaSpentOnSpells?: number; coinFlips?: number;
+    /** edhe34 INTERFACE CHANGE (additive), CR 706.2, 706.6: the dice this player rolled this turn (only kept rolls count: an ignored or rerolled-away die was never rolled; core/dice.ts#rollDice). Read by the dieRoll event's `nth` (triggers/normalize.ts): "whenever you roll your third die each turn". Absent = 0. */
+    diceRolled?: number;
     /** r5-repl INTERFACE CHANGE (additive): `cardsDrawn` as this player's draw step began this turn (core/steps.ts); absent before it (CR 504.1). */
     drawStepFrom?: number;
     /** edh-d-49 INTERFACE CHANGE (additive), CR 706.2: the ids of the objects whose once-each-turn die-roll option (`rollAdjust`, `rollReroll` with `oncePerTurn`) this player used this turn (effects/roll-options.ts). */
@@ -162,6 +166,9 @@ export interface PlayerState {
     drawn?: ObjectId[];
     /** edh-d-3 INTERFACE CHANGE (additive), CR 702.69a, 700.4: the permanents (tokens too) put into a graveyard from the battlefield this turn, counted for the player who owns the graveyard (core/zones.ts#moveObject); gravestorm adds up every player's (`{q:'permanentsToGraveyardThisTurn'}`). Absent = 0. */
     permanentsToGraveyard?: number;
+    /** edh-d-108 INTERFACE CHANGE (additive), CR 602.2, 113.6, 404.1 (Laboratory Drudge): the abilities this player activated this turn whose source was a card in a graveyard as it was
+     * activated (actions/activate.ts); read with `castFromCount.graveyard` by the quantity `graveyardUsesThisTurn`. Absent: none. Mana abilities (activated without the stack) are not counted. */
+    activatedFromGraveyard?: number;
   };
 
   // ---- M11-0 ADDITIONS (m11 design 4.2; all optional and absent outside a Commander game, so every earlier state and action log is unchanged) ----
@@ -318,7 +325,7 @@ export interface StackInfo {
   /** Zone the card was cast from (aftermath: exile instead of leaving the stack, CR 702.127a); trek-11: or `'outside'`, from outside the game (CR 400.11). */
   castFrom?: CastOrigin;
   /** pc-exile-play-2 INTERFACE CHANGE (additive), CR 601.2i: which spell this was among those its caster cast this turn (`turn`), and among those cast from the same zone (`fromZone`); 1 is the first. */
-  castOrdinal?: { turn: number; fromZone: number; /** edh-next-114: which spell this was among those its caster cast this turn from a zone other than their hand (1 is the first; 0 for a spell cast from the hand itself) */ notHand?: number; /** edh-mana-keywords-12: for each subtype of a source of the mana spent on it, which spell this was among those with mana from such a source (1 is the first) */ manaFrom?: Record<string, number> };
+  castOrdinal?: { turn: number; /** edh-e-17: which spell this was among ALL spells cast this turn by every player (1 is the first) */ all?: number; fromZone: number; /** edh-next-114: which spell this was among those its caster cast this turn from a zone other than their hand (1 is the first; 0 for a spell cast from the hand itself) */ notHand?: number; /** edh-mana-keywords-12: for each subtype of a source of the mana spent on it, which spell this was among those with mana from such a source (1 is the first) */ manaFrom?: Record<string, number> };
   /** FAST4 T27 INTERFACE CHANGE (additive): the player who cast the spell (CR 601.2a), kept in the permanent's cast record (`GameObject.cast.by`). */
   caster?: PlayerId;
   /** std-rx22 INTERFACE CHANGE (additive): the spell's controller changed while it was on the stack (core/control.ts); copied to `GameObject.cast.controlLost`. */
@@ -649,7 +656,7 @@ export interface GameObject {
   // FAST4 T27 INTERFACE CHANGE (additive): `by`, the player who cast the spell (CR 601.2a; "if you cast it": Condition `wasCast.by`)
   // std-rx22 INTERFACE CHANGE (additive): `controlLost`, the permanent's controller changed at least once since it entered (core/control.ts), so the caster has not
   // controlled it without a break (Condition `wasCast.kept`, suspend's haste, CR 702.62a)
-  cast?: { costsPaid: CostsPaid; x?: number; from: CastOrigin; via?: string; turn: number; by?: PlayerId; controlLost?: true; /** edh-next-37 (CR 601.2i, 603.4): the answers of the "as you cast" conditions of its triggered abilities, copied from `StackInfo.castChecks` */ castChecks?: Record<string, boolean> };
+  cast?: { costsPaid: CostsPaid; x?: number; from: CastOrigin; via?: string; turn: number; by?: PlayerId; controlLost?: true; /** edh-d-111 (CR 601.2i): which spell this was among those its caster cast that turn (1 is the first; `StackInfo.castOrdinal.turn`) */ nth?: number; /** edh-next-37 (CR 601.2i, 603.4): the answers of the "as you cast" conditions of its triggered abilities, copied from `StackInfo.castChecks` */ castChecks?: Record<string, boolean> };
   /**
    * trek-11 INTERFACE CHANGE (additive), CR 400.11b, 601.2a, 305.1: set ONLY on the staging object of a card a player plays from outside the game (core/zones.ts#stageFromOutside):
    * a card they own outside the game (`GameState.outside`) becomes this object, in its owner's hand, for the length of ONE special action (`playOutside`,

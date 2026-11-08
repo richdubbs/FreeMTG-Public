@@ -7,8 +7,8 @@
  * checked, never a pass: `status` is then 'unchecked', not 'legal', even though `valid` (no errors) is true. `format` echoes the request and `checkedAs`
  * names the validator's format ("freeform" is checked as casual).
  */
-import type { IndexedCard } from '@openmtg/cards';
-import type { DeckEntry, DeckProblem, ValidateRequest, ValidateResponse } from './api';
+import { canAddCommander, findFormat, type IndexedCard } from '@openmtg/cards';
+import type { CommanderChoicesRequest, CommanderChoicesResponse, DeckEntry, DeckProblem, ValidateRequest, ValidateResponse } from './api';
 import { cardStore, storeError, type CardStore } from './cache';
 import { badRequest, type ApiResult, type Handler } from './context';
 import { f1Adapter, type AdapterDeck, type DeckPart, type FormatAdapter } from './formats-adapter';
@@ -126,4 +126,40 @@ export const validateDeck: Handler<'POST /api/decks/validate'> = async (req, ctx
   const opened = await cardStore(ctx);
   if (!opened.ok) return storeError(opened);
   return validateWith(opened.store, request, adapter);
+};
+
+const MAX_CHOICE_NAMES = 500;
+
+/** Parse and check a commander-choices body; a string is the 400 message. */
+export function parseCommanderChoicesRequest(body: unknown): CommanderChoicesRequest | string {
+  const b = body as { format?: unknown; commander?: unknown; names?: unknown } | null;
+  if (b === null || typeof b !== 'object' || typeof b.format !== 'string' || !Array.isArray(b.names)) return 'Body must be { "format": string, "commander": DeckEntry[], "names": string[] }';
+  if (b.format.trim() === '' || b.format.length > 60) return 'format must be a format name, e.g. "commander"';
+  if (b.names.length > MAX_CHOICE_NAMES) return `names has more than ${MAX_CHOICE_NAMES} entries`;
+  if (!b.names.every((n) => typeof n === 'string' && n.trim() !== '' && n.length <= 300)) return 'Every name must be a card name';
+  const commander = entriesOf(b.commander, 'commander');
+  if (typeof commander === 'string') return commander.replace('deck.commander', 'commander');
+  return { format: b.format, commander, names: b.names as string[] };
+}
+
+/** Each name: may it be offered as a commander next to the deck's commanders (the deck check's own rule, cards/formats/commander.ts). */
+export function commanderChoicesWith(store: CardStore, request: CommanderChoicesRequest): CommanderChoicesResponse {
+  const style = findFormat(request.format.trim().toLowerCase())?.commander;
+  const current = resolveDeck(store, { main: [], sideboard: [], commander: request.commander }).commander.flatMap((e) => Array.from({ length: e.count }, () => e.card));
+  // A commander the index does not know still takes a slot, and whether a card may pair with it cannot be judged: nothing is offered beside it.
+  const unknown = current.length < request.commander.reduce((n, e) => n + e.count, 0);
+  const choices: Record<string, boolean> = {};
+  for (const name of request.names) {
+    const card = style && !unknown ? (store.db.lookup(name) as IndexedCard | undefined) : undefined;
+    choices[name] = card !== undefined && canAddCommander(current, card, style!);
+  }
+  return { choices };
+}
+
+export const commanderChoices: Handler<'POST /api/decks/commander-choices'> = async (req, ctx) => {
+  const request = parseCommanderChoicesRequest(req.body);
+  if (typeof request === 'string') return badRequest(request);
+  const opened = await cardStore(ctx);
+  if (!opened.ok) return storeError(opened);
+  return { status: 200, body: commanderChoicesWith(opened.store, request) };
 };

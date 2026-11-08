@@ -419,6 +419,7 @@ export function fixDuration(cx: ExecCtx, d: Duration): Duration {
   switch (d.d) {
     case 'untilNextTurn': return { d: 'untilNextTurn', whose: fixedPlayers(resolvePlayers(cx, d.whose)) };
     case 'endOfNextTurn': return { d: 'endOfNextTurn', whose: fixedPlayers(resolvePlayers(cx, d.whose)) }; // FAST5X E29
+    case 'endOfCombatNextTurn': return { d: 'endOfCombatNextTurn', whose: fixedPlayers(resolvePlayers(cx, d.whose)) }; // edh-d-104 (CR 611.2a, 500.5a)
     case 'untilNextStep': return d.whose !== undefined && typeof d.whose === 'object' ? { ...d, whose: fixedPlayers(resolvePlayers(cx, d.whose)) } : d;
     case 'throughNextUntap': return d.whose !== undefined && typeof d.whose === 'object' ? { ...d, whose: fixedPlayers(resolvePlayers(cx, d.whose)) } : d; // MX5
     case 'asLongAs': return { d: 'asLongAs', cond: fixNode(cx, d.cond, COND) };

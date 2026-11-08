@@ -7,6 +7,7 @@
  */
 import type { EffectStep } from '../types/ability';
 import { plain } from './clause';
+import { alt } from './text';
 import type { Folded } from './fold';
 import { K } from './kernel';
 import type { RenderState } from './state';
@@ -18,12 +19,12 @@ function destroyOneOfThemAtRandom(list: EffectStep[], i: number, st: RenderState
   const a = list[i];
   const b = list[i + 1];
   if (a?.op !== 'chooseObjects' || a.random !== true || a.guard !== undefined || a.groupLimit !== undefined || a.perPlayer !== undefined || a.startingWith !== undefined || a.eachCardType !== undefined
-    || a.link !== undefined || a.distinct !== undefined || a.damageSource !== undefined || a.as === undefined || a.min !== 1 || a.max !== 1 || a.who.ref !== 'you' || a.from.ref !== 'each' || !('filter' in a.from) || a.from.filter.is?.ref !== 'bound' || a.from.filter.notKeyword !== 'indestructible' || Object.keys(a.from.filter).length !== 2) return null;
+    || a.link !== undefined || a.distinct !== undefined || a.damageSource !== undefined || a.as === undefined || a.min !== 1 || a.max !== 1 || a.who.ref !== 'you' || a.from.ref !== 'each' || !('filter' in a.from) || !['bound', 'target', 'union'].includes(a.from.filter.is?.ref ?? '') || !((a.from.filter.notKeyword === 'indestructible' && Object.keys(a.from.filter).length === 2) || (a.from.filter.notKeyword === undefined && Object.keys(a.from.filter).length === 1))) return null; // edh-e-3: Wild Swing's pick is among all the targets (an indestructible pick destroys nothing)
   if (b?.op !== 'destroy' || b.guard !== undefined || b.as !== undefined || !same(b.what, { ref: 'bound', name: a.as })) return null;
-  const them = K.obj(a.from.filter.is, st, 'object');
+  const them = K.obj(a.from.filter.is!, st, 'object');
   if (!them.plural) return null;
   bind(st, a.as, { nouns: ['permanent'], plural: false }); // (the destroyed object is named by no later sentence of the card; "it" would be ambiguous: fail closed)
-  return { clauses: [plain(`destroy one of ${them.text} chosen at random`, { standalone: true })], consumed: 2 };
+  return { clauses: [plain(`destroy one of ${them.text} ${alt('chosen at random', 'at random')}`, { standalone: true })], consumed: 2 };
 }
 
 /**
@@ -43,7 +44,7 @@ function returnTwoOfThemAtRandom(list: EffectStep[], i: number, st: RenderState)
     || !same(c.what, { ref: 'each', filter: { is: a.from.filter.is, not: { is: { ref: 'bound', name: a.as } }, zone: 'graveyard' } })) return null;
   const spec = st.specs.get(a.from.filter.is.id);
   if (spec?.kind !== 'object' || spec.min !== 3 || spec.max !== 3 || spec.filter?.zone !== 'graveyard' || spec.filter.isCard !== true) return null; // (cards in a graveyard: the template reads the graveyard) // two of exactly three targets: "the other" is the one left
-  const them = K.obj(a.from.filter.is, st, 'object');
+  const them = K.obj(a.from.filter.is!, st, 'object');
   if (!them.plural) return null;
   return { clauses: [plain(`return two of ${them.text} at random to the battlefield and put the other on the bottom of your library`, { standalone: true })], consumed: 3 };
 }

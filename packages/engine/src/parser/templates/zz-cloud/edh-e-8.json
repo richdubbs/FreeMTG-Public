@@ -1,0 +1,244 @@
+[
+  {
+    "id": "eff.edhe8.choose.creatureCardName",
+    "kind": "effect",
+    "cr": [
+      "CR 608.2d",
+      "CR 201.3",
+      "CR 607.2d"
+    ],
+    "pattern": "choose a creature card name",
+    "build": {
+      "op": "chooseValue",
+      "who": {
+        "ref": "you"
+      },
+      "what": "cardName",
+      "as": "chosenCardName",
+      "link": "cardName",
+      "cardKind": "creature"
+    },
+    "subject": "none",
+    "examples": [
+      {
+        "text": "Choose a creature card name. Exile all creatures with that name."
+      },
+      {
+        "text": "When this artifact enters, choose a creature card name."
+      }
+    ],
+    "counterExamples": [
+      "Choose a land card name.",
+      "Target opponent chooses a creature card name.",
+      "Choose two creature card names."
+    ],
+    "status": "stable",
+    "since": 9
+  },
+  {
+    "id": "eff.edhe8.choose.artifactCardName",
+    "kind": "effect",
+    "cr": [
+      "CR 608.2d",
+      "CR 201.3",
+      "CR 607.2d"
+    ],
+    "pattern": "choose an artifact card name",
+    "build": {
+      "op": "chooseValue",
+      "who": {
+        "ref": "you"
+      },
+      "what": "cardName",
+      "as": "chosenCardName",
+      "link": "cardName",
+      "cardKind": "artifact"
+    },
+    "subject": "none",
+    "examples": [
+      {
+        "text": "Choose an artifact card name. Destroy all artifacts with that name."
+      },
+      {
+        "text": "When this artifact enters, choose an artifact card name."
+      }
+    ],
+    "counterExamples": [
+      "Choose a land card name.",
+      "Target opponent chooses an artifact card name.",
+      "Choose two artifact card names."
+    ],
+    "status": "stable",
+    "since": 9
+  },
+  {
+    "id": "eff.edhe8.choose.nonartifactNonlandCardName",
+    "kind": "effect",
+    "cr": [
+      "CR 608.2d",
+      "CR 201.3",
+      "CR 607.2d"
+    ],
+    "pattern": "choose a nonartifact , nonland card name",
+    "build": {
+      "op": "chooseValue",
+      "who": {
+        "ref": "you"
+      },
+      "what": "cardName",
+      "as": "chosenCardName",
+      "link": "cardName",
+      "cardKind": "nonartifactNonland"
+    },
+    "subject": "none",
+    "examples": [
+      {
+        "text": "Choose a nonartifact, nonland card name. Exile all creatures with that name."
+      },
+      {
+        "text": "When this artifact enters, choose a nonartifact, nonland card name."
+      }
+    ],
+    "counterExamples": [
+      "Choose a nonland card name.",
+      "Target opponent chooses a nonartifact, nonland card name.",
+      "Choose a nonartifact card name."
+    ],
+    "status": "stable",
+    "since": 9
+  },
+  {
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "subject": "none",
+    "id": "eff.edhe8.dig.putUpToHand.rest.graveyard",
+    "cr": [
+      "CR 701.20e",
+      "CR 608.2c",
+      "CR 608.2d",
+      "CR 404.1"
+    ],
+    "pattern": "put up to {n:Qty} of {g:Seen} into your hand and {r:Rest} into your graveyard",
+    "consumes": [
+      "up to"
+    ],
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "is": "$g",
+            "zone": "library"
+          }
+        },
+        "min": 0,
+        "max": "$n",
+        "as": "chosen"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "bound",
+          "name": "chosen"
+        },
+        "to": {
+          "zone": "hand"
+        }
+      },
+      {
+        "op": "move",
+        "what": "$r",
+        "to": {
+          "zone": "graveyard"
+        }
+      }
+    ],
+    "examples": [
+      {
+        "text": "Look at the top six cards of your library. Put up to two of them into your hand and the rest into your graveyard."
+      },
+      {
+        "text": "Look at the top seven cards of your library. Put up to one of those cards into your hand and the rest into your graveyard."
+      }
+    ],
+    "counterExamples": [
+      "Look at the top six cards of your library. Put up to two of them into your hand and the rest on top of your library.",
+      "Look at the top six cards of your library. Put up to two of them into your graveyard and the rest into your hand.",
+      "Look at the top six cards of your library. Put up to two of them into your hand and the rest into target opponent's graveyard."
+    ]
+  },
+  {
+    "id": "eff.edhe8.counter.unlessPaysTwoPlusTwoPerEach",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 701.6a",
+      "CR 118.12",
+      "CR 118.12a",
+      "CR 608.2c",
+      "CR 201.2"
+    ],
+    "pattern": "counter {o:Obj} unless its controller pays {2} plus an additional {2} for each {f:Filter}",
+    "build": {
+      "op": "pay",
+      "who": {
+        "ref": "controllerOf",
+        "object": "$o"
+      },
+      "cost": {
+        "mana": [
+          {
+            "kind": "generic",
+            "amount": 2
+          }
+        ]
+      },
+      "times": {
+        "q": "math",
+        "op": "+",
+        "args": [
+          1,
+          {
+            "q": "count",
+            "of": {
+              "ref": "each",
+              "filter": "$f"
+            }
+          }
+        ]
+      },
+      "else": [
+        {
+          "op": "counter",
+          "what": "$o"
+        }
+      ]
+    },
+    "consumes": [
+      "unless",
+      "each",
+      "plus",
+      "additional"
+    ],
+    "subject": "none",
+    "examples": [
+      {
+        "text": "Counter target spell unless its controller pays {2} plus an additional {2} for each card named Example Plan in each graveyard."
+      },
+      {
+        "text": "Counter target spell unless its controller pays {2} plus an additional {2} for each artifact card in your graveyard."
+      }
+    ],
+    "counterExamples": [
+      "Counter target spell unless its controller pays {2} plus an additional {1} for each card named Example Plan in each graveyard.",
+      "Counter target spell unless its controller pays {3} plus an additional {2} for each card named Example Plan in each graveyard.",
+      "Counter target spell if its controller pays {2} plus an additional {2} for each card named Example Plan in each graveyard."
+    ]
+  }
+]

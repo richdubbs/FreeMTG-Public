@@ -25,7 +25,9 @@ export function answerFor(d: Exclude<Decision, { kind: 'priority' }>, ctx: Answe
       if (!chooseObjectsTypesHold(d, ids)) return { kind: 'chooseObjects', ids: d.min === 0 ? [] : ids }; // edh-d-85: none chosen keeps "N card types among them"
       return { kind: 'chooseObjects', ids };
     }
-    case 'yesNo': return { kind: 'yesNo', yes: true };
+    // combined copy (CR 705.2; edh-next-129, Game of Chaos): "Flip again?" is answered no: the flip already ran its branch, and yes every time only ever reaches the
+    // engine's flip cap (a hand-off to the players, which the smoke run counts as a full card prompting)
+    case 'yesNo': return { kind: 'yesNo', yes: d.yesLabel !== 'Flip again' };
     case 'chooseOption': {
       const usable = d.options.filter((o) => !o.disabled).map((o) => o.id);
       const want = Math.max(d.min, Math.min(1, d.max));

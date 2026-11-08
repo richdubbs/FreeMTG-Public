@@ -355,7 +355,7 @@
     "id": "eff.r5refs.linked.cast",
     "kind": "static",
     "since": 8,
-    "status": "experimental",
+    "status": "stable",
     "cr": [
       "CR 607.2a",
       "CR 601.3",

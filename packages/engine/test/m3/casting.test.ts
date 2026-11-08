@@ -225,12 +225,12 @@ describe('resolution (CR 608)', () => {
   });
 
   it('a permanent with rules text the engine cannot automate yet enters with a visible warning in the log', () => {
-    // FAST5X E28: Kitchen Finks (persist) is automated now; std-ry8: so is Hexbane Tortoise's enlist (CR 702.154); Charging Binox's assist (CR 702.132) is not (edh-c-42: Aven Warhawk's amplify is)
-    let s = scenario(['Charging Binox', 'Forest'], { p1: { hand: ['Charging Binox'], battlefield: ['Forest', 'Forest', 'Forest', 'Forest', 'Forest', 'Forest', 'Forest', 'Forest'] } });
-    s = passBoth(castAuto(s, 'Charging Binox'));
+    // FAST5X E28: Kitchen Finks (persist) is automated now; std-ry8: so is Hexbane Tortoise's enlist (CR 702.154); Darksteel Garrison's fortify (CR 702.67) is not (edh-c-42: Aven Warhawk's amplify is)
+    let s = scenario(['Darksteel Garrison', 'Forest'], { p1: { hand: ['Darksteel Garrison'], battlefield: ['Forest', 'Forest', 'Forest', 'Forest', 'Forest', 'Forest', 'Forest', 'Forest'] } });
+    s = passBoth(castAuto(s, 'Darksteel Garrison'));
     const warn = s.log.filter((l) => l.level === 'manual');
     expect(warn.length).toBeGreaterThan(0);
-    expect(warn[0]!.text).toMatch(/Charging Binox has rules text the engine cannot automate yet/);
+    expect(warn[0]!.text).toMatch(/Darksteel Garrison has rules text the engine cannot automate yet/);
   });
 
   it('CR 608.2b: a spell whose only target became illegal does not resolve (it is removed from the stack)', () => {

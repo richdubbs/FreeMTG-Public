@@ -1,0 +1,142 @@
+[
+  {
+    "id": "eff.edhe39.player.putsBottomCardGraveyard",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 401.2",
+      "CR 404.1",
+      "CR 400.3"
+    ],
+    "pattern": "{p:Player} puts the bottom card of their library into their graveyard",
+    "build": {
+      "op": "move",
+      "what": {
+        "ref": "topCards",
+        "player": "$p",
+        "count": 1,
+        "fromBottom": true
+      },
+      "to": {
+        "zone": "graveyard"
+      }
+    },
+    "subject": "player",
+    "examples": [
+      {
+        "text": "Target player puts the bottom card of their library into their graveyard."
+      },
+      {
+        "text": "Target opponent puts the bottom card of their library into their graveyard."
+      }
+    ],
+    "counterExamples": [
+      "Target player puts the bottom two cards of their library into their graveyard.",
+      "Target player puts the bottom card of your library into their graveyard.",
+      "Target player puts the top card of their library into their graveyard."
+    ]
+  },
+  {
+    "id": "eff.edhe39.eachPlayer.returnsAll.named.bf",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 101.4",
+      "CR 608.2c",
+      "CR 201.2",
+      "CR 400.7",
+      "CR 110.2a"
+    ],
+    "pattern": "each player returns all cards named {n:Name} from their graveyard to the battlefield",
+    "build": {
+      "op": "move",
+      "what": {
+        "ref": "each",
+        "filter": {
+          "zone": "graveyard",
+          "isCard": true,
+          "name": "$n"
+        }
+      },
+      "to": {
+        "zone": "battlefield",
+        "controller": "owner"
+      }
+    },
+    "subject": "none",
+    "consumes": [
+      "each",
+      "all"
+    ],
+    "examples": [
+      {
+        "text": "At the beginning of your upkeep, each player returns all cards named Test Wolf from their graveyard to the battlefield."
+      },
+      {
+        "text": "When ~ dies, each player returns all cards named Test Hound from their graveyard to the battlefield."
+      }
+    ],
+    "counterExamples": [
+      "At the beginning of your upkeep, each opponent returns all cards named Test Wolf from their graveyard to the battlefield.",
+      "At the beginning of your upkeep, each player returns all cards named Test Wolf from their graveyard to their hand.",
+      "At the beginning of your upkeep, each player returns all cards named Test Wolf from the graveyard to the battlefield."
+    ]
+  },
+  {
+    "id": "sta.edhe39.each.encore.manacost",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 702.141a",
+      "CR 118.9",
+      "CR 604.1",
+      "CR 613.1f"
+    ],
+    "pattern": "each {f:Filter} has encore . ( the | its ) encore cost is equal to ( its | that card 's ) mana cost",
+    "build": {
+      "kind": "static",
+      "effects": [
+        {
+          "s": "continuous",
+          "affects": {
+            "ref": "each",
+            "filter": "$f"
+          },
+          "mods": [
+            {
+              "layer": 6,
+              "add": [
+                {
+                  "kind": "keyword",
+                  "keyword": "encore",
+                  "text": "encore",
+                  "costIsManaCost": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "consumes": [
+      "each",
+      "equal"
+    ],
+    "examples": [
+      {
+        "text": "Each creature card in your graveyard has encore. The encore cost is equal to its mana cost."
+      },
+      {
+        "text": "Each Zombie creature card in your graveyard has encore. Its encore cost is equal to that card's mana cost."
+      }
+    ],
+    "counterExamples": [
+      "Each creature card in your graveyard has encore. The encore cost is equal to its power.",
+      "Each creature card in your graveyard has encore {2}. The encore cost is equal to its mana cost.",
+      "During your turn, each creature card in your graveyard has encore. The encore cost is equal to its mana cost."
+    ]
+  }
+]

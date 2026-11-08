@@ -47,6 +47,7 @@ describe('which actions are macros', () => {
       'goad', // M12-3: native (effects/handlers/goad.ts), CR 701.15a; its requirements in statics/requirements.ts
       'doubleEachKind', // cloud std-spm: native (effects/handlers/actions-native-counters.ts), CR 701.10e
       'anotherOfEachKind', // r5-refs: native (effects/handlers/actions-native-counters.ts), CR 701.34a's "another counter of each kind already there"
+      'addOrRemoveEachKind', // edh-e-67: native (effects/handlers/actions-native-counters.ts), CR 122.1
       'assimilate', // trek-1: a macro (keywords/actions/assimilate.ts), Star Trek reminder text
       'timeTravel', // edh-next-3: native (effects/handlers/actions-native-counters.ts), CR 701.56a
       'planeswalk', 'chaosEnsues', // edhd19: native no-ops without a Planechase game (effects/handlers/planechase.ts), CR 701.31a, 311.7
@@ -78,6 +79,7 @@ describe('which actions are macros', () => {
       monstrosity: 'CR 701.37a', // FAST5 T37: native (effects/handlers/actions-native-counters.ts)
       doubleEachKind: 'CR 701.10e', // cloud std-spm: native (effects/handlers/actions-native-counters.ts)
       anotherOfEachKind: 'CR 701.34a', // r5-refs: native (effects/handlers/actions-native-counters.ts)
+      addOrRemoveEachKind: 'CR 122.1', // edh-e-67: native (effects/handlers/actions-native-counters.ts)
       timeTravel: 'CR 701.56a', // edh-next-3: native (effects/handlers/actions-native-counters.ts)
       blight: 'CR 701.68', // FAST5X E9: a macro over chooseObjects and putCounters
       openAttraction: 'CR 701.51a', // FAST5 T38: native (effects/handlers/attraction.ts)
@@ -92,7 +94,7 @@ describe('which actions are macros', () => {
       rollPlanarDie: 'CR 901.3', // edh-next-127: native (effects/handlers/planechase.ts)
       assimilate: 'CR 701 (reminder text)', // trek-1: a macro over move and a layer 4 effect (Star Trek; rule number unverified)
     };
-    const native = new Set(['planeswalk', 'chaosEnsues', 'rollPlanarDie' /* edh-next-127 */, 'cascade', 'discover', 'vote', 'proliferate', 'bolster', 'manifest', 'cloak', 'manifestDread', 'meld', 'meldPair', 'giveGift', 'venture', 'learn', 'ringTempts', 'monstrosity', 'openAttraction', 'airbend', 'behold', 'collectEvidence', 'forage' /* FAST5X E28 */, 'goad' /* M12-3 */, 'doubleEachKind' /* cloud std-spm */, 'anotherOfEachKind' /* r5-refs */, 'explore' /* std-lci: effects/handlers/explore.ts */, 'exert', 'renown' /* std-ry8 */, 'timeTravel' /* edh-next-3 */]);
+    const native = new Set(['planeswalk', 'chaosEnsues', 'rollPlanarDie' /* edh-next-127 */, 'cascade', 'discover', 'vote', 'proliferate', 'bolster', 'manifest', 'cloak', 'manifestDread', 'meld', 'meldPair', 'giveGift', 'venture', 'learn', 'ringTempts', 'monstrosity', 'openAttraction', 'airbend', 'behold', 'collectEvidence', 'forage' /* FAST5X E28 */, 'goad' /* M12-3 */, 'doubleEachKind' /* cloud std-spm */, 'anotherOfEachKind' /* r5-refs */, 'addOrRemoveEachKind' /* edh-e-67 */, 'explore' /* std-lci: effects/handlers/explore.ts */, 'exert', 'renown' /* std-ry8 */, 'timeTravel' /* edh-next-3 */]);
     for (const [name, m] of Object.entries(ACTION_MACROS)) {
       expect(m.name).toBe(name);
       expect(m.rule).toBe(rules[name]);

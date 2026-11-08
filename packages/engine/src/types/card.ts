@@ -70,6 +70,16 @@ export const CARD_TYPES: readonly CardType[] = [
   'Kindred', 'Land', 'Phenomenon', 'Plane', 'Planeswalker', 'Scheme', 'Sorcery', 'Vanguard',
 ];
 /** edht4: the card type a chosen word names ("instant", "Instant"), for protection from the chosen card type (CR 702.16a, 607.2d); undefined for anything else. */
+/**
+ * edh-e-8 INTERFACE CHANGE (additive), CR 201.3: the kinds of card name a spell can ask for ("Choose a creature card name." Infinite Obliteration, "Choose an artifact card
+ * name." Dispossess, "Choose a nonartifact, nonland card name." Lost Legacy): a name of a card of that kind (ChooseNameDecision.cardKind).
+ */
+export type CardNameKind = 'land' | 'nonland' | 'creature' | 'artifact' | 'nonartifactNonland';
+/** The words of a card-name kind as Oracle prints them with "card name": "a creature card name", "an artifact card name", "a nonartifact, nonland card name" (`any` for "any ... card name"). */
+export function cardNameKindWords(kind: CardNameKind, det: 'a' | 'any' = 'a'): string {
+  const adj = kind === 'nonartifactNonland' ? 'nonartifact, nonland' : kind;
+  return `${det === 'any' ? 'any' : /^[aeiou]/.test(adj) ? 'an' : 'a'} ${adj} card name`;
+}
 export const cardTypeNamed = (word: string): CardType | undefined => CARD_TYPES.find((t) => t.toLowerCase() === word.trim().toLowerCase());
 /** Supertypes (CR 205.4a). */
 export type Supertype = 'Basic' | 'Legendary' | 'Ongoing' | 'Snow' | 'World';

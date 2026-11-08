@@ -20,6 +20,8 @@ export type MovedKind = 'destroyed' | 'exiled' | 'discarded' | 'sacrificed' | 'g
  * The words of each kind after the noun phrase (passive), "this way" included, and what they add to the description: "your hand" / "your graveyard" are the
  * cards you own (CR 400.3: a card goes to its owner's hand or graveyard), so a card returned to another player's hand is not "returned to your hand".
  */
+/** edh-e-26: plain "returned this way" names a count only ("for each Swamp returned this way"); a condition "a permanent was returned this way" is cond.ts's own reading (parser/holes/moved.ts skips this row). */
+export const RETURNED_THIS_WAY: readonly string[] = P('returned this way');
 export const PASSIVE: readonly (readonly [readonly string[], MovedKind, ObjectFilter])[] = [
   [P('destroyed this way'), 'destroyed', {}],
   [P('exiled this way'), 'exiled', {}],
@@ -38,6 +40,8 @@ export const PASSIVE: readonly (readonly [readonly string[], MovedKind, ObjectFi
   [P('put into your hand this way'), 'hand', { owner: 'you' }],
   [P('you put into your hand this way'), 'hand', { owner: 'you' }],
   [P("returned to their owners' hands this way"), 'hand', {}],
+  // edh-e-26 (CR 701.8? no: CR 400.3, 608.2c; Barrel Down Sokenzan): "for each Mountain returned this way" after "Return any number of Mountains you control to their owner's hand": what the move to hand moved
+  [RETURNED_THIS_WAY, 'hand', {}],
   [P("returned to its owner 's hand this way"), 'hand', {}], // r4-moved: the tokens of "owner's" ("owner", "'s"), as parser/holes/cost.ts writes them; the row never matched before
   // r5-fxz (CR 701.25a, 701.22a): "for each card you put on top of your library" after a surveil or a scry: the cards it left on top (no "this way": Oracle omits it)
   [P('you put on top of your library'), 'top', { owner: 'you' }],

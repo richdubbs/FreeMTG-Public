@@ -234,7 +234,7 @@ export function announceTargets(g: Game, player: PlayerId, programs: EffectProgr
     }
     // std-cardcopy-7 (CR 115.1, 601.2c, 205.2a): "up to one target nonland card of each card type"
     if (!perCardTypeHolds(g.s, spec, picked, aenv.x ?? 0)) {
-      reject(spec, rest, before, `The targets of "${spec.text}" must be one of each card type.`, ['CR 115.1', 'CR 601.2c', 'CR 205.2a']);
+      reject(spec, rest, before, `The targets of "${spec.text}" must be one of each ${spec.perQuality === 'color' ? 'color' : 'card type'}.`, ['CR 115.1', 'CR 601.2c', spec.perQuality === 'color' ? 'CR 105.1' : 'CR 205.2a']);
     }
     // std-rx30 (CR 115.1, 601.2c): "two target creatures controlled by the same opponent"
     if (!sameControllerHolds(g.s, spec, picked)) {

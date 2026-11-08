@@ -8,7 +8,7 @@
  * `did` on a `pay` step is whether the player chose to pay (CR 118.12), whatever happened afterwards; for a payment of one of two costs, either payment (std-rw8).
  */
 import type { DecisionInput, Game } from '../../core/game';
-import type { CostDef, CostPart, EffectStep, Quantity } from '../../types/ability';
+import type { CostDef, CostPart, EffectStep, ObjRef, Quantity } from '../../types/ability';
 import type { ObjectId, PlayerId } from '../../types/ids';
 import type { GameState } from '../../types/state';
 import { enumerateAbilities } from '../../rules/abilities';
@@ -16,7 +16,7 @@ import { costFilterHasX, costHasX, costText, partsDenial, planDenial, planFromCo
 import { resolveAnyCounts } from '../../rules/pay';
 import type { ExecCtx, StepHandler, StepResult } from '../api';
 import { evalQty } from '../eval';
-import { resolvePlayers } from '../refs';
+import { readInfo, resolveObjs, resolvePlayers } from '../refs';
 import { askManual, notesOf } from '../manual';
 import { withEffectCause } from '../../rules/cant';
 import { performAction, performEffectPayment, performRecordDiscarded, performRecordExiled, performRecordSacrificed } from '../perform';
@@ -88,7 +88,7 @@ function hasManualMana(s: GameState, payer: PlayerId): boolean {
 }
 
 /** std-rx24 (CR 607.2k): the forms of `pay` this handler runs beyond the plain one (model/cap-walk.ts names them): an exile cost part with a `link`. */
-export const OP_FORMS: readonly string[] = ['op:pay.costLink', 'op:pay.upTo', 'op:pay.anyAmount', 'op:pay.xMax' /* edh-players-6 */, 'op:pay.eachStartingWith' /* edh-top-6 */, 'op:pay.everyPlayer' /* edh-c-57 */, 'op:pay.reduceBy' /* edh-d-45 */, 'op:pay.byPlayerLink' /* edh-next-139 */, 'op:pay.cumulativeUpkeep' /* edh-d-74 */];
+export const OP_FORMS: readonly string[] = ['op:pay.costLink', 'op:pay.upTo', 'op:pay.anyAmount', 'op:pay.xMax' /* edh-players-6 */, 'op:pay.eachStartingWith' /* edh-top-6 */, 'op:pay.everyPlayer' /* edh-c-57 */, 'op:pay.reduceBy' /* edh-d-45 */, 'op:pay.byPlayerLink' /* edh-next-139 */, 'op:pay.cumulativeUpkeep' /* edh-d-74 */, 'op:pay.manaCostOf' /* edh-e-21 */];
 
 /**
  * M12-2 (m12 design 4.5): "do you pay?" is a cost decision (CR 800.4f: not paid by a player who left the game, core/game.ts#choose); only a multiplayer game
@@ -178,13 +178,25 @@ const payHandlerBody: StepHandler<PayStep> = (cx, st): StepResult => {
   }
   const times = st.times === undefined ? 1 : evalQty(cx, st.times);
   let paid = false;
-  if (times === undefined) {
+  // edh-e-3 (CR 608.2b, 119.4; Wand of Ith, "unless they pay life equal to its mana value" with no card revealed): a life amount that can't be determined (its object is gone or was never picked) is not paid, as `times`
+  const lifeUndetermined = (st.cost.other ?? []).some((c) => c.kind === 'payLife' && typeof c.amount === 'object' && c.amount !== null && (c.amount as { q?: unknown }).q === 'stat' && (c.amount as { of?: { ref?: unknown } }).of?.ref === 'bound' && evalQty(cx, c.amount as Quantity) === undefined);
+  if (times === undefined || lifeUndetermined) {
     cx.g.log(`${notesOf(cx).sourceName}: how much to pay can't be determined, so it is not paid.`, { rules: ['CR 608.2b', 'CR 118.3'], level: 'info' });
   } else if (choosesX(cx, st)) {
     paid = payChosenX(cx, st);
   } else {
     const n = Math.max(0, Math.floor(times));
-    const cost0 = fixedCost(cx, st.cost);
+    // edh-e-21 (CR 118.12, 202.1, 107.3, 608.2b; Pendrell Flux, Essence Leak): "unless you pay its mana cost": the mana of the payment is the mana cost of that object as it is (or was last known), an {X} in it 0
+    // (CR 107.3h); an object with no mana cost is no payment (CR 202.1b): the unless branch happens, as for an amount that can't be determined
+    const costMana = st.manaCostOf === undefined ? undefined : manaCostOfObject(cx, st.manaCostOf);
+    if (st.manaCostOf !== undefined && costMana === null) {
+      cx.g.log(`${notesOf(cx).sourceName}: the mana cost to pay is not known or the object has none, so it is not paid.`, { rules: ['CR 202.1b', 'CR 608.2b', 'CR 118.12'], level: 'info' });
+      if (st.else === undefined) bindUnrun(cx, st.then ?? [], true);
+      runSteps(cx, st.else ?? []);
+      return { performed: false, count: 0 };
+    }
+    const fixed0 = fixedCost(cx, st.cost);
+    const cost0 = costMana === undefined || costMana === null ? fixed0 : { ...fixed0, mana: [...(fixed0.mana ?? []), ...costMana] };
     // edh-d-45 (CR 118.12, 118.7; Draco): "This cost is reduced by {2} for each basic land type among lands you control": generic mana only, never below zero
     const cut = st.reduceBy === undefined ? 0 : evalQty(cx, st.reduceBy);
     if (st.reduceBy !== undefined && cut === undefined) {
@@ -235,6 +247,17 @@ function eitherOr(st: PayStep): boolean {
   const inner = st.else?.length === 1 ? st.else[0] : undefined;
   return inner !== undefined && inner.op === 'pay' && inner.else === undefined && inner.times === undefined && inner.mandatory === undefined && st.times === undefined
     && st.mandatory === undefined && JSON.stringify(inner.who) === JSON.stringify(st.who);
+}
+
+/**
+ * edh-e-21 (CR 202.1, 107.3h, 608.2h): the mana cost of the object `ref` names (one object), as it is now or was last known; its {X} symbols are left out (X is 0 away from the stack). Null when
+ * the ref names no single object, its information is gone, or it has no mana cost (a token, a land: CR 202.1b); an empty cost ({0}) is a cost that is paid for nothing.
+ */
+function manaCostOfObject(cx: ExecCtx, ref: ObjRef): NonNullable<CostDef['mana']> | null {
+  const [h, ...more] = resolveObjs(cx, ref);
+  if (h === undefined || more.length > 0) return null;
+  const mc = readInfo(cx, h)?.chars?.manaCost ?? null;
+  return mc === null ? null : mc.filter((m) => m.kind !== 'variable');
 }
 
 /** edh-d-45 (CR 118.7a): `cut` generic mana taken off a mana cost (a cost without that much generic mana loses what it has). */

@@ -153,6 +153,18 @@ function part(p: CostPart, st: RenderState): string {
       if (p.self && p.zone === 'stack') return 'Exile ~'; // r5-mech: the resolving spell exiles itself (CR 608.2m, 608.2n)
       if (p.self) return `Exile ~ from ${zone}`;
       const f: ObjectFilter = { ...(p.filter ?? {}), zone: p.zone };
+      // edhe7 (CR 404.2, 118.3; parser/holes/cost.ts#exile): "Exile the top creature card of your graveyard"
+      if (p.top === true) {
+        if (p.zone !== 'graveyard' || typeof p.count !== 'number' || p.count < 1 || p.anyGraveyard === true) throw new NoRenderer('a top-card exile cost other than of cards of your graveyard');
+        // edh-d-107 (CR 404.2; Spinning Darkness): "Exile the top three black cards of your graveyard"
+        if (p.count > 1) return `Exile the top ${numWord(p.count)} ${K.np(f, st, { det: 'none', plural: true, noZone: true })} of your graveyard`;
+        return `Exile the top ${K.np(f, st, { det: 'none', noZone: true })} of your graveyard`;
+      }
+      // edh-d-107 (CR 118.3, 404.1; Thelon of Havenwood, Night Soil): "Exile a Fungus card from a graveyard", "Exile two creature cards from a single graveyard"
+      if (p.anyGraveyard === true || p.singleGraveyard === true) {
+        if (p.anyGraveyard !== true || p.zone !== 'graveyard' || typeof p.count !== 'number' || p.count < 1 || p.atLeast !== undefined) throw new NoRenderer('an any-graveyard exile cost other than of a fixed number of cards');
+        return `Exile ${counted(f, p.count, st, { noZone: true })} from ${p.singleGraveyard === true ? 'a single graveyard' : 'a graveyard'}`;
+      }
       // std-cardcopy-7 (CR 118.3, 107.4): "Exile any number of black cards from your graveyard with fifteen or more black mana symbols among their mana costs"
       if (p.symbolTotal !== undefined) {
         if (p.count !== 'any' || p.zone !== 'graveyard') throw new NoRenderer('a total of mana symbols other than for any number of cards from your graveyard');
@@ -168,6 +180,11 @@ function part(p: CostPart, st: RenderState): string {
         if (p.count !== 'any' || p.zone !== 'graveyard') throw new NoRenderer('a total mana value threshold other than for any number of cards from your graveyard');
         return `Exile ${counted(f, p.count, st, { noZone: true })} from ${zone} with total mana value ${p.mvTotal.atLeast} or greater`;
       }
+      // edh-e-37 (CR 118.3, 601.2b, 602.2b; Corpseweft): "Exile one or more creature cards from your graveyard": an announced count of at least one
+      if (p.atLeast !== undefined) {
+        if (p.count !== 'any' || p.atLeast !== 1 || p.zone !== 'graveyard') throw new NoRenderer('an exile cost of N or more other than one or more cards from your graveyard');
+        return `Exile one or more ${K.np({ ...f, isCard: true }, st, { det: 'none', plural: true, noZone: true })} from ${zone}`;
+      }
       return `Exile ${counted(f, p.count, st, { noZone: true })} from ${zone}`;
     }
     case 'putIntoLibrary': { // trek-9 (CR 118.3, 401.4; parser/holes/trek9.ts#putSelfIntoLibrary): "Put ~ from your graveyard on the bottom of your library"
@@ -178,6 +195,9 @@ function part(p: CostPart, st: RenderState): string {
     case 'tapUntapped': return `Tap ${counted({ ...p.filter, tapped: false, other: p.other === true || p.filter.other }, p.count, st)}`;
     case 'untapTapped': return `Untap ${counted({ ...p.filter, tapped: true }, p.count, st)}`; // p2-cost-parts-1 (CR 701.26b)
     case 'moveCards': { // edh-d-54 (CR 118.3, 400.3, 401.4; Void Attendant, Hidden Retreat): the two wordings the cost hole reads, one card each
+      // edh-e-37 (CR 118.3, 401.4; Anurid Scavenger, Gurzigost): one or two cards of your graveyard on the bottom of your library
+      // edh-d-108 (CR 118.3, 401.4; Battlefield Scrounger): ... or three
+      if (p.from === 'graveyard' && p.to === 'libraryBottom' && p.filter === undefined && (p.count === 1 || p.count === 2 || p.count === 3)) return `Put ${p.count === 1 ? 'a card' : p.count === 2 ? 'two cards' : 'three cards'} from your graveyard on the bottom of your library`;
       if (p.count !== 1) throw new NoRenderer('a cost that moves several cards');
       if (p.from === 'exile' && p.to === 'graveyard' && JSON.stringify(p.filter) === '{"owner":"opponent"}') return "Put a card an opponent owns from exile into that player's graveyard";
       if (p.from === 'hand' && p.to === 'libraryTop' && p.filter === undefined) return 'Put a card from your hand on top of your library';
@@ -200,6 +220,8 @@ function part(p: CostPart, st: RenderState): string {
       const halves = p.filter?.anyOf;
       const what = p.self ? '~' : halves !== undefined && halves.length === 2 && Object.keys(p.filter!).sort().join() === 'anyOf,zone' ? `${K.np(halves[0]!, st, { det: 'a' })} or ${K.np(halves[1]!, st, { det: 'none' })}` : p.filter ? K.np(p.filter, st, { det: 'a' }) : '~';
       // std-rx5 (CR 107.1c): as many as the payer chooses, the ability's X (types/ability.ts CostPart `anyNumber`)
+      // edh-d-111 (CR 107.1c, 107.3a; Arcee, Sharpshooter): at least one, "Remove one or more +1/+1 counters from ~" (types/ability.ts CostPart `oneOrMore`)
+      if (p.anyNumber === true && p.oneOrMore === true) return `Remove one or more ${pluralize(p.counter === 'any' ? 'counter' : `${p.counter} counter`)} from ${what}`;
       if (p.anyNumber === true) return `Remove any number of ${pluralize(p.counter === 'any' ? 'counter' : `${p.counter} counter`)} from ${what}`;
       // p2-counters-move-2 (CR 118.3, 107.3a): every counter of that kind on ~, the ability's X with no choice (types/ability.ts CostPart `all`)
       if (p.all === true) {
@@ -278,6 +300,8 @@ function part(p: CostPart, st: RenderState): string {
     case 'getCounters': return `Get ${counterWord(p.counter, p.amount, st)}`;
     // edh-cast-14 (CR 118.1, 119.3; Invigorate): "have an opponent gain 3 life" as a cost
     // edh-d-74 (CR 702.24a; Wall of Shards): a cumulative upkeep says "An opponent gains 1 life."
+    // edh-e-16 (CR 118.1, 119.3; Reverent Silence): "have each other player gain 6 life" as a cost
+    case 'eachOtherGainsLife': return `Have each other player gain ${K.qty(p.amount, st)} life`;
     case 'opponentGainsLife': return alt(`Have an opponent gain ${K.qty(p.amount, st)} life`, `An opponent gains ${K.qty(p.amount, st)} life`);
     // edh-d-74 (CR 701.13a, 705.1; Thought Lash, Karplusan Minotaur): "Exile the top card of your library", "Flip a coin"
     case 'exileTop': return `Exile the top ${p.count === 1 ? 'card' : `${K.qty(p.count, st)} cards`} of your library`;
@@ -292,6 +316,17 @@ function part(p: CostPart, st: RenderState): string {
       const tail = ` or pay ${'{E}'.repeat(energy ?? 0)}`;
       if (p.options.length === 2 && m !== undefined && Object.keys(m).join() === 'mana' && energy !== null && said.toLowerCase().endsWith(tail.toLowerCase())) {
         return alt(said, `${said.slice(0, -tail.length)} or ${'{E}'.repeat(energy)}`);
+      }
+      // edhe33 (CR 118.1, 119.4; Emberwilde Djinn, family pay-mana-or-life): "Pay {R}{R} or 2 life": after a mana option, a fixed payment of life shares the verb "pay"
+      const lifeAmt = e !== undefined && Object.keys(e).join() === 'other' && e.other?.length === 1 && e.other[0]!.kind === 'payLife' && typeof e.other[0]!.amount === 'number' ? e.other[0]!.amount : null;
+      const lifeTail = ` or pay ${lifeAmt ?? 0} life`;
+      if (p.options.length === 2 && m !== undefined && Object.keys(m).join() === 'mana' && lifeAmt !== null && said.toLowerCase().endsWith(lifeTail.toLowerCase())) {
+        return alt(said, `${said.slice(0, -lifeTail.length)} or ${lifeAmt} life`);
+      }
+      // edh-d-112 (CR 118.12, 601.2b; Isu the Abominable, family pay-one-of-mana-list): three or more options that are each mana only, said with one "pay" and a serial list: "Pay {G}, {W}, or {U}"
+      if (p.options.length >= 3 && p.options.every((o) => Object.keys(o).join() === 'mana')) {
+        const amounts = p.options.map((o) => costVerbs(o, st, 'you').replace(/^pay /i, ''));
+        if (amounts.every((x) => /^(\{[^}]+\})+$/.test(x))) return alt(said, `Pay ${amounts.slice(0, -1).join(', ')}, or ${amounts[amounts.length - 1]!}`);
       }
       return said;
     }
@@ -461,6 +496,12 @@ export function costVerbs(c: CostDef, st: RenderState, person: Person, times?: Q
     if (counted !== null) return `${conj('pay', person)} {${times.args[0]}} plus an additional {1} for each ${counted.singular}`;
     // edh-d-3 (CR 118.12a, 700.8; Concerted Defense): the party's size is counted too: "for each creature in your party" (parser/templates/zz-cloud/edh-d-3.json)
     if (JSON.stringify(times.args[1]) === '{"q":"partySize","of":{"ref":"you"}}') return `${conj('pay', person)} {${times.args[0]}} plus an additional {1} for each creature in your party`;
+  }
+  // edh-e-8 (CR 118.12a, 107.1; Rune Snag): "pays {2} plus an additional {2} for each card named ~ in each graveyard": the same payment made once plus once for each object counted
+  const genN = c.mana !== undefined && c.mana.length === 1 && c.mana[0]!.kind === 'generic' && c.mana[0]!.amount === 2 && Object.keys(c).length === 1;
+  if (genN && typeof times === 'object' && times.q === 'math' && times.op === '+' && times.args.length === 2 && times.args[0] === 1) {
+    const counted = countParts(times.args[1]!, st);
+    if (counted !== null) return `${conj('pay', person)} {2} plus an additional {2} for each ${counted.singular}`;
   }
   const each = countParts(times, st);
   // FAST5X E15 (CR 118.12a, 107.3): "pays mana equal to the greatest power among creatures you control": {1} that many times is that much generic mana

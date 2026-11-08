@@ -122,7 +122,7 @@ function partLabel(p: CostPart): string {
       return `Reveal ${article(sub !== '' ? `${sub} card` : filterNoun(p.filter, 'card'))} from your hand`;
     }
     case 'tapUntapped': return `Tap ${article(`untapped ${filterNoun(p.filter, 'permanent')}`)} you control`;
-    case 'moveCards': return p.to === 'graveyard' ? `Put ${many(p.count) ? String(p.count) : 'a'} ${filterNoun(p.filter, 'card')}${many(p.count) ? 's' : ''} from ${p.from === 'exile' ? 'exile' : 'your hand'} into ${many(p.count) ? 'their' : 'its'} owner's graveyard` : `Put ${many(p.count) ? String(p.count) : 'a'} ${filterNoun(p.filter, 'card')}${many(p.count) ? 's' : ''} from your ${p.from} on top of your library`; // edh-d-54
+    case 'moveCards': return p.to === 'graveyard' ? `Put ${many(p.count) ? String(p.count) : 'a'} ${filterNoun(p.filter, 'card')}${many(p.count) ? 's' : ''} from ${p.from === 'exile' ? 'exile' : 'your hand'} into ${many(p.count) ? 'their' : 'its'} owner's graveyard` : `Put ${many(p.count) ? String(p.count) : 'a'} ${filterNoun(p.filter, 'card')}${many(p.count) ? 's' : ''} from your ${p.from} on ${p.to === 'libraryBottom' ? 'the bottom' : 'top'} of your library`; // edh-d-54, edh-e-37
     case 'untapTapped': return `Untap ${many(p.count) ? `${String(p.count)} tapped ${filterNoun(p.filter, 'permanent')}s` : article(`tapped ${filterNoun(p.filter, 'permanent')}`)} you control`; // p2-cost-parts-1
     // FAST5X E9 (CR 701.68a): "Blight 2" says how many -1/-1 counters; other actions keep their name
     case 'action': return p.action === 'blight' && typeof p.arg === 'number' ? `Blight ${p.arg} (put ${p.arg === 1 ? 'a -1/-1 counter' : `${p.arg} -1/-1 counters`} on a creature you control)` : p.action;
@@ -130,6 +130,7 @@ function partLabel(p: CostPart): string {
     case 'exileTop': return `Exile the top ${p.count === 1 ? 'card' : 'cards'} of your library`; // edh-d-74
     case 'flipCoin': return 'Flip a coin'; // edh-d-74
     case 'opponentGainsLife': return `Have an opponent gain ${typeof p.amount === 'number' ? p.amount : 'X'} life`; // edh-cast-14
+    case 'eachOtherGainsLife': return `Have each other player gain ${typeof p.amount === 'number' ? p.amount : 'X'} life`; // edh-e-16
     case 'getCounters': return `Get ${typeof p.amount === 'number' ? p.amount : 'X'} poison counter${p.amount === 1 ? '' : 's'}`;
     case 'oneOf': return p.options.map(costOptionLabel).join(' or ');
     // FAST5X E11 (CR 701.4a): "Behold a Kithkin" (choose one you control or reveal one from your hand)

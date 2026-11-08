@@ -203,7 +203,8 @@ describe('edh-perms-21 parser, lowering and renderer changes (one test each)', (
     expect(fullyAutomated(ok)).toBe(true);
     expect(JSON.stringify(ok.abilities)).toContain('"link":"created"');
     expect(fullyAutomated(permanent('Whenever you cast a spell, exile all other tokens created with this creature.', 'Creature — Faerie'))).toBe(false);
-    expect(fullyAutomated(permanent("Whenever a creature an opponent controls enters, create a token that's a copy of that creature except it's an artifact in addition to its other types. Then exile all tokens created with this creature.", 'Creature — Faerie'))).toBe(false);
+    // edh-e-43: "exile all tokens created with ~" (no "other") is now read (eff.edhe43.exile.tokensCreatedWithSelf, CR 607.2a); this negative was about the older state
+    expect(fullyAutomated(permanent("Whenever a creature an opponent controls enters, create a token that's a copy of that creature except it's an artifact in addition to its other types. Then exile all tokens created with this creature.", 'Creature — Faerie'))).toBe(true);
   });
   it('triggers/normalize.ts + parser/lower/scope.ts (event role spellTarget; CR 115.9c, 608.2h): "that artifact or creature" of a cast trigger is the one object the spell targets; "that spell" stays the spell', () => {
     const ok = permanent("Whenever you cast a spell that targets only a single artifact or creature you control, create a token that's a copy of that artifact or creature, except it's not legendary.");

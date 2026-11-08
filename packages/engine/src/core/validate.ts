@@ -255,6 +255,12 @@ export function validateAnswer(s: GameState, d: Decision, a: DecisionAnswer): vo
         // edh-next-146 (CR 201.3; Psychic Paper): "a creature card name": a card of this game whose face has that name must be a creature card
         if (d.cardKind === 'creature') {
           if (faces.length > 0 && !faces.some((f) => f.types.includes('Creature'))) fail(`Name a creature card: "${ans.name}" is not a creature card.`, ['CR 201.3']);
+        } else if (d.cardKind === 'artifact') {
+          // edh-e-8 (CR 201.3; Dispossess): "an artifact card name"
+          if (faces.length > 0 && !faces.some((f) => f.types.includes('Artifact'))) fail(`Name an artifact card: "${ans.name}" is not an artifact card.`, ['CR 201.3']);
+        } else if (d.cardKind === 'nonartifactNonland') {
+          // edh-e-8 (CR 201.3; Lost Legacy): "a nonartifact, nonland card name"
+          if (faces.length > 0 && !faces.some((f) => !f.types.includes('Artifact') && !f.types.includes('Land'))) fail(`Name a nonartifact, nonland card: "${ans.name}" is an artifact or a land card.`, ['CR 201.3']);
         } else {
           const fits = faces.some((f) => f.types.includes('Land') === (d.cardKind === 'land'));
           if (faces.length > 0 && !fits) fail(`Name ${d.cardKind === 'land' ? 'a land card' : 'a nonland card'}: "${ans.name}" is ${d.cardKind === 'land' ? 'not a land card' : 'a land card'}.`, ['CR 201.3']);

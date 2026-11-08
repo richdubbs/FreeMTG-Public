@@ -472,7 +472,7 @@
   "id": "sta.r5static.blockTax.blocking.life",
   "kind": "static",
   "since": 8,
-  "status": "experimental",
+  "status": "stable",
   "cr": [
    "CR 509.1c",
    "CR 509.1d",

@@ -71,7 +71,7 @@ export default defineConfig(({ command }) => ({
     // changeOrigin: the server accepts loopback Host headers only (DNS rebinding protection). ws: the online socket (/api/online/socket, milestone 9)
     // goes through the same proxy; the server accepts this page's origin only when started with --allow-origin http://127.0.0.1:5173 (scripts/dev.mjs).
     // Godot plan phase 1: the table channel (/table, Settings "Run the game in the server") too, with the same origin rule.
-    proxy: { '/api': { target: SERVER, changeOrigin: true, ws: true }, '^/table($|\?)': { target: SERVER, changeOrigin: true, ws: true } },
+    proxy: { '/api': { target: SERVER, changeOrigin: true, ws: true }, '^/table($|\\?)': { target: SERVER, changeOrigin: true, ws: true } },
   },
   // The rules engine is one chunk of about 1.2 MB, loaded with the first screen that needs it (app/App.tsx loads screens lazily); Home does not wait for it.
   build: { outDir: 'dist', emptyOutDir: true, sourcemap: true, chunkSizeWarningLimit: 1400 },

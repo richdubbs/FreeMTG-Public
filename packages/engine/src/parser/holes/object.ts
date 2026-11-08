@@ -8,6 +8,7 @@
  * CR 608.2c-h ("it" and "that creature" refer to earlier objects, resolved by the anaphora pass), CR 303.4 / 301.5 ("enchanted", "equipped").
  */
 import type { ObjectFilter, PlayerPred, PlayerRef, Quantity } from '../../types/ability';
+import { possessivePlayerAt } from './player';
 import type { Alt, HoleCtx, HoleFn, TargetPhrase } from './core';
 import { P, anyPhraseAt, anaphorObj, anaphorQty, cmpAt, dedupe, linkedObj, mergeFilter, numberAt, phraseAt, spanOf, targetRef } from './core';
 import type { NpAlt } from './filter';
@@ -57,6 +58,7 @@ const W_OF_THAT_PLAYERS_CHOICE_ANY_OPPONENT = P("of that player 's choice that o
 const W_OF_THEIR_CHOICE = P('of their choice'); // edh-c-103
 const W_OF_AN_OPPONENTS_CHOICE = P("of an opponent 's choice"); // edh-d-74
 const W_OF_AN_OPPONENTS_CHOICE_THEY_CONTROL = P("of an opponent 's choice they control"); // edh-next-146
+const W_OF_AN_OPPONENTS_CHOICE_FROM_YOUR_GRAVEYARD = P("of an opponent 's choice from your graveyard"); // edh-e-38
 const W_WITH_THE_GREATEST = (stat: string): string[] => P(`with the greatest ${stat}`); // edh-c-14
 const GROUP_STATS: readonly [string[], 'power' | 'toughness' | 'manaValue'][] = [[P('mana value'), 'manaValue'], [P('power'), 'power'], [P('toughness'), 'toughness']];
 const W_THE = P('the');
@@ -405,6 +407,14 @@ function targetObjects(ctx: HoleCtx, pos: number, onlySingular: boolean): Alt[] 
       // several targets of permanents; the rule of the set is checked as the targets are announced and again as the spell resolves)
       const et = n.number === 'plural' && !d.eachOf && !differentNames && !differentMv && s.kind === 'object' && n.head !== 'card' && n.filter.zone === undefined ? phraseAt(ctx, n.end, W_WITH_EQUAL_TOUGHNESS) : -1;
       if (et >= 0) out.push({ end: et, value: targetRef({ ...phrase, text: spanOf(ctx, pos, et), equalToughness: true }), ...(n.weak ? { weak: n.weak } : {}), ...(flags.length > 0 ? { flags } : {}) });
+      // edh-e-38 (CR 115.1, 601.2c, 601.7a, 404.1; Mausoleum Turnkey): "target creature card of an opponent's choice from your graveyard": one target card of your graveyard that an opponent of the controller
+      // picks (TargetSpec.chooser, as "any target of an opponent's choice", edh-d-74); only one target card whose zone is not stated before the words and only your graveyard after them
+      const og = n.number === 'singular' && d.number === 'singular' && !d.eachOf && !d.another && !differentNames && !differentMv && d.min === 1 && d.max === 1 && s.kind === 'object' && n.head === 'card'
+        && n.filter.zone === undefined && n.filter.owner === undefined && n.filter.controller === undefined ? phraseAt(ctx, n.end, W_OF_AN_OPPONENTS_CHOICE_FROM_YOUR_GRAVEYARD) : -1;
+      if (og >= 0) {
+        const fl = flags.filter((x) => x !== 'zone-unstated');
+        out.push({ end: og, value: targetRef({ ...phrase, filter: { ...(phrase.filter ?? {}), zone: 'graveyard', owner: 'you' }, text: spanOf(ctx, pos, og), chooser: { ref: 'anOpponent' } }), ...(n.weak ? { weak: n.weak } : {}), ...(fl.length > 0 ? { flags: fl } : {}) });
+      }
       // std-cardcopy-7 (CR 115.1, 601.2c, 205.2a): "up to one target nonland card of each card type from your graveyard" (Uldaros Theorix): up to one target for EACH card
       // type, the set chosen one of each type; only "up to one" of cards whose zone is not stated before the words, and only your graveyard after them
       const oe = n.number === 'singular' && n.head === 'card' && !d.eachOf && d.min === 0 && d.max === 1 && n.filter.zone === undefined && n.filter.owner === undefined ? phraseAt(ctx, n.end, W_OF_EACH_CARD_TYPE) : -1;
@@ -606,6 +616,12 @@ function selfAndPronouns(ctx: HoleCtx, pos: number): Alt[] {
       const e = phraseAt(ctx, h.end + 1, W_THIS_WAY_OBJ);
       if (e >= 0) out.push({ end: e, value: anaphorObj({ sort: 'object', number: 'singular', head: h.head, participle: pw, text: spanOf(ctx, pos, e).toLowerCase() }) });
     }
+    // edh-e-38 (CR 608.2c, 608.2h, 400.7; Flesh // Blood): "the card you exiled", the one card an earlier instruction of the ability exiled, said as a relative clause: the same object as "the exiled card" (the participle
+    // "exiled" names the mention the exile marked, lower/mentions.ts; the unique-candidate rule decides, design 6.4). Only the head "card", only "you exiled" (the performer is the ability's controller)
+    for (const h of headNounAt(ctx, the)) {
+      if (h.plural || h.head !== 'card' || ctx.toks[h.end]?.norm !== 'you' || ctx.toks[h.end + 1]?.norm !== 'exiled') continue;
+      out.push({ end: h.end + 2, value: anaphorObj({ sort: 'object', number: 'singular', head: 'card', participle: 'exiled', text: spanOf(ctx, pos, h.end + 2).toLowerCase() }) });
+    }
     // edh-d-92 (CR 701.47c, 608.2c; Widespread Brutality): "the Army you amassed", the Army an earlier amass of the ability chose, as "the amassed Army" (the participle
     // "amassed" of parser/lower/mentions.ts names only that choice)
     const yam = phraseAt(ctx, the, W_ARMY_YOU_AMASSED);
@@ -648,6 +664,14 @@ function selfAndPronouns(ctx: HoleCtx, pos: number): Alt[] {
     // "the creature": Oracle's second mention of an object named just before ("Sacrifice the creature at the beginning of the next end step", CR 608.2c;
     // WP23). An anaphor like "that creature": the unique-candidate rule decides (design 6.4).
     for (const h of headNounAt(ctx, the)) if (!h.plural) out.push({ end: h.end, value: anaphorObj({ sort: 'object', number: 'singular', head: h.head, text: spanOf(ctx, pos, h.end).toLowerCase() }) });
+    // edh-d-111 (CR 608.2c, 701.20a; Explosive Revelation): "the nonland card" after "reveal cards from the top of your library until you reveal a nonland card": "the card" with the
+    // card description of the step said again (one card type or one "non-" type only, as trek-12's "that nonland card" above). The renderer names the one card your own reveal until
+    // stopped at so only for that step's own description (render/steps-cards.ts#revealUntil), so no other antecedent passes the gate
+    for (const n of npAlts(ctx, the)) {
+      const keys = Object.keys(n.filter).filter((k) => (n.filter as Record<string, unknown>)[k] !== undefined && k !== 'isCard');
+      const oneType = keys.length === 1 && ((keys[0] === 'notTypes' && n.filter.notTypes!.length === 1) || (keys[0] === 'types' && n.filter.types!.length === 1));
+      if (n.number === 'singular' && n.head === 'card' && oneType) out.push({ end: n.end, value: anaphorObj({ sort: 'object', number: 'singular', head: 'card', text: spanOf(ctx, pos, n.end).toLowerCase() }) });
+    }
     // edh-c-106 (CR 608.2c, 509.1, 120.3; Venomous Fangs, Venom): "the other creature" of a trigger on a two-party event ("Whenever enchanted creature deals damage to a
     // creature", "blocks or becomes blocked by a creature"): the party that is not the event's subject (the event's `object` role), never the subject itself or an earlier step's object
     if (ctx.toks[the]?.norm === 'other') for (const h of headNounAt(ctx, the + 1)) if (!h.plural) out.push({ end: h.end, value: anaphorObj({ sort: 'object', number: 'singular', head: h.head, otherParty: true, text: spanOf(ctx, pos, h.end).toLowerCase() }) });
@@ -670,6 +694,8 @@ function selfAndPronouns(ctx: HoleCtx, pos: number): Alt[] {
   if (att !== undefined && ATTACHED.includes(att)) for (const h of headNounAt(ctx, pos + 1)) if (!h.plural) out.push({ end: h.end, value: { ref: 'attachedTo' } });
   // edh-c-70 (CR 303.4, 303.4a): "enchanted artifact creature", what an "Enchant artifact creature" Aura is attached to (Domineer); the attached object, as with "enchanted creature"
   if (att === 'enchanted') { const e = phraseAt(ctx, pos + 1, W_ARTIFACT_CREATURE); if (e >= 0) out.push({ end: e, value: { ref: 'attachedTo' } }); }
+  // edh-e-23 (CR 303.4, 303.4a, 301.5; Carry Away): "enchanted Equipment", what an "Enchant Equipment" Aura is attached to; the attached object, as with "enchanted creature"
+  if (att === 'enchanted') { const e = phraseAt(ctx, pos + 1, P('equipment')); if (e >= 0) out.push({ end: e, value: { ref: 'attachedTo' } }); }
   return out;
 }
 
@@ -709,6 +735,11 @@ function topCards(ctx: HoleCtx, pos: number): Alt[] {
       for (const pl of ctx.call('Player', of)) {
         const r = pl.value as PlayerRef;
         if (r.ref !== 'you' && (ctx.toks[pl.end]?.norm === "'s") && phraseAt(ctx, pl.end + 1, W_LIBRARY) >= 0) out.push({ end: pl.end + 2, value: { ref: 'topCards', player: r, count } });
+        // edh-e-36 (CR 401.2, 608.2c; Robber of the Rich: "exile the top card of their library"): "their library" with the player an earlier clause named (the anaphor "their", resolved by the
+        // mention of the nearest player, lower/scope.ts: ambiguous or absent, the sentence stays manual)
+      }
+      if (!plural && count === 1 && ctx.toks[pos - 1]?.norm === 'exile' /* the imperative only: "that player exiles the top card of their library" has its own templates */ && ctx.toks[of]?.norm === 'their' && phraseAt(ctx, of + 1, W_LIBRARY) >= 0) {
+        for (const pp of possessivePlayerAt(ctx, of)) if (pp.end === of + 1) out.push({ end: of + 2, value: { ref: 'topCards', player: pp.ref, count } });
       }
     }
   };
@@ -719,6 +750,12 @@ function topCards(ctx: HoleCtx, pos: number): Alt[] {
   if (cardType !== undefined) {
     const e = phraseAt(ctx, top + 1, P('card of your graveyard'));
     if (e >= 0) out.push({ end: e, value: { ref: 'topCards', player: { ref: 'you' }, count: 1, zone: 'graveyard', matching: { types: [cardType] } } });
+    // edh-d-107 (CR 404.1, 401.2; Bone Dancer): "the top creature card of defending player's graveyard": the same card of another player's graveyard (a player phrase with 's)
+    const of = phraseAt(ctx, top + 1, P('card of'));
+    if (of >= 0) for (const pl of ctx.call('Player', of)) {
+      const r = pl.value as PlayerRef;
+      if (r.ref !== 'you' && ctx.toks[pl.end]?.norm === "'s" && phraseAt(ctx, pl.end + 1, W_GRAVEYARD_WORD) >= 0) out.push({ end: pl.end + 2, value: { ref: 'topCards', player: r, count: 1, zone: 'graveyard', matching: { types: [cardType] } } });
+    }
   }
   for (const q of ctx.call('Qty', top)) if (q.end === top + 1 && ctx.toks[top]?.norm !== 'a' && ctx.toks[top]?.norm !== 'an') tail(q.end, q.value as Quantity, true);
   return out;
@@ -853,6 +890,8 @@ function pluralPronouns(ctx: HoleCtx, pos: number): Alt[] {
         const group = anaphorObj({ sort: 'set', number: 'plural', head: h.head, text: spanOf(ctx, pos, h.end).toLowerCase().replace(/^each of /, '') });
         out.push({ end: n.end, value: eachRef({ ...n.filter, is: group as never }), weak: 1 });
       }
+      // edh-e-61 (CR 608.2c, 115.1; Choking Vines: "~ deals 1 damage to each of those creatures."): with no description after the noun, the group those creatures name, as "each of them" does
+      out.push({ end: h.end, value: anaphorObj({ sort: 'set', number: 'plural', head: h.head, text: spanOf(ctx, pos, h.end).toLowerCase().replace(/^each of /, '') }), weak: 1 });
     }
   }
   const eachOfThem = phraseAt(ctx, pos, W_EACH_OF_THEM);
@@ -1561,6 +1600,14 @@ export const rest: HoleFn = (ctx, pos) => {
     const e = phraseAt(ctx, pos, ws);
     if (e >= 0) out.push({ end: e, value: anaphorObj({ sort: 'set', number: 'plural', head: 'revealed-all', text: ws.join(' ') }) });
   }
+  // edh-e-10 (CR 701.20a, 401.4, 608.2c; Calibrated Blast, Erratic Explosion): your own "Put the revealed cards on the bottom of your library ..." is the same group (every card the reveal revealed);
+  // only before "on the bottom" (the older readings of "put all cards revealed this way ..." stay as they are)
+  if (ctx.toks[pos - 1]?.norm === 'put') {
+    for (const ws of W_ALL_REVEALED) {
+      const e = phraseAt(ctx, pos, ws);
+      if (e >= 0 && ctx.toks[e]?.norm === 'on' && ctx.toks[e + 1]?.norm === 'the' && ctx.toks[e + 2]?.norm === 'bottom') out.push({ end: e, value: anaphorObj({ sort: 'set', number: 'plural', head: 'revealed-all', text: ws.join(' ') }) });
+    }
+  }
   const notPut = phraseAt(ctx, pos, W_REST_NOT_PUT); // std-rh
   if (notPut >= 0) out.push({ end: notPut, value: anaphorObj({ sort: 'set', number: 'plural', head: 'rest-not-put', text: "all cards revealed this way that weren't put onto the battlefield" }) });
   return out;
@@ -1609,6 +1656,12 @@ export const seenInHand: HoleFn = (ctx, pos) => {
   const e = phraseAt(ctx, pos, W_THOSE_CARDS);
   return e >= 0 ? [{ end: e, value: anaphorObj({ sort: 'set', number: 'plural', head: 'card', participle: 'seen-in-hand', text: 'those cards' }) }] : [];
 };
+
+/**
+ * PileLooked (edhe35; CR 700.3, 701.20e, 608.2c; Abstract Performance): "them" / "those cards" after "Look at the cards in the other pile.": the cards of that pile, in exile. Only after such a look
+ * (lower/mentions.ts gives it the participle "seen-pile"), so the pool is never a group of library cards (`Seen`).
+ */
+export const pileLooked: HoleFn = (ctx, pos) => (ctx.discourse?.pileLook === true ? participleGroup(ctx, pos, 'seen-pile') : []);
 
 /** The plural anaphor of a group an earlier step produced, named only by its participle (`milled`, `found`): "them" or "those cards". */
 function participleGroup(ctx: HoleCtx, pos: number, participle: string): Alt[] {

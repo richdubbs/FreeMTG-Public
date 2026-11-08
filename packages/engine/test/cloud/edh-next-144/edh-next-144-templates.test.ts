@@ -12,6 +12,7 @@ import { TEMPLATE_FILES, TEMPLATE_SET } from '../../../src/parser/template-set';
 import { ENGINE_CAPABILITIES } from '../../../src/model/capabilities';
 import edhNext144 from '../../../src/parser/templates/zz-cloud/edh-next-144.json';
 import review from '../../m5/golden/cards/edh-next-144-review.json';
+import edhE11Review from '../../m5/golden/cards/edh-e-11-review.json';
 import { automated, bare, card, fullyAutomated, jsonKey } from '../../m5/templates/support';
 import { lintAbility } from '../../../src/model/lint';
 
@@ -28,6 +29,7 @@ const NARROW: Readonly<Record<string, readonly string[]>> = {
   'rep.edhn144.enters.note.lifeTotal': ["Sigarda's Splendor"],
   'eff.edhn144.note.lifeTotal': ["Sigarda's Splendor"],
   'sta.edhn144.rule.revealFirstDraw.yourTurns': ['Keranos, God of Storms'],
+  'sta.edhn144.rule.revealFirstDraw.eachTurn': ['Rowen', 'Primitive Etchings'], // made stable by edh-e-11 (golden entries in edh-e-11-review.json)
   'trg.edhn144.reveal.thisWay': ['Keranos, God of Storms'],
   'sta.edhn144.addCost.mayRevealOrChooseDragon': ["Dragon's Fire"],
   'rid.edhn144.instead.damage.powerOfBeheld': ["Dragon's Fire"],
@@ -79,7 +81,7 @@ describe('edh-next-144 template file (design 6.3, 6.9; CONTRIBUTING "Adding a te
     }
   });
   it('design 6.9: a stable template has its evidence: three or more hand-verified golden cards, or (a recorded deviation) the cards that print the wording', () => {
-    const golden = review as { card: string; verified: string; expect?: string }[];
+    const golden = [...(review as { card: string; verified: string; expect?: string }[]), ...(edhE11Review as { card: string; verified: string; expect?: string }[])];
     for (const t of MECH.filter((x) => x.status === 'stable')) {
       const cards = golden.filter((g) => g.verified.includes(`(${t.id}`) || g.verified.includes(` ${t.id}`) || g.verified.includes(`${t.id},`)).map((g) => g.card);
       if (NARROW[t.id] !== undefined) for (const n of NARROW[t.id]!) expect(cards, t.id).toContain(n);

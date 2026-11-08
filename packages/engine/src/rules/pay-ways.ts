@@ -12,7 +12,7 @@ import type { ManaSymbol, ManaType } from '../types/mana';
 import type { ManaRestriction } from '../types/ability';
 import type { ObjectId } from '../types/ids';
 import { isPhyrexian, solve } from './solver';
-import { buildProviders, type ManaSource } from './sources';
+import { buildProviders, type ManaSource, type SpendAllows } from './sources';
 
 /** At most this many count vectors are tried; beyond it the cost is treated as having several ways (the player is asked). */
 const MAX_VECTORS = 4096;
@@ -23,7 +23,7 @@ export function hasOnlyOneWayToPay(
   symbols: readonly ManaSymbol[],
   sources: readonly ManaSource[],
   pool: readonly PoolUnit[],
-  allows?: (r: ManaRestriction, manaSource: ObjectId | undefined) => boolean,
+  allows?: SpendAllows,
 ): boolean {
   if (symbols.some(isPhyrexian)) return false;
   const groups = new Map<string, ManaSource[]>();

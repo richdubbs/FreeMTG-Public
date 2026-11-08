@@ -52,7 +52,7 @@
       "CR 608.2d",
       "CR 406.1"
     ],
-    "pattern": "search target player 's graveyard , hand [,] and library for any number of cards with that name and exile them",
+    "pattern": "search target player 's graveyard , hand [,] and library for any number of cards with ( that | the chosen ) name and exile them",
     "build": [
       {
         "op": "search",
@@ -127,7 +127,7 @@
       "CR 608.2d",
       "CR 406.1"
     ],
-    "pattern": "search target opponent 's graveyard , hand [,] and library for any number of cards with that name and exile them",
+    "pattern": "search target opponent 's graveyard , hand [,] and library for any number of cards with ( that | the chosen ) name and exile them",
     "build": [
       {
         "op": "search",

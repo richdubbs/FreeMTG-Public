@@ -186,6 +186,8 @@ export const RULE_HOOK_ACTIONS: Readonly<Record<string, true>> = {
   'feature:costMod.spellTargets.each': true, // p2-cost-statics-2: "spells your opponents cast that target a creature you control" (statics/costmods.ts#spellTargetsSource, CR 115.9b, 601.2f)
   'feature:costMod.spellTargets.orYou': true, // edh-next-58: "spells your opponents cast that target you or a permanent you control" (statics/costmods.ts#appliesToSpell, CR 115.1, 601.2c, 601.2f)
   'feature:costMod.life': true, // r5-cost: "cost an additional 3 life to cast" (actions/cast.ts#modifiedPlan adds the life to the spell's total cost, CR 601.2f, 119.4)
+  'feature:costMod.spellTargets.enchantedPlayer': true, // edh-e-46: "spells you cast that target enchanted player" (statics/costmods.ts#spellTargetsSource, CR 303.4, 115.1, 601.2f)
+  'feature:costMod.life.times': true, // edh-e-46: "costs 3 life more to cast for each target" (actions/cast.ts#modifiedPlan, CR 601.2f, 119.4)
   'feature:costMod.coloredOnly': true, // edh-cast-4: "This effect reduces only the amount of colored mana you pay" (statics/costmods.ts#modifyMana, CR 601.2f, 118.7)
   'feature:costMod.times': true, // FAST4 T21: `mana` applied `times` times ("{2}{R} more for each target beyond the first", statics/costmods.ts#modifyMana)
   'feature:spellTargetCount.filter': true, // FAST4 T21: "if it targets a tapped creature" (statics/costmods.ts#filteredTargetCount, CR 601.2c, 601.2f)
@@ -344,6 +346,7 @@ export const RULE_HOOK_ACTIONS: Readonly<Record<string, true>> = {
   'feature:costMod.floor.one': true, // r3-cost: "can't reduce the mana in that cost to less than one mana", statics/costmods.ts#modifyMana (CR 601.2f, 118.7)
   'feature:costMod.abilities.loyalty': true, // edh-next-142: "loyalty abilities you activate cost an additional [+1]" (actions/activate.ts#costChangeOf; CR 606.4, 601.2f)
   'rulemod:combatDamageUsesToughness': true, // FAST5 T60: core/combat-damage.ts via assignsCombatDamageAsToughness (CR 510.1a)
+  'rulemod:spendManaOnlyFrom': true, // edh-e-51: rules/sources.ts#spendAllows `sourceOk` (the planner of the payment of a spell, CR 601.2h, 106.6)
   'rulemod:lethalDamageUsesPower': true, // edh-next-145: core/sba-objects.ts, core/combat-damage.ts and rules/damage.ts via lethalDamageUsesPower (CR 120.6, 704.5g)
   // r3-static: core/sba-objects.ts (the legend rule, CR 704.5j) via legendRuleExempt; core/sba.ts (CR 704.5a) via losesForZeroLife
   'rulemod:legendRuleExempt': true,
@@ -421,6 +424,7 @@ export const RULE_HOOK_ACTIONS: Readonly<Record<string, true>> = {
   'rulemod:rollAdjust': true, // edh-d-49: effects/roll-options.ts via rollOptions (CR 706.2), the source's controller
   'rulemod:rollReroll': true, // edh-d-49: effects/roll-options.ts via rollOptions (CR 706.2, 706.6), the source's controller
   'feature:rulemod.rollOption.oncePerTurn': true, // edh-d-49: PlayerState.turnStats.rollOptionsUsed
+  'rule:phaseOut': true, // edh-e-25: rules/phasing.ts#phaseOutPermanent via phaseOutDenied (CR 702.26b, 101.2)
   'rule:phaseIn': true, // trek-4: rules/phasing.ts#phaseInForUntapStep via phaseInDenied, the only phase-in the engine performs (CR 502.1, 702.26c, 101.2; unverified)
   // edh-players-5: "Players gain hexproof" (CR 702.11c): the `other` of a `cant` beTargeted restriction is read relative to the player asked about (verdict)
   'feature:restrict.relativeToSubject.beTargeted': true,
@@ -445,6 +449,7 @@ export const RULE_HOOK_ACTIONS: Readonly<Record<string, true>> = {
   'feature:rulemod.targetableThroughHexproof.player': true, // edh-players-22: only the spells and abilities of that player
   'rule:crew': true, // edh-c-72: rules/cant.ts#costUseDenial, the tapPower part of a crew cost (rules/cost-pick.ts#costUse), the one way a creature crews (CR 702.122a, 101.2)
   'rulemod:tappedLandManaOnlyColorless': true, // edh-c-72: rules/mana.ts#addMana and rules/sources.ts via tappedManaOnlyColorless (CR 106.12, 614.1a)
+  'rulemod:tappedLandManaByType': true, // edh-e-48: statics/hooks.ts#tappedManaOnlyColorless (CR 106.12, 614.1a; Naked Singularity)
   'rulemod:tappedLandManaOnlyType': true, // edh-next-45: statics/hooks.ts#tappedManaOnlyColorless (CR 106.12, 614.1a)
   'rulemod:controlSearching': true, // edh-next-119: effects/handlers/search-control.ts via searchControllerOf (CR 723.2, 723.5, 701.23a)
   'rulemod:searchFoundExiled': true, // edh-next-119: effects/handlers/search-control.ts via searchExilersOf (CR 614.1a, 609.4b, 701.23a)
@@ -478,6 +483,7 @@ const ACTION_RULES: Partial<Record<RuleAction, string[]>> = {
   becomeMonarch: ['CR 725.1', 'CR 101.2'], // edh-next-82
   beCopied: ['CR 707.10', 'CR 101.2'], // std-copy-1
   phaseIn: ['CR 702.26c', 'CR 502.1', 'CR 101.2'], // trek-4 (unverified)
+  phaseOut: ['CR 702.26b', 'CR 101.2'], // edh-e-25
   beBeamedUp: ['CR 101.2', 'CR 614.17b'], // trek-1 (beam me up: Star Trek, CR 702 rule number unverified)
   haveStunCountersRemoved: ['CR 122.1d', 'CR 614.17'], // edh-players-22
   crew: ['CR 702.122a', 'CR 101.2', 'CR 614.17b'], // edh-c-72
@@ -1284,6 +1290,19 @@ export function phaseInDenied(s: GameState, id: ObjectId): Denial | null {
 }
 
 /**
+ * edh-e-25 (CR 702.26b, 101.2; Spatial Binding, Ertai's Familiar): is this phased-in permanent kept from phasing out ("target permanent can't phase out")? It stops an
+ * effect's phase-out and the permanent's own phasing alike (rules/phasing.ts#phaseOutPermanent). An attachment that would phase out with its host (CR 702.26g) is asked too
+ * (Spatial Binding ruling 2012-07-01: it stays, and state-based actions deal with it).
+ */
+export function phaseOutDenied(s: GameState, id: ObjectId): Denial | null {
+  const o = s.objects[id];
+  if (!o || o.zone !== 'battlefield' || o.phasedOut || !actionMayBeRestricted(s, 'phaseOut')) return null;
+  const ctx = ruleContext(s);
+  if (!ctx) return null;
+  return denialIn(ctx, { action: 'phaseOut', subject: id });
+}
+
+/**
  * FAST4 T24, CR 509.1a: how many attacking creatures this creature may block. One, plus each "can block an additional creature each combat" (`extraBlockers`
  * with a number) that applies to it; `Infinity` for "can block any number of creatures" (`extraBlockers` with value 'none' or no value). A rule modification
  * applies to the creatures its `of` matches (relative to its source), or to its source when it has none. A number the statics can't evaluate adds nothing
@@ -1651,10 +1670,15 @@ export function tappedManaCollapseAt(s: GameState, player: PlayerId, source: Obj
 export function tappedManaOnlyColorless(s: GameState, player: PlayerId, source: ObjectId): ManaType | null {
   const ctx = ruleContext(s);
   if (!ctx) return null;
-  if (ruleMods(ctx, ['tappedLandManaOnlyColorless'], player).some(({ src }) => objectMatches(cxOf(ctx, src), source, { types: ['Land'] }) === true)) return 'C';
+  // edh-e-48 (CR 106.12, 614.1a; Pale Moon): with `of` ({supertypes/notSupertypes}) only the lands it describes ("a nonbasic land")
+  if (ruleMods(ctx, ['tappedLandManaOnlyColorless'], player).some(({ src, m }) => objectMatches(cxOf(ctx, src), source, { ...(m.of ?? {}), types: ['Land'] }) === true)) return 'C';
   // edh-next-45 (CR 106.12, 614.1a, 106.1b; Infernal Darkness): "it produces {B} instead of any other type": the type of the first such effect that applies (CR 616.1: the land's controller
   // would choose among several; the first by timestamp is taken)
   for (const { src, m } of ruleMods(ctx, ['tappedLandManaOnlyType'], player)) if (m.manaType !== undefined && objectMatches(cxOf(ctx, src), source, { types: ['Land'] }) === true) return m.manaType;
+  // edh-e-48 (CR 106.12, 614.1a, 106.1b; Naked Singularity, Reality Twist): "Plains produce {R}, ... instead of any other type": the type of the first land subtype of the effect the land has
+  for (const { src, m } of ruleMods(ctx, ['tappedLandManaByType'], player)) {
+    for (const [subtype, type] of Object.entries(m.manaByLandType ?? {})) if (type !== undefined && objectMatches(cxOf(ctx, src), source, { types: ['Land'], subtypes: [subtype] }) === true) return type;
+  }
   return null;
 }
 

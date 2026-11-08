@@ -13,7 +13,7 @@ import type { KeywordActionName } from '../../types/ability';
 import type { ActionMacro } from '../types';
 import { ADAPT, BLIGHT, DOUBLE_COUNTERS, SUPPORT } from './counters';
 import { CONNIVE, EXPLORE, RECRUIT } from './library';
-import { AIRBEND, ANOTHER_OF_EACH_KIND, BEHOLD, BOLSTER, CASCADE, DISCOVER, DOUBLE_EACH_KIND, GIVE_GIFT, GOAD, LEARN, MONSTROSITY, RENOWN, OPEN_ATTRACTION, PROLIFERATE, TIME_TRAVEL, VENTURE, VOTE } from './native';
+import { ADD_OR_REMOVE_EACH_KIND, AIRBEND, ANOTHER_OF_EACH_KIND, BEHOLD, BOLSTER, CASCADE, DISCOVER, DOUBLE_EACH_KIND, GIVE_GIFT, GOAD, LEARN, MONSTROSITY, RENOWN, OPEN_ATTRACTION, PROLIFERATE, TIME_TRAVEL, VENTURE, VOTE } from './native';
 import { DETAIN } from './restrictions';
 import { AMASS, INCUBATE, INVESTIGATE, POPULATE } from './tokens';
 import { FACE_DOWN_MACROS } from './face-down';
@@ -46,6 +46,7 @@ const MACROS: readonly ActionMacro[] = [
   EXERT, FORAGE, // FAST5X E28: exert (CR 701.43a, macro over the MX5 untap restriction), forage (CR 701.61a, effects/handlers/forage.ts)
   GOAD, // M12-3: goad (CR 701.15), effects/handlers/goad.ts; the requirements in statics/requirements.ts#goadHits
   DOUBLE_EACH_KIND, // cloud std-spm: "double the number of each kind of counter on X" (CR 701.10e), effects/handlers/actions-native-counters.ts
+  ADD_OR_REMOVE_EACH_KIND, // edh-e-67: add or remove one counter of each kind on the subject (CR 122.1)
   ANOTHER_OF_EACH_KIND, // r5-refs: "for each kind of counter on X, give that permanent or player another counter of that kind" (CR 122.6)
   ASSIMILATE, // trek-1: assimilate (Star Trek reminder text; CR 701, number unverified), keywords/actions/assimilate.ts
   TIME_TRAVEL, // edh-next-3: time travel (CR 701.56a), effects/handlers/actions-native-counters.ts

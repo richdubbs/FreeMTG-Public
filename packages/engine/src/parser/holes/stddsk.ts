@@ -43,6 +43,9 @@ export const cardsOfTemplateZone: HoleFn = (ctx, pos) =>
   ctx.call('Filter', pos)
     .filter((a) => {
       const f = a.value as { zone?: unknown; controller?: unknown; owner?: unknown; chosen?: unknown } | null;
-      return f !== null && typeof f === 'object' && f.chosen !== undefined && f.zone === undefined && f.controller === undefined && f.owner === undefined;
+      // edh-e-9: also a plain description of colorless or multicolored cards ("colorless nonland cards", "multicolored cards"; Shatter Assumptions), not only an earlier choice
+      // (never "nonland cards" or a mana value: those are the older edh-c-32 and edh-c-74 templates')
+      const plain = f !== null && typeof f === 'object' && ((f as { colorless?: boolean }).colorless === true || (f as { multicolored?: boolean }).multicolored === true);
+      return f !== null && typeof f === 'object' && (f.chosen !== undefined || plain) && f.zone === undefined && f.controller === undefined && f.owner === undefined;
     })
     .map((a) => ({ ...a, ...(a.flags ? { flags: a.flags.filter((x) => x !== 'zone-unstated') } : {}) }));

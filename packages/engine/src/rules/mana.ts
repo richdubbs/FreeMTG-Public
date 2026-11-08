@@ -348,6 +348,9 @@ export function manaAbilityDenial(s: GameState, player: PlayerId, source: GameOb
     const r = restrictionReader(s, player, source, info);
     if (r) return r;
   }
+  // edh-d-111 review (CR 107.3a, 602.2b; Rasputin, the Oneiromancer): "Remove one or more <kind> counters from ~" needs at least one such counter on the source: none, not offered
+  const oneOrMore = counterXPart(info.def);
+  if (oneOrMore?.kind === 'removeCounters' && oneOrMore.oneOrMore === true && (source.counters[oneOrMore.counter] ?? 0) < 1) return deny(`There is no ${oneOrMore.counter} counter on it to remove.`, 'CR 107.3a', 'CR 602.2b');
   const cost = info.def.cost;
   const shape = manaCostShapeNow(s, player, source, info); // std-rx28: a cost increase of another object makes a {T} cost one to pay
   if (shape === 'unsupported') return deny('This mana ability has a cost the engine can not pay yet.', 'CR 605.3a');
@@ -636,8 +639,11 @@ function activateManaAbilityNow(g: Game, player: PlayerId, sourceId: string, key
         // edh-perms-23: or the untapped permanents the part could tap (installed by rules/pay.ts: its candidates for this part, the {T} of this ability already counted)
         const have = xPart.kind === 'tapUntapped' || xPart.kind === 'sacrifice' ? (costRules.maxX?.(g.s, player, source, mana) ?? 0) : source.counters[xPart.counter] ?? 0;
         const what = xPart.kind === 'tapUntapped' ? `untapped permanents do you tap for ${name}` : xPart.kind === 'sacrifice' ? `permanents do you sacrifice for ${name}` : `${xPart.counter} counters do you remove from ${name}`;
-        announcedX = have === 0 ? 0 : g.choose({ kind: 'chooseNumber', player, prompt: `How many ${what}? (X, up to ${have})`, min: 0, max: have, cancellable: true, rules: ['CR 107.1c', 'CR 601.2b', 'CR 602.2b'] }).n;
-        if (!Number.isInteger(announcedX) || announcedX < 0 || announcedX > have) throw new IllegalAction(`Choose a number from 0 to ${have}.`, ['CR 601.2b']);
+        // edh-d-111 (CR 107.1c, 107.3a, 602.2b; Rasputin, the Oneiromancer): "Remove one or more dream counters from ~" is at least one (`oneOrMore`): none to remove, no activation
+        const least = xPart.kind === 'removeCounters' && xPart.oneOrMore === true ? 1 : 0;
+        if (have < least) throw new IllegalAction(`${name} needs at least ${least} ${xPart.kind === 'removeCounters' ? xPart.counter : ''} counter to remove.`, ['CR 107.3a', 'CR 602.2b']);
+        announcedX = have === least ? least : g.choose({ kind: 'chooseNumber', player, prompt: least === 0 ? `How many ${what}? (X, up to ${have})` : `How many ${what}? (X, ${least} up to ${have})`, min: least, max: have, cancellable: true, rules: ['CR 107.1c', 'CR 601.2b', 'CR 602.2b'] }).n;
+        if (!Number.isInteger(announcedX) || announcedX < least || announcedX > have) throw new IllegalAction(`Choose a number from ${least} to ${have}.`, ['CR 601.2b']);
       }
       costPaid = costRules.pay(g, player, source, mana, opts.payWith, announcedX) ?? undefined;
     } finally {

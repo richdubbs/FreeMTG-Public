@@ -20,10 +20,14 @@ function mayAssignUnblockedThisTurn(list: EffectStep[], i: number, st: RenderSta
   const e = s.do[0]!;
   if (e.op !== 'effect' || e.guard !== undefined || e.effects.length !== 1 || !same(e.duration, { d: 'endOfTurn' }) || Object.keys(e).sort().join(',') !== 'duration,effects,op') return null;
   const p = e.effects[0]!;
-  if (p.s !== 'permit' || p.action !== 'assignAsUnblocked' || p.mandatory !== true || !same(p.who, { ref: 'you' }) || p.of === undefined || p.of.controller !== 'you' || p.of.attachedToSource === true) return null;
-  const group = K.np(p.of, st, { det: 'none', plural: true });
+  if (p.s !== 'permit' || p.action !== 'assignAsUnblocked' || p.mandatory !== true || !same(p.who, { ref: 'you' }) || p.of === undefined) return null;
+  // edh-e-37 (CR 510.1b-c, 609.4, 611.2a; Gurzigost): "You may have ~ assign its combat damage this turn as though it weren't blocked.": the source itself, one object, the same permission
+  const own = same(p.of, { is: { ref: 'self' } });
+  if (!own && (p.of.controller !== 'you' || p.of.attachedToSource === true)) return null;
+  const group = own ? K.obj({ ref: 'self' }, st, 'subject').text : K.np(p.of, st, { det: 'none', plural: true });
+  const [dmg, weren] = own ? ['its', 'it weren\'t'] : ['their', 'they weren\'t'];
   return {
-    clauses: [plain(alt(`you may have ${group} assign their combat damage this turn as though they weren't blocked`, `you may have ${group} assign their combat damage as though they weren't blocked this turn`), { standalone: true })],
+    clauses: [plain(alt(`you may have ${group} assign ${dmg} combat damage this turn as though ${weren} blocked`, `you may have ${group} assign ${dmg} combat damage as though ${weren} blocked this turn`), { standalone: true })],
     consumed: 1,
   };
 }

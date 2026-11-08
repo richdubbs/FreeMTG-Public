@@ -258,18 +258,33 @@
     "pattern": "the token enters tapped and attacking",
     "build": {
       "$patchPrevious": {
-        "@require": {
-          "result": "token"
-        },
-        "tapped": {
-          "@new": true
-        },
-        "attacking": {
-          "@new": true
+        "@byOp": {
+          "copy": {
+            "@require": {
+              "result": "token"
+            },
+            "tapped": {
+              "@new": true
+            },
+            "attacking": {
+              "@new": true
+            }
+          },
+          "action": {
+            "@require": {
+              "action": "populate"
+            },
+            "tapped": {
+              "@new": true
+            },
+            "attacking": {
+              "@new": true
+            }
+          }
         }
       }
     },
-    "attachTo": "copy",
+    "attachTo": "copy|action",
     "consumes": [
       "tapped",
       "attacking"

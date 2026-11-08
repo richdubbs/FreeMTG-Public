@@ -10,11 +10,13 @@ import { getLibraryDeck, getLibraryDecks, postLibraryDeckDelete, postLibraryDeck
 import { getLibraryImages, postLibraryImageAdd, postLibraryImageClear, postLibraryImageDelete } from './library/images';
 import { getLibraryReplays, postLibraryReplayDelete, postLibraryReplayImport, postLibraryReplayRetention, postLibraryReplayUpdate } from './library/replays';
 import { getLibrarySettings, postLibrarySettings } from './library/settings';
+import { postDeckTokens } from './deckTokens';
+import { getPrintings } from './printings';
 import { resolveDeck } from './resolve';
 import { cardDetail, listSets, searchCards } from './search';
 import { getStatus } from './status';
 import { getUpdate, postUpdate } from './update';
-import { validateDeck } from './validate';
+import { commanderChoices, validateDeck } from './validate';
 
 type AnyHandler = Handler<EndpointKey>;
 
@@ -26,6 +28,9 @@ export const ROUTES: { readonly [K in EndpointKey]: Handler<K> } = {
   'POST /api/decks/resolve': resolveDeck,
   'POST /api/cards/defs': compileDefs,
   'POST /api/decks/validate': validateDeck,
+  'POST /api/decks/commander-choices': commanderChoices,
+  'GET /api/printings': getPrintings,
+  'POST /api/decks/tokens': postDeckTokens,
   'POST /api/images/match': matchImages,
   'GET /api/update': getUpdate,
   'POST /api/update': postUpdate,

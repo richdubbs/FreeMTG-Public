@@ -28,6 +28,8 @@ export type Legality = 'legal' | 'not_legal' | 'banned' | 'restricted';
 
 /** Card image URLs; present only when the client asked for them (the "Show card images from Scryfall" setting, ARCHITECTURE.md "Card images" B). */
 export interface ImageUris {
+  /** deck-art-1: Scryfall's small picture, for the printing picker's thumbnails (GET /api/printings only). */
+  small?: string;
   normal?: string;
   large?: string;
   /** Scryfall's artist of this picture: shown with it as "Illustrated by ...". */
@@ -219,6 +221,8 @@ export interface ResolvedCard {
   /** Scryfall Oracle id (docs/design/decks-and-formats.md: decks reference cards by Oracle name and oracle_id). */
   oracleId: string;
   automation: AutomationLevel;
+  /** deck-art-1: the printing the line named ("1 Lightning Bolt (M10) 146"); `number` is empty when the line gave the set only. */
+  printing?: PrintingRef;
 }
 
 export interface UnknownCard {
@@ -309,6 +313,19 @@ export interface DeckEntry {
   name: string;
   count: number;
   oracleId?: string;
+  /** deck-art-1 (additive): the printing the player chose for this card's picture; absent: the default printing. Rules never read it. */
+  printing?: PrintingRef;
+}
+
+/**
+ * deck-art-1 (additive): a token (or emblem) the deck's cards make, with the printing the player chose for its picture. Keyed in the deck by the token's
+ * image slot key (cards/pool.ts imageSlots: name, P/T, colors, type line, text), which is how a token made in a game is recognized.
+ */
+export interface TokenPrinting {
+  /** The token's Oracle id (tokens.jsonl). */
+  oracleId: string;
+  name: string;
+  printing: PrintingRef;
 }
 
 export interface DeckList {
@@ -316,12 +333,93 @@ export interface DeckList {
   sideboard: DeckEntry[];
   commander?: DeckEntry[];
   companion?: DeckEntry[];
+  /** deck-art-1 (additive): the printings chosen for the tokens the deck makes, by token image slot key. Not cards of the deck: never checked. */
+  tokens?: Record<string, TokenPrinting>;
 }
 
 export interface ValidateRequest {
   deck: DeckList;
   /** Scryfall format name, e.g. "standard", "modern", "commander"; "freeform" skips card-pool checks. */
   format: string;
+}
+
+/**
+ * deck-art-1: the printing a deck chose for a card or token (Arena/MTGO "(SET) number"), set code in lower case. Absent: the default printing (the one
+ * the local index has).
+ */
+export interface PrintingRef {
+  set: string;
+  /** Collector number; empty: the set's first printing of the card (a list line with a set code only). */
+  number: string;
+}
+
+/** GET /api/printings (deck-art-1): one printing of a card or token. */
+export interface Printing {
+  /** Scryfall's card id of the printing. */
+  id: string;
+  /** Set code, lower case ("m10"). */
+  set: string;
+  setName: string;
+  /** Collector number ("146", "204s"). */
+  number: string;
+  /** Release date, YYYY-MM-DD. */
+  released: string;
+  artist?: string;
+  /** Language, when not English. */
+  lang?: string;
+  /** Per printed side: Scryfall's own image_uris (empty objects unless asked with images=1). */
+  faces: ImageUris[];
+}
+
+export interface PrintingsResponse {
+  oracleId: string;
+  /** The card's (or token's) name in the local index. */
+  name: string;
+  /** The Scryfall id of the printing the local index has (the default printing), when known. */
+  defaultId: string | null;
+  /** Newest first. Empty when they could not be fetched (offline): `note` says so, and only the default printing is offered. */
+  printings: Printing[];
+  note?: string;
+}
+
+/** POST /api/decks/tokens (deck-art-1): one token (or emblem) the deck's cards make. */
+export interface DeckToken {
+  /** The token's image slot key (engine oracleTokenVariantKeys): the deck's `tokens` map is keyed by it. */
+  key: string;
+  name: string;
+  typeLine: string;
+  /** The token in the token index; absent when several tokens fit equally (`candidates`) and none was picked. */
+  oracleId?: string;
+  oracleText: string;
+  power?: string;
+  toughness?: string;
+  colors: Color[];
+  /** The deck's cards that make it (Oracle names). */
+  makers: string[];
+  /** How many tokens of the index fit equally when none could be picked. */
+  candidates?: number;
+}
+
+export interface DeckTokensResponse {
+  tokens: DeckToken[];
+}
+
+/**
+ * POST /api/decks/commander-choices (deck-art-1): which cards the deckbuilder may offer as a commander, judged by the deck check itself
+ * (@openmtg/cards `canAddCommander`: CR 903.3, 903.3a, Brawl 903.12c, partners and Backgrounds 702.124) next to the commanders already chosen.
+ */
+export interface CommanderChoicesRequest {
+  /** The deck's format id ("commander", "brawl"...). A format without commanders answers every card false. */
+  format: string;
+  /** The deck's Commander section as it is now (by name, Oracle id first). */
+  commander: DeckEntry[];
+  /** Oracle names to judge (at most 500). */
+  names: string[];
+}
+
+export interface CommanderChoicesResponse {
+  /** Name -> may it be added as a commander now. A name the index does not know is false. */
+  choices: Record<string, boolean>;
 }
 
 export interface DeckProblem {
@@ -496,6 +594,8 @@ export interface LibraryDeck {
   updatedAt: string;
   /** Oracle name of the card shown for the deck. */
   cover?: string;
+  /** deck-art-1 (additive): the printings chosen for the deck's tokens (DeckList.tokens). */
+  tokens?: Record<string, TokenPrinting>;
 }
 
 export interface LibraryDecksResponse {
@@ -647,6 +747,9 @@ export interface ApiEndpoints {
   'POST /api/decks/resolve': { query: Record<string, never>; body: ResolveRequest; response: ResolveResponse };
   'POST /api/cards/defs': { query: Record<string, never>; body: DefsRequest; response: DefsResponse };
   'POST /api/decks/validate': { query: Record<string, never>; body: ValidateRequest; response: ValidateResponse };
+  'POST /api/decks/tokens': { query: Record<string, never>; body: { names: string[] }; response: DeckTokensResponse };
+  'GET /api/printings': { query: { oracleId?: string; name?: string; images?: 0 | 1 }; body: undefined; response: PrintingsResponse };
+  'POST /api/decks/commander-choices': { query: Record<string, never>; body: CommanderChoicesRequest; response: CommanderChoicesResponse };
   'POST /api/images/match': { query: Record<string, never>; body: ImageMatchRequest; response: ImageMatchResponse };
   'GET /api/update': { query: Record<string, never>; body: undefined; response: UpdateStatusResponse };
   'POST /api/update': { query: Record<string, never>; body: UpdateRequest; response: UpdateStatusResponse };
@@ -684,6 +787,9 @@ export const ENDPOINTS: readonly EndpointKey[] = [
   'POST /api/decks/resolve',
   'POST /api/cards/defs',
   'POST /api/decks/validate',
+  'POST /api/decks/commander-choices',
+  'GET /api/printings',
+  'POST /api/decks/tokens',
   'POST /api/images/match',
   'GET /api/update',
   'POST /api/update',

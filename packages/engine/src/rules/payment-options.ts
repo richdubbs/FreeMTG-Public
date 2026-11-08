@@ -18,7 +18,7 @@ import type { ManaSymbol } from '../types/mana';
 import type { GameState } from '../types/state';
 import type { PaymentOption } from '../keywords/types';
 import { IllegalAction, type Game } from '../core/game';
-import { charsOfObject } from './characteristics';
+import { charsOfObject, hasKeyword } from './characteristics';
 import { toPlanPart, planDenial, type CostPlan, type PlanPart } from './cost';
 import { isPickPart, partCandidates, type PickPart } from './cost-pick';
 import type { Denial } from './denial';
@@ -98,11 +98,28 @@ function usable(mana: readonly ManaSymbol[], opt: PaymentOption): number {
  * Pure: CR 601.2g-h, could this player pay `plan` for the spell `spellId` if they used the payment options available to it? Used by `castCheck` so a spell that
  * is castable only with convoke or delve is listed. Counts the objects an option could use without naming them (the cost-pick search finds a way).
  */
-export function payableWithOptions(s: GameState, player: PlayerId, spellId: ObjectId, plan: CostPlan): Denial | null {
+export function payableWithOptions(s: GameState, player: PlayerId, spellId: ObjectId, plan: CostPlan, assist = true): Denial | null {
   if (!planDenial(s, player, null, plan)) return null;
   // FAST4 T24: the options of the card AS A SPELL (CR 601.2a: it is on the stack while it is cast), so a payment keyword another object grants to spells
   // ("artifact spells you cast have convoke", CR 613.1f) is seen while the card is still in hand (statics/rule-sources.ts#overlayAsSpell)
-  return payableWith(s, player, null, plan, hookpoints.paymentOptions(gameOf(overlayAsSpell(s, spellId, player)), spellId, player));
+  const denial = payableWith(s, player, null, plan, hookpoints.paymentOptions(gameOf(overlayAsSpell(s, spellId, player)), spellId, player));
+  return denial === null ? null : assist && payableWithAssist(s, player, spellId, plan) ? null : denial;
+}
+
+/** edh-e-29 (CR 702.132a): could another player's payment of some of the generic mana make `plan` payable by `player`? Pure. */
+function payableWithAssist(s: GameState, player: PlayerId, spellId: ObjectId, plan: CostPlan): boolean {
+  const o = s.objects[spellId];
+  if (!o || !hasKeyword(charsOfObject(s, o), 'assist')) return false;
+  const generic = plan.mana.reduce((n, m) => n + (m.kind === 'generic' ? m.amount : 0), 0);
+  for (const h of s.players) {
+    if (h.id === player || h.hasLost) continue;
+    for (let k = generic; k >= 1; k--) {
+      if (planDenial(s, h.id, null, { mana: [{ kind: 'generic', amount: k }], tap: false, untap: false, other: [], ...(plan.spend !== undefined ? { spend: plan.spend } : {}) })) continue;
+      if (!planDenial(s, player, null, { ...plan, mana: reduceGeneric(plan.mana, k).mana })) return true;
+      break;
+    }
+  }
+  return false;
 }
 
 /** `payableWithOptions` for a given list of options; `sourceId` is the object whose cost it is (an activated ability's source, null for a spell). Pure. */
@@ -218,4 +235,42 @@ export function emergePayableCandidates(s: GameState, player: PlayerId, spellId:
 export function emergeCandidates(s: GameState, player: PlayerId, plan: CostPlan): ObjectId[] {
   const part = plan.other.find((p) => p.kind === 'sacrifice' && !p.self);
   return part ? partCandidates(s, player, null, part) : [];
+}
+
+/**
+ * edh-e-29 (CR 702.132a-c; Gang Up, Out of Bounds): assist. After the total cost is determined (CR 601.2f) the caster may choose another player; that player may pay
+ * any amount of the generic mana in the total cost, and the caster pays the rest (CR 702.132b: it is not an additional or alternative cost). The helper pays as
+ * the caster would: their own mana abilities and pool, through the usual payment code. The helper's share is checked payable and the rest checked payable
+ * by the caster BEFORE anything is paid. Returns the plan the caster still pays and the mana the helper paid (for the log). `pay` is the payment function
+ * (rules/pay.ts#payPlan; passed in so this file keeps its imports).
+ */
+export function applyAssist(
+  g: Game, player: PlayerId, spellId: ObjectId, plan: CostPlan, label: string,
+  pay: (g: Game, helper: PlayerId, plan: CostPlan) => void, // the caller keeps the mana the helper spent (CR 601.2h: it is mana spent to cast the spell)
+): CostPlan {
+  const o = g.s.objects[spellId];
+  if (!o || !hasKeyword(charsOfObject(g.s, o), 'assist')) return plan;
+  const generic = plan.mana.reduce((n, m) => n + (m.kind === 'generic' ? m.amount : 0), 0);
+  if (generic <= 0) return plan;
+  const share = (k: number): CostPlan => ({ mana: [{ kind: 'generic', amount: k }], tap: false, untap: false, other: [], ...(plan.spend !== undefined ? { spend: plan.spend } : {}) });
+  const maxOf = (helper: PlayerId): number => { let k = generic; while (k > 0 && planDenial(g.s, helper, null, share(k))) k -= 1; return k; };
+  const helpers = g.s.players.filter((p) => p.id !== player && !p.hasLost && maxOf(p.id) > 0);
+  if (helpers.length === 0) return plan;
+  const pick = g.choose({
+    kind: 'chooseOption', player, prompt: `Choose another player to help pay the generic mana of ${label} (assist; none to pay it all yourself).`, min: 0, max: 1,
+    options: helpers.map((p) => ({ id: p.id, label: g.player(p.id).name })), rules: ['CR 702.132a'],
+  }).ids[0];
+  if (pick === undefined) return plan;
+  const helper = pick as PlayerId;
+  if (!helpers.some((p) => p.id === helper)) throw new IllegalAction('That player cannot help pay for the spell.', ['CR 702.132a']);
+  const n = g.choose({
+    kind: 'chooseNumber', player: helper, prompt: `How much of the generic mana of ${label} do you pay (assist)? Up to ${maxOf(helper)}.`, min: 0, max: maxOf(helper), rules: ['CR 702.132a'],
+  }).n;
+  if (n <= 0) return plan;
+  if (n > maxOf(helper)) throw new IllegalAction('That player cannot pay that much.', ['CR 702.132a']);
+  const rest: CostPlan = { ...plan, mana: reduceGeneric(plan.mana, n).mana };
+  if (planDenial(g.s, player, null, rest)) throw new IllegalAction(`After that help, you could not pay the rest of the cost of ${label}.`, ['CR 118.3', 'CR 702.132a']);
+  pay(g, helper, share(n));
+  g.log(`${g.player(helper).name} pays {${n}} of the cost of ${label} (assist).`, { rules: ['CR 702.132a'], level: 'info' });
+  return rest;
 }

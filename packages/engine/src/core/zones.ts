@@ -700,7 +700,8 @@ export function showCards(g: Game, ids: readonly ObjectId[], players: readonly P
  * the ids, or another player still seeing a card they had seen, would tell the other players whether the order was changed (CR 400.2, 401.2, 701.20d).
  * A card the player did not place that was seen and whose place changes becomes a new object nobody sees (CR 701.20d); one that keeps its place stays seen.
  */
-export function reorderLibrary(g: Game, player: PlayerId, top: readonly ObjectId[], bottom: readonly ObjectId[]): void {
+/** edhe58 (CR 701.29a): `placedBy`, the player who arranged the cards when that is not the library's owner (fateseal): the one who keeps seeing them. */
+export function reorderLibrary(g: Game, player: PlayerId, top: readonly ObjectId[], bottom: readonly ObjectId[], placedBy: PlayerId = player): void {
   const lib = zoneArray(g, 'library', player);
   const inLib = new Set(lib);
   const t = [...new Set(top.map((id) => g.renewedId(id)))].filter((id) => inLib.has(id));
@@ -711,7 +712,7 @@ export function reorderLibrary(g: Game, player: PlayerId, top: readonly ObjectId
     const o = g.obj(id);
     const kept = lib[i] === id;
     const seen = o.revealedTo !== undefined && o.revealedTo.length > 0;
-    if (placed.has(id)) next[i] = renewLibraryCard(g, id, player);
+    if (placed.has(id)) next[i] = renewLibraryCard(g, id, placedBy);
     else if (!kept && seen) next[i] = renewLibraryCard(g, id);
   });
   lib.splice(0, lib.length, ...next);

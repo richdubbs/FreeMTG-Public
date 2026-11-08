@@ -30,7 +30,7 @@ import { lifeBudget, payLife } from './life';
 import { activateManaAbility, installManaCostRules } from './mana';
 import { payWithOf, solveWithConverters, type ConverterPlan } from './convert';
 import { hasOnlyOneWayToPay } from './pay-ways';
-import { staticAnyColorEverywhere } from '../statics/play-permits';
+import { staticAnyColorEverywhere, staticSpendAsColors } from '../statics/play-permits';
 import { isPhyrexian, lifeColorOf, solve, solveBest } from './solver';
 import { lifeForColors } from './life-for';
 import { buildProviders, costKindOf, extraManaModes, manaSources, spendAllows, spendOptions, type Provider, type SpendContext } from './sources';
@@ -320,10 +320,11 @@ function pickPrompt(part: PickPart): [string, string[]] {
       if (part.symbolTotal !== undefined) return [`Exile cards from your graveyard with ${part.symbolTotal.atLeast} or more mana symbols of that color among their mana costs`, ['CR 118.3', 'CR 107.4']]; // std-cardcopy-7
       if (part.mvTotal !== undefined) return [`Exile cards from your graveyard with total mana value ${part.mvTotal.atLeast} or greater`, ['CR 118.3', 'CR 202.3']]; // edh-d-100
       if (part.typesAmong !== undefined) return [`Exile cards from your graveyard with ${part.typesAmong.atLeast} or more card types among them`, ['CR 118.3', 'CR 205.2a']]; // edh-d-100
+      if (part.kind === 'exileFrom' && part.anyGraveyard === true) return [part.singleGraveyard === true ? 'Exile from a single graveyard' : 'Exile from a graveyard', ['CR 118.3', 'CR 404.1']]; // edh-d-107
       return [part.zone === 'battlefield' ? 'Exile' : `Exile from your ${part.zone}`, ['CR 118.3']];
     case 'tapUntapped': return ['Tap', ['CR 118.3']];
     case 'untapTapped': return ['Untap', ['CR 701.26b', 'CR 118.3']]; // p2-cost-parts-1
-    case 'moveCards': return [part.to === 'graveyard' ? `Put from ${part.from} into its owner's graveyard` : `Put from your ${part.from} on top of your library`, ['CR 400.3', 'CR 401.4', 'CR 118.3']]; // edh-d-54
+    case 'moveCards': return [part.to === 'graveyard' ? `Put from ${part.from} into its owner's graveyard` : `Put from your ${part.from} on ${part.to === 'libraryBottom' ? 'the bottom' : 'top'} of your library`, ['CR 400.3', 'CR 401.4', 'CR 118.3']]; // edh-d-54
     case 'tapPower': return [`Tap untapped creatures with total power ${part.power} or more`, ['CR 702.122a', 'CR 118.3']];
     case 'collectEvidence': return [`Exile cards from your graveyard with total mana value ${part.amount} or more`, ['CR 701.59a', 'CR 118.3']];
     case 'reveal': return ['Reveal from your hand', ['CR 701.20a', 'CR 118.3']];
@@ -385,8 +386,8 @@ function payMana(g: Game, player: PlayerId, given: ManaSymbol[], label: string, 
   const sources = manaSources(g.s, player, exclude, spend);
   const providers = buildProviders(sources, p.manaPool, undefined, allows);
   const lifeFor = lifeForColors(g.s, player, spend); // edhc5 (CR 118.1): K'rrik; the Defilers
-  const opts = { ...spendOptions(spend, staticAnyColorEverywhere(g.s, player)), ...(lifeFor ? { lifeFor } : {}) }; // edh-mana-keywords-4: the player's "spend mana as though it were mana of any color"; FAST5X E29 (CR 609.4b): "mana of any type can be spent to cast that spell"; std-rx32: "... of any color"
-  const anyType = opts.anyType === true || opts.anyColor === true || opts.anyColorWith !== undefined; // edh-next-140
+  const opts = { ...spendOptions(spend, staticAnyColorEverywhere(g.s, player), staticSpendAsColors(g.s, player)), ...(lifeFor ? { lifeFor } : {}) }; // edh-mana-keywords-4: the player's "spend mana as though it were mana of any color"; FAST5X E29 (CR 609.4b): "mana of any type can be spent to cast that spell"; std-rx32: "... of any color"
+  const anyType = opts.anyType === true || opts.anyColor === true || opts.anyColorWith !== undefined || opts.spendAs !== undefined; // edh-next-140; edh-e-51
   const plan = solveBest({ symbols, providers, life, ...opts });
   // FAST5X E5 (CR 605.3a): only when the ordinary sources can't pay, a payment that also activates filter abilities (rules/convert.ts)
   const converters = extraManaModes(g.s, player, exclude, spend).converters;

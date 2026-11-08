@@ -117,6 +117,16 @@ export function checkCommanders(cards: readonly OracleCard[], style: CommanderSt
   return out;
 }
 
+/**
+ * May `card` be designated as a commander next to the commanders already chosen (the deckbuilder offers "Commander" only then)? Judged by the deck
+ * check itself: the set the deck would then have must pass `checkCommanders` (CR 903.3, 903.3a, 903.12c, 702.124), so a Background is offered only
+ * beside a "Choose a Background" commander and a second commander only when the two can partner. A card already among them is not offered again.
+ */
+export function canAddCommander(current: readonly OracleCard[], card: OracleCard, style: CommanderStyle): boolean {
+  if (current.length >= 2 || current.some((c) => c.name === card.name)) return false;
+  return checkCommanders([...current, card], style).length === 0;
+}
+
 /** The commanders' combined color identity (CR 702.124c), or undefined when one of them has no color identity data. */
 export function commanderIdentity(cards: readonly OracleCard[]): Set<string> | undefined {
   const ids = new Set<string>();

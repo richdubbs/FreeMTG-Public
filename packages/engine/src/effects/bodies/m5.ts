@@ -20,7 +20,7 @@ import type { Game } from '../../core/game';
 import type { AbilityDef, AmountChange, ChoiceKind, Destination, EffectStep, Modification, ObjectFilter, Quantity, ReplacementBody } from '../../types/ability';
 import type { ObjectId, PlayerId } from '../../types/ids';
 import type { ObjHandle } from '../../types/state';
-import { CARD_TYPES } from '../../types/card';
+import { CARD_TYPES, cardNameKindWords, type CardNameKind } from '../../types/card';
 import { type ContinuousEffectRec, type EventContext, type GameObject } from '../../types/state';
 import { charsOfObject, controllerOf } from '../../rules/characteristics';
 import { auraCanEnchantObject, enchantRestriction, isAura } from '../../rules/attachment';
@@ -61,7 +61,7 @@ const current = (g: Game, id: ObjectId, zone: string): GameObject | undefined =>
 const COLORS = ['W', 'U', 'B', 'R', 'G'] as const;
 
 /** One "as it enters, choose ..." choice (CR 614.12a, 607.2d), asked of the player it enters under. */
-function askChoice(g: Game, player: PlayerId, ch: { what: ChoiceKind; link: string; options?: string[]; exclude?: string[]; min?: number; max?: number; cardKind?: 'land' | 'nonland' }, name: string): NonNullable<DestinationFacts['chosen']>[number] | null {
+function askChoice(g: Game, player: PlayerId, ch: { what: ChoiceKind; link: string; options?: string[]; exclude?: string[]; min?: number; max?: number; cardKind?: CardNameKind }, name: string): NonNullable<DestinationFacts['chosen']>[number] | null {
   const rules = ['CR 614.12a', 'CR 607.2d'];
   const prompt = (what: string): string => `As ${name} enters, choose ${what}.`;
   const option = (ids: string[], what: string, labels: (x: string) => string = (x) => x): string =>
@@ -83,7 +83,7 @@ function askChoice(g: Game, player: PlayerId, ch: { what: ChoiceKind; link: stri
       // std-rx28 (CR 205.2a, 614.12a): "choose a card type other than creature" never offers the excluded values (the closed lists of CR 205; no template writes
       // an exclusion for a card name, which has no closed list)
       const list = all !== undefined && (ch.exclude ?? []).length > 0 ? all.filter((x) => !(ch.exclude ?? []).includes(x)) : all;
-      const what = ch.what === 'cardName' && ch.cardKind !== undefined ? `a ${ch.cardKind} card name` : { creatureType: 'a creature type', cardType: 'a card type', landType: 'a land type', cardName: 'a card name', planeswalkerType: 'a planeswalker type' }[ch.what];
+      const what = ch.what === 'cardName' && ch.cardKind !== undefined ? cardNameKindWords(ch.cardKind) : { creatureType: 'a creature type', cardType: 'a card type', landType: 'a land type', cardName: 'a card name', planeswalkerType: 'a planeswalker type' }[ch.what];
       // std-rx28 (CR 201.3): "choose a nonland card name" (Skyseer's Chariot) names only such a card (ChooseNameDecision.cardKind)
       const kind = ch.what === 'cardName' && ch.cardKind !== undefined ? { cardKind: ch.cardKind } : {};
       const ans = g.choose({ kind: 'chooseName', player, prompt: prompt(what), what: ch.what, ...(list ? { options: [...list] } : {}), ...kind, rules });
@@ -194,11 +194,11 @@ function revealHand(g: Game, cx: ExecCtx, o: GameObject, filter: ObjectFilter, p
  * any number of the permanents on the battlefield that match `filter` (any controller's) and every counter of every kind is removed from each (the `removeCounters` step, run at once in
  * the replacement's context, so a rule that stops a removal is respected). Returns how many counters were actually removed ("the number of counters removed this way").
  */
-function removeCountersAsEnters(g: Game, cx: ExecCtx, spec: { filter: ObjectFilter }, player: PlayerId, name: string): number {
+function removeCountersAsEnters(g: Game, cx: ExecCtx, spec: { filter: ObjectFilter; all?: true }, player: PlayerId, name: string): number {
   const total = (id: string): number => Object.values(g.s.objects[id]?.counters ?? {}).reduce((n, c) => n + (c > 0 ? c : 0), 0);
   const options = resolveObjs(cx, { ref: 'each', filter: spec.filter }).map((h) => h.id).filter((id) => total(id) > 0);
   if (options.length === 0) return 0;
-  const picked = g.choose({ kind: 'chooseObjects', player, prompt: `As ${name} enters, remove all counters from any number of permanents.`, options, min: 0, max: options.length, rules: ['CR 614.12a', 'CR 122.1'] }).ids;
+  const picked = spec.all === true ? options : g.choose({ kind: 'chooseObjects', player, prompt: `As ${name} enters, remove all counters from any number of permanents.`, options, min: 0, max: options.length, rules: ['CR 614.12a', 'CR 122.1'] }).ids;
   if (picked.length === 0) return 0;
   const before = picked.reduce((n, id) => n + total(id), 0);
   const REMOVING = '$removedAsEnters';
@@ -302,6 +302,7 @@ export function applyEnters(g: Game, e: ZoneChange, b: Extract<ReplacementBody, 
       chooserPlayer = opps.length === 1 ? opps[0]! : g.choose({ kind: 'chooseOption', player, prompt: `As ${name} enters, choose the opponent who chooses.`, options: opps.map((id) => ({ id, label: g.player(id).name })), min: 1, max: 1, rules: ['CR 614.12a', 'CR 607.2d'] }).ids[0]!;
     }
     const v = askChoice(g, chooserPlayer, ch, name);
+    if (v && rawCh.secret === true) v.secret = [chooserPlayer]; // edhe35 (CR 608.2d, 614.12a): "secretly choose an opponent": only the chooser knows it
     if (v) facts.chosen = [...(facts.chosen ?? []), v];
     else g.log(`${name}: the choice "${ch.what}" has no option the engine can offer; make it by hand.`, { rules: ['CR 614.12a'], level: 'manual' });
     // M6-6 INTERFACE CHANGE (additive): a chosen number is read by the rest of this body as the variable named by its link (CR 614.12a: the counters a
@@ -367,6 +368,13 @@ export function applyEnters(g: Game, e: ZoneChange, b: Extract<ReplacementBody, 
       deferAfter(() => runNested(rcx, steps));
     }
   }
+  // edh-e-23 (CR 614.12, 614.12a; Heightened Awareness, Overlaid Terrain): "As ~ enters, discard your hand.": the steps are carried out by the player it enters under once it has entered
+  if (b.steps) {
+    const steps = b.steps;
+    const rcx = replacementCtx(g, e, c);
+    rcx.controller = player;
+    deferAfter(() => runNested(rcx, steps));
+  }
   // edh-next-120 (CR 614.12, 612.5, 701.12h; Deadpool, Trading Card): "As ~ enters, you may exchange his text box and another creature's.": the player it enters under may choose
   // another creature (not targeted); once it is on the battlefield the two text boxes are exchanged (effects/text-exchange.ts). No other creature: nothing to choose
   if (b.exchangeText) {
@@ -423,6 +431,12 @@ export function applyEnters(g: Game, e: ZoneChange, b: Extract<ReplacementBody, 
     cx.vars.set(DIE_RESULT_VAR, total);
     g.log(`${name} enters with the total of ${n} d${b.roll.sides}: ${total}.`, { rules: ['CR 614.12a', 'CR 706.2'], level: 'info' });
   }
+  // edhe28 (CR 614.12a, 701.17a, 702.33d; Urborg Lhurgoyf, Monstrous War-Leech): "As ~ enters, [if it was kicked,] mill N cards [for each time it was kicked]": milled as it enters, by the
+  // player it enters under (the kick count and the condition read the cast record of the entering object, as for its counters); nothing is milled when the count is 0 or the condition fails
+  if (b.mill !== undefined && (b.mill.if === undefined || evalCond(cx, b.mill.if))) {
+    const n = Math.floor(evalQtyBeforeGroup(g, cx, b.mill.count) ?? 0);
+    if (n > 0) runNested(cx, [{ op: 'mill', who: { ref: 'you' }, count: n }]);
+  }
   for (const spec of b.counters ?? []) {
     const n = evalQtyBeforeGroup(g, cx, spec.count) ?? 0; // X of a permanent that was not cast is 0 (CR 107.3m)
     if (n > 0) facts.counters = [...(facts.counters ?? []), { kind: spec.kind, count: Math.floor(n) }];
@@ -447,7 +461,7 @@ export function applyEnters(g: Game, e: ZoneChange, b: Extract<ReplacementBody, 
   if (b.devour) {
     const n = devour(g, cx, o, b.devour.filter, player, name);
     const per = evalQty(cx, b.devour.times) ?? 0;
-    if (n * per > 0) facts.counters = [...(facts.counters ?? []), { kind: '+1/+1', count: Math.floor(n * per) }];
+    if (n * per > 0) facts.counters = [...(facts.counters ?? []), { kind: b.devour.kind ?? '+1/+1', count: Math.floor(n * per) }];
     // edh-c-35 (CR 702.82c; Tar Fiend, Marrow Chomper): "for each creature it devoured" counts the permanents it devoured as it entered: kept under the link `devoured` (a number, read by `chosenNumber`)
     const dl = b.devour.link ?? DEVOURED_LINK;
     facts.chosen = [...(facts.chosen ?? []).filter((c) => c.link !== dl), { link: dl, values: [String(n)] }];
@@ -713,7 +727,7 @@ function thenSteps(g: Game, e: Damage, steps: EffectStep[], c: Candidate, preven
 
 /** CR 614.1c-d, 614.12: an `enters` body applies to a permanent entering the battlefield. The M6 fields are checked by the dispatcher (ENTERS_PARTS). */
 export const ENTERS_BODY: BodyKind<Extract<ReplacementBody, { b: 'enters' }>> = {
-  capabilities: ['enters', 'enters.putToGraveyard' /* edh-d-54: CR 614.12a */, 'enters.turnFaceDown' /* edh-d-73: CR 614.12a, 708.2 */, 'enters.countersIfPay' /* edh-d-54: CR 614.12a */, 'enters.tappedMay' /* edh-next-106: CR 614.12a */, 'enters.attachTo', 'enters.under', 'enters.choice', 'enters.revealHand' /* edh-c-42: CR 702.38a */, 'enters.countersIf' /* CMD3: sunburst, CR 702.44a, 614.12 */, 'enters.untapped' /* r5-fxb: CR 614.1d, 616.1 */, 'enters.lookAtHand' /* std-rx6: CR 614.12a, 402.3 */, 'enters.devour' /* std-rx15: CR 702.82a */, 'enters.exileCards' /* std-cardcopy-3: CR 614.12a, 607.2a */, 'enters.dayIfNeither' /* p2-misc-1: CR 731.1 */, 'enters.attacking' /* trek-8: CR 508.4 */, 'enters.becomes' /* edh-perms-21: CR 614.1c, 205.1b */, 'enters.subtypes' /* edh-perms-24: CR 614.1c, 205.1b */, 'enters.tribute' /* edh-c-37: CR 702.104a */, 'enters.revealHands' /* edh-c-84: CR 701.20a, 614.12a */, 'enters.exchangeText' /* edh-next-120: CR 614.12a, 701.12h */, 'enters.removeCounters' /* edh-d-78: CR 614.12a, 122.1 */, 'enters.payLifeAny' /* edh-next-138: CR 614.12a, 119.4 */, 'enters.roll' /* edh-next-128: CR 614.12a, 706.2 */, 'enters.emblem' /* edh-next-137: CR 614.12, 114.2 */, 'enters.becomesOneOf' /* edh-next-146: CR 614.1c, 613.2a */, 'enters.chooseObject' /* edh-next-146: CR 614.12a, 607.2d */], // body:enters (tapped, tapped unless, counters, choices, with abilities), CR 303.4f, 616.1b; FAST5X E28: "your choice of" (CR 702.136a)
+  capabilities: ['enters', 'enters.putToGraveyard' /* edh-d-54: CR 614.12a */, 'enters.turnFaceDown' /* edh-d-73: CR 614.12a, 708.2 */, 'enters.steps' /* edh-e-23: CR 614.12a */, 'enters.countersIfPay' /* edh-d-54: CR 614.12a */, 'enters.tappedMay' /* edh-next-106: CR 614.12a */, 'enters.attachTo', 'enters.under', 'enters.choice', 'enters.revealHand' /* edh-c-42: CR 702.38a */, 'enters.countersIf' /* CMD3: sunburst, CR 702.44a, 614.12 */, 'enters.untapped' /* r5-fxb: CR 614.1d, 616.1 */, 'enters.lookAtHand' /* std-rx6: CR 614.12a, 402.3 */, 'enters.devour' /* std-rx15: CR 702.82a */, 'enters.exileCards' /* std-cardcopy-3: CR 614.12a, 607.2a */, 'enters.dayIfNeither' /* p2-misc-1: CR 731.1 */, 'enters.attacking' /* trek-8: CR 508.4 */, 'enters.becomes' /* edh-perms-21: CR 614.1c, 205.1b */, 'enters.subtypes' /* edh-perms-24: CR 614.1c, 205.1b */, 'enters.tribute' /* edh-c-37: CR 702.104a */, 'enters.revealHands' /* edh-c-84: CR 701.20a, 614.12a */, 'enters.exchangeText' /* edh-next-120: CR 614.12a, 701.12h */, 'enters.removeCounters' /* edh-d-78: CR 614.12a, 122.1 */, 'enters.payLifeAny' /* edh-next-138: CR 614.12a, 119.4 */, 'enters.roll' /* edh-next-128: CR 614.12a, 706.2 */, 'enters.emblem' /* edh-next-137: CR 614.12, 114.2 */, 'enters.becomesOneOf' /* edh-next-146: CR 614.1c, 613.2a */, 'enters.chooseObject' /* edh-next-146: CR 614.12a, 607.2d */, 'enters.mill' /* edhe28: CR 614.12a, 701.17a */, 'enters.devour.kind' /* edh-e-13: CR 701.21a */, 'enters.removeCounters.all' /* edh-e-66: CR 614.12a, 122.1 */], // body:enters (tapped, tapped unless, counters, choices, with abilities), CR 303.4f, 616.1b; FAST5X E28: "your choice of" (CR 702.136a)
   fits: (_g, e) => e.ev === 'zoneChange' && e.to === 'battlefield',
   apply: (g, e, b, c) => (e.ev === 'zoneChange' ? applyEnters(g, e, b, c) : e),
 };

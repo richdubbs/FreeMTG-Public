@@ -1,0 +1,238 @@
+[
+  {
+    "id": "eff.edhe61.linked.turnFaceUp.ifTypePutOntoBattlefield",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "subject": "none",
+    "cr": [
+      "CR 406.3",
+      "CR 607.2a",
+      "CR 701.40a",
+      "CR 110.2a",
+      "CR 400.7"
+    ],
+    "pattern": "turn the exiled card face up . if it's ( a | an ) {f:CardDesc} , put it onto the battlefield under your control",
+    "build": [
+      {
+        "op": "changeFace",
+        "what": {
+          "ref": "linked",
+          "link": "exiled"
+        },
+        "to": "faceUp",
+        "inExile": true
+      },
+      {
+        "op": "if",
+        "cond": {
+          "cond": "compare",
+          "left": {
+            "q": "count",
+            "of": {
+              "ref": "each",
+              "filter": {
+                "zone": "exile",
+                "is": {
+                  "ref": "linked",
+                  "link": "exiled"
+                },
+                "types": "$f.types"
+              }
+            }
+          },
+          "op": ">=",
+          "right": 1
+        },
+        "then": [
+          {
+            "op": "move",
+            "what": {
+              "ref": "linked",
+              "link": "exiled"
+            },
+            "to": {
+              "zone": "battlefield",
+              "controller": {
+                "ref": "you"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "consumes": [
+      "if"
+    ],
+    "examples": [
+      {
+        "text": "When ~ enters, you may exile a card from your hand face down.\nWhen ~ dies, turn the exiled card face up. If it's an artifact card, put it onto the battlefield under your control."
+      },
+      {
+        "text": "When ~ enters, you may exile a card from your hand face down.\nWhen ~ dies, turn the exiled card face up. If it's an enchantment card, put it onto the battlefield under your control."
+      }
+    ],
+    "counterExamples": [
+      "When ~ enters, you may exile a card from your hand face down.\nWhen ~ dies, turn the exiled card face up. If it's an artifact card, put it into your hand.",
+      "When ~ enters, you may exile a card from your hand face down.\nWhen ~ dies, turn the exiled card face up. If it's an artifact card, put it onto the battlefield under an opponent's control.",
+      "When ~ enters, you may exile a card from your hand face down.\nWhen ~ dies, turn the exiled card face up. Put it onto the battlefield under your control."
+    ],
+    "priority": 1
+  },
+  {
+    "id": "sta.edhe61.self.protectionFromColorsAmong",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 702.16a",
+      "CR 105.1",
+      "CR 604.1",
+      "CR 613.1f"
+    ],
+    "pattern": "~ has protection from each color among {f:Filter}",
+    "build": {
+      "kind": "static",
+      "effects": [
+        {
+          "s": "continuous",
+          "affects": {
+            "ref": "self"
+          },
+          "mods": [
+            {
+              "layer": 6,
+              "protectionFromColorsAmong": {
+                "ref": "each",
+                "filter": "$f"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "needs": [
+      "feature:layer6.protectionFromColorsAmong"
+    ],
+    "examples": [
+      {
+        "text": "~ has protection from each color among creatures you control."
+      },
+      {
+        "text": "~ has protection from each color among artifacts you control."
+      }
+    ],
+    "counterExamples": [
+      "~ has protection from each color among creatures you control until end of turn.",
+      "~ has protection from each of the colors among creatures you control.",
+      "~ has hexproof from each color among creatures you control.",
+      "~ has protection from each color among creatures."
+    ],
+    "consumes": [
+      "each"
+    ]
+  },
+  {
+    "id": "rst.edhe61.group.cantBeTargets.blue",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 604.1",
+      "CR 115.1",
+      "CR 113.7a",
+      "CR 101.2"
+    ],
+    "pattern": "{f:Filter} can't be the targets of blue spells or abilities from blue sources",
+    "build": {
+      "s": "restrict",
+      "subject": {
+        "ref": "each",
+        "filter": "$f"
+      },
+      "mode": "cant",
+      "action": "beTargeted",
+      "other": {
+        "colors": [
+          "U"
+        ]
+      }
+    },
+    "consumes": [
+      "can't"
+    ],
+    "examples": [
+      {
+        "text": "Elves you control can't be the targets of blue spells or abilities from blue sources."
+      },
+      {
+        "text": "Artifact creatures you control can't be the targets of blue spells or abilities from blue sources."
+      }
+    ],
+    "counterExamples": [
+      "Elves you control can't be the targets of blue spells or abilities from red sources.",
+      "Elves you control can't be the targets of blue spells.",
+      "Elves you control can't be the targets of nonblue spells or abilities from nonblue sources."
+    ]
+  },
+  {
+    "id": "eff.edhe61.damage.halfDownAndHalfUp",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 120.3",
+      "CR 107.1a",
+      "CR 107.3",
+      "CR 601.2b"
+    ],
+    "pattern": "{src:Obj} deal[s] half x damage , rounded down , to {to:Recipient} , and half x damage , rounded up , to {p:Player}",
+    "build": {
+      "op": "damage",
+      "source": "$src",
+      "to": "$to",
+      "amount": {
+        "q": "math",
+        "op": "floorDiv",
+        "args": [
+          {
+            "q": "X"
+          },
+          2
+        ]
+      },
+      "also": [
+        {
+          "to": "$p",
+          "amount": {
+            "q": "math",
+            "op": "ceilDiv",
+            "args": [
+              {
+                "q": "X"
+              },
+              2
+            ]
+          }
+        }
+      ]
+    },
+    "subject": "object",
+    "consumes": [
+      "half"
+    ],
+    "examples": [
+      {
+        "text": "{X}{1}, {T}: ~ deals half X damage, rounded down, to any target, and half X damage, rounded up, to you."
+      },
+      {
+        "text": "{X}{R}, {T}: ~ deals half X damage, rounded down, to target creature, and half X damage, rounded up, to you."
+      }
+    ],
+    "counterExamples": [
+      "{X}{1}, {T}: ~ deals half X damage, rounded up, to any target, and half X damage, rounded down, to you.",
+      "{X}{1}, {T}: ~ deals half X damage to any target, and half X damage, rounded up, to you.",
+      "{X}{1}, {T}: ~ deals half X damage, rounded down, to any target, and half X damage, rounded down, to you."
+    ]
+  }
+]

@@ -380,16 +380,25 @@ export function sameControllerHolds(s: GameState, spec: TargetSpec, chosen: read
 }
 
 /**
+ * edh-e-64 (CR 105.1, 205.2a): the qualities an object of a `perCardType` / `perQuality` spec can stand for: its card types, or its colors ("for each color"). A colorless card has no color.
+ */
+function qualitiesOf(s: GameState, spec: TargetSpec, o: GameObject): string[] {
+  const chars = charsOfObject(s, o);
+  if (spec.perQuality === 'color') return [...new Set<string>(chars.colors)];
+  return [...new Set<string>(chars.types)];
+}
+
+/**
  * std-cardcopy-7 (CR 115.1, 601.2c, 205.2a): can the objects of `chosen` be "one of each card type" as a spec's `perCardType` requires ("up to one target nonland card of
  * each card type"): each object given a card type it has, no type given to more than `max` of them (a matching, tried by backtracking; an artifact creature card counts
  * for either). Always true without it.
  */
 export function perCardTypeHolds(s: GameState, spec: TargetSpec, chosen: readonly TargetChoice[], x = 0): boolean {
-  if (spec.perCardType !== true) return true;
+  if (spec.perCardType !== true && spec.perQuality === undefined) return true;
   const cap = evalCount(spec.max, { x });
   const sets = chosen.flatMap((t) => {
     const o = t.kind === 'object' ? s.objects[t.id] : undefined;
-    return o === undefined ? [[] as string[]] : [[...new Set<string>(charsOfObject(s, o).types)]];
+    return o === undefined ? [[] as string[]] : [qualitiesOf(s, spec, o)];
   });
   const used = new Map<string, number>();
   const fit = (i: number): boolean => {
@@ -429,7 +438,7 @@ export function targetRange(s: GameState, spec: TargetSpec, available: TargetOpt
     min *= group;
   }
   // std-cardcopy-7: `perCardType`, `max` for EACH card type the candidates have (checked on the set chosen by `perCardTypeHolds`)
-  const perType = spec.perCardType === true ? new Set(available.objects.flatMap((id) => { const o = s.objects[id]; return o ? charsOfObject(s, o).types : []; })).size : 1;
+  const perType = spec.perCardType === true || spec.perQuality !== undefined ? new Set(available.objects.flatMap((id) => { const o = s.objects[id]; return o ? qualitiesOf(s, spec, o) : []; })).size : 1;
   // edh-top-3: `differentManaValues`, at most one target for each mana value the candidates have (checked on the set chosen by `differentManaValuesHold`)
   const distinctMv = spec.differentManaValues === true ? new Set(available.objects.flatMap((id) => { const o = s.objects[id]; return o ? [charsOfObject(s, o).manaValue] : []; })).size : Infinity;
   let max = Math.min(evalCount(spec.max, { x }) * perPlayer * perType, optionCount(available), distinctMv);
@@ -523,7 +532,7 @@ function searchSpecs(
     const all: TargetChoice[] = [...opts.objects.map((id): TargetChoice => ({ kind: 'object', id })), ...opts.players.map((id): TargetChoice => ({ kind: 'player', id }))];
     // FAST3 T14: a `sameOwner` spec is enumerated too (its first `min` candidates may have several owners), in both modes
     const limited = (witness && spec.groupLimit !== undefined) || spec.sameOwner === true || spec.differentNames === true || spec.differentManaValues === true || spec.perOpponent === true || spec.perPlayer === true || spec.sharedCardType === true || spec.sharedCreatureType === true
-      || spec.equalToughness === true /* edh-next-126 */ || spec.differentControllers === true || spec.sameController === true || spec.perCardType === true; // CLOUD std-tmt, std-rx30, std-cardcopy-7
+      || spec.equalToughness === true /* edh-next-126 */ || spec.differentControllers === true || spec.sameController === true || spec.perCardType === true || spec.perQuality !== undefined; // CLOUD std-tmt, std-rx30, std-cardcopy-7, edh-e-64
     if (!usesDistinct && !limited) {
       // Without distinctFrom the choice of one spec never limits another: only the count matters.
       chosen.set(spec.id, all.slice(0, range.min));

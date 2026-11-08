@@ -8,7 +8,7 @@
  */
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { ApiRequestError, apiGet } from '../api/http';
-import { filterNames, gameCardNames, namesMatching } from './cardNames';
+import { cardKindLabel, filterNames, gameCardNames, namesMatching, type CardKind } from './cardNames';
 import { usePrimary } from './keys';
 import type { CardNameSearch, PromptProps } from './types';
 import { PromptActions } from './PromptActions';
@@ -36,7 +36,7 @@ function searchError(e: unknown): string {
   return 'The OpenMTG server could not be reached.';
 }
 
-function useCardSearch(query: string, enabled: boolean, kind?: 'land' | 'nonland' | 'creature'): SearchResult {
+function useCardSearch(query: string, enabled: boolean, kind?: CardKind): SearchResult {
   const search = useContext(CardNameSearchContext);
   const [result, setResult] = useState<SearchResult>({ state: 'idle', names: [], complete: true });
   useEffect(() => {
@@ -85,7 +85,7 @@ export function ChooseNamePrompt({ d, view, answer, busy }: PromptProps<'chooseN
   return (
     <>
       <label className="prompt-field">
-        Search {d.what === 'cardName' && d.cardKind !== undefined ? `a ${d.cardKind} card name` : WHAT[d.what] ?? 'a name'}
+        Search {d.what === 'cardName' && d.cardKind !== undefined ? cardKindLabel(d.cardKind) : WHAT[d.what] ?? 'a name'}
         <input
           type="search"
           aria-label="Search names"

@@ -41,6 +41,9 @@ export const DOUBLE_EACH_KIND: ActionMacro = { name: 'doubleEachKind', rule: 'CR
  */
 export const ANOTHER_OF_EACH_KIND: ActionMacro = { name: 'anotherOfEachKind', rule: 'CR 701.34a', native: 'anotherOfEachKind' };
 
+/** edh-e-67 (CR 122.1, 122.6): for each kind of counter on the subject, its controller's choice of one more counter of that kind or one removed; run by actions-native-counters.ts. */
+export const ADD_OR_REMOVE_EACH_KIND: ActionMacro = { name: 'addOrRemoveEachKind', rule: 'CR 122.1', native: 'addOrRemoveEachKind' };
+
 /** CR 701.38a: each player votes, starting with a specified player and proceeding in turn order; only votes for objects (`subject`) are run. */
 export const VOTE: ActionMacro = { name: 'vote', rule: 'CR 701.38a', native: 'vote' };
 

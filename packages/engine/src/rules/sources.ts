@@ -4,7 +4,7 @@
  * produce when activated. Activating a source adds ALL its units to the pool, but for the solver
  * each unit is an independent provider (an unused extra unit just floats, which is always harmless).
  */
-import type { ManaRestriction } from '../types/ability';
+import type { ManaRestriction, ObjectFilter } from '../types/ability';
 import type { ObjectId, PlayerId } from '../types/ids';
 import type { ManaSymbol, ManaType } from '../types/mana';
 import { castOriginOf, type GameObject, type GameState } from '../types/state';
@@ -56,7 +56,8 @@ export const anyTypeSpend = (spend: SpendContext | undefined): boolean => spend?
  * std-rx32 (CR 609.4b): the solver options a payment has: `anyType` (above) and `anyColor`, "you may spend mana as though it were mana of any color to activate
  * abilities of creatures you control" (an ability's `SpendContext.anyColor`, set by actions/activate.ts): a colored symbol may be paid with any mana.
  */
-export const spendOptions = (spend: SpendContext | undefined, everywhere = false): { anyType?: boolean; anyColor?: boolean; anyColorWith?: string } => ({
+export const spendOptions = (spend: SpendContext | undefined, everywhere = false, spendAs: readonly { from: ManaType; to: ManaType }[] = []): { anyType?: boolean; anyColor?: boolean; anyColorWith?: string; spendAs?: readonly { from: ManaType; to: ManaType }[] } => ({
+  ...(spendAs.length > 0 ? { spendAs } : {}), // edh-e-51 (CR 609.4b; Sunglasses of Urza): the player's "spend white mana as though it were red mana", for every payment
   // edh-next-140 (CR 609.4b; Quicksilver Elemental): "you may spend blue mana as though it were mana of any color to pay the activation costs of this creature's abilities" (an ability's
   // `SpendContext.anyColorWith`, set by actions/activate.ts via statics/play-permits.ts#staticAnyColorWithForAbility)
   ...(spend?.kind === 'ability' && spend.anyColorWith !== undefined && spend.anyColor !== true && !everywhere ? { anyColorWith: spend.anyColorWith } : {}),
@@ -107,12 +108,39 @@ export function spendTarget(s: GameState, player: PlayerId, spend: SpendContext 
  * every other payment, an unknown context included (every spell is cast with a 'spell' context: actions/cast.ts; the other payments are abilities, special
  * actions and costs effects ask for, CR 118.12). Every other restriction lists what the mana CAN pay for, and an unknown context spends none of it.
  */
-export function spendAllows(s: GameState, player: PlayerId, spend: SpendContext | undefined): (r: ManaRestriction, manaSource: ObjectId | undefined) => boolean {
+export type SpendAllows = ((r: ManaRestriction, manaSource: ObjectId | undefined) => boolean) & {
+  /**
+   * edh-e-51 (CR 601.2h, 106.6; Myr Superion, Imperiosaur): present when the spell being cast says "Spend only mana produced by <sources> to cast this spell": may mana made by this
+   * source (undefined: unknown) pay for it? Every unit of mana is asked, with or without a restriction of its own (rules/sources.ts#manaSourcesIn, #buildProviders).
+   */
+  sourceOk?: (manaSource: ObjectId | undefined) => boolean;
+};
+
+/**
+ * edh-e-51 (CR 601.2h, 106.6): the source descriptions the spell `spend` is for allows its mana to come from (one `spendManaOnlyFrom` rule of the card per entry; all must hold). Read
+ * from the card's own abilities, in whatever zone it is (a static ability of the spell, not of a permanent): empty for an ability's or a special action's payment, or no such rule.
+ */
+export function spellOnlyFrom(s: GameState, spend: SpendContext | undefined, target: () => { o: GameObject; chars?: Chars } | undefined): (ObjectFilter | null)[] {
+  if (spend?.kind !== 'spell') return [];
+  const card = s.objects[spend.id];
+  // cheap first: a card whose printed faces carry no such rule (nearly every card) is not read any further
+  if (card === undefined || !s.defs[card.defId]?.faces.some((f) => f.abilities.some((a) => a.kind === 'static' && a.effects.some((e) => e.s === 'rule' && e.rule === 'spendManaOnlyFrom')))) return [];
+  const t = target();
+  if (t === undefined) return [];
+  const out: (ObjectFilter | null)[] = [];
+  for (const a of (t.chars ?? charsOfObject(s, t.o)).abilities) {
+    if (a.def.kind !== 'static') continue;
+    for (const e of a.def.effects) if (e.s === 'rule' && e.rule === 'spendManaOnlyFrom') out.push(e.of ?? null); // a rule with no description allows nothing (fail closed)
+  }
+  return out;
+}
+
+export function spendAllows(s: GameState, player: PlayerId, spend: SpendContext | undefined): SpendAllows {
   // The object the mana pays for and its characteristics, read once per payment check (spendTarget).
   let target: { o: GameObject; chars?: Chars } | undefined | null = null;
   const objectOf = (): { o: GameObject; chars?: Chars } | undefined => (target !== null ? target : (target = spendTarget(s, player, spend)));
   const memo = new Map<string, boolean>();
-  return (r, manaSource) => {
+  const fn: SpendAllows = (r, manaSource) => {
     const key = `${manaSource ?? ''}|${JSON.stringify(r)}`;
     const hit = memo.get(key);
     if (hit !== undefined) return hit;
@@ -138,6 +166,24 @@ export function spendAllows(s: GameState, player: PlayerId, spend: SpendContext 
     memo.set(key, allowed);
     return allowed;
   };
+  // edh-e-51: a spell that limits the sources of the mana paying for it (read once per payment check; only a spell cast has any)
+  if (spend?.kind === 'spell') {
+    const only = spellOnlyFrom(s, spend, objectOf);
+    if (only.length > 0) {
+      fn.sourceOk = (manaSource) => {
+        if (manaSource === undefined) return false; // unknown: fail closed
+        const now = s.objects[manaSource];
+        // a source that left the battlefield (a creature sacrificed for its mana) is read as it last existed there (CR 608.2h, 400.7; review finding)
+        const lki = now !== undefined && now.zone === 'battlefield' ? undefined : s.lki[manaSource];
+        const src = lki !== undefined ? (lki.leftZone === 'battlefield' ? lki.object : undefined) : now?.zone === 'battlefield' ? now : undefined;
+        if (src === undefined) return false;
+        const ctx = filterCtxOutside(s, { controller: player, sourceId: src.id });
+        const withChars = lki?.chars ? { ...ctx, chars: lki.chars } : ctx;
+        return only.every((f) => f !== null && matchesFilter(s, src, { ...f, zone: 'any' }, withChars));
+      };
+    }
+  }
+  return fn;
 }
 
 /**
@@ -198,6 +244,7 @@ function manaSourcesIn(s: GameState, player: PlayerId, exclude?: ReadonlySet<Obj
   for (const id of s.zones.battlefield) {
     const o = s.objects[id];
     if (!o || o.controller !== player || exclude?.has(id)) continue;
+    if (allows.sourceOk && !allows.sourceOk(id)) continue; // edh-e-51: the spell takes only mana from other sources
     const modes: ManaMode[] = [];
     for (const info of activatedAbilities(s, o)) {
       // FAST5X E5: only abilities whose cost is {T}, {Q} or "Sacrifice ~" are ordinary sources; the others are `extraManaModes` (below). "Activate only as a
@@ -294,11 +341,12 @@ function onlyType(src: ManaSource): ManaType | null {
  * Providers for the solver: floating mana first, then every source unit. `onlyPool` restricts the floating mana to those
  * pool indices (the player chose which units to spend, CR 601.2h).
  */
-export function buildProviders(sources: ManaSource[], pool: readonly { type: ManaType; snow?: boolean; restriction?: ManaRestriction; sourceId?: ObjectId }[], onlyPool?: ReadonlySet<number>, allows?: (r: ManaRestriction, manaSource: ObjectId | undefined) => boolean): Provider[] {
+export function buildProviders(sources: ManaSource[], pool: readonly { type: ManaType; snow?: boolean; restriction?: ManaRestriction; sourceId?: ObjectId }[], onlyPool?: ReadonlySet<number>, allows?: SpendAllows): Provider[] {
   const out: Provider[] = [];
   pool.forEach((u, i) => {
     // Mana with a spending restriction is spent only where it allows (CR 106.6); without a context (`allows`) it is never used.
     if ((u.restriction && !(allows && allows(u.restriction, u.sourceId))) || (onlyPool && !onlyPool.has(i))) return;
+    if (allows?.sourceOk && !allows.sourceOk(u.sourceId)) return; // edh-e-51: mana of a source the spell can't take mana from
     // Snow mana is kept when other mana of the same type pays as well (a later {S} needs it, CR 107.4h).
     out.push({ id: out.length, options: [u.type], snow: u.snow === true, cost: u.snow ? 1 : 0, poolIndex: i, ...(u.restriction?.notGeneric === true ? { noGeneric: true as const } : {}) });
   });
@@ -434,6 +482,7 @@ function extraManaModesIn(s: GameState, player: PlayerId, exclude?: ReadonlySet<
   for (const id of s.zones.battlefield) {
     const o = s.objects[id];
     if (!o || o.controller !== player || exclude?.has(id)) continue;
+    if (allows.sourceOk && !allows.sourceOk(id)) continue; // edh-e-51
     let c: ReturnType<typeof charsOfObject> | undefined;
     for (const info of activatedAbilities(s, o)) {
       if (!info.def.isMana) continue;

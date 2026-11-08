@@ -148,6 +148,12 @@ export const SUPPORTED: readonly string[] = [
   'ev.action.foretell', // edh-d-73 (CR 702.143a): effects/handlers/foretell-ops.ts emits `actionPerformed` 'foretell' for the player who foretold a card
   'ev.action.connive', // edh-next-33 (CR 701.50a): the connive macro (keywords/actions/library.ts) ends with op reportAction 'connive' for the creature
   'ev.action.discard.by', // edh-next-132 (CR 701.9a, 109.5): normalize.ts carries the controller of the effect that made the player discard (`by`), match.ts reads it
+  'ev.dieRoll.visit', // edhe34 (CR 701.52a): the die rolled to visit Attractions is marked (core/dice.ts), match.ts reads it
+  'ev.dieRoll.nth', // edhe34 (CR 706.2, 603.2c): normalize.ts numbers the dice a player rolled this turn (turnStats.diceRolled), match.ts reads it
+  'ev.attacks.withOtherAtLeast', // edh-d-109 (CR 508.1, 603.2c): at least N other declared attackers of a description (match.ts reads normalize.ts's declared ids)
+  'ev.blocks.attackerAtLeast', // edh-d-109 (CR 509.3a): normalize.ts carries how many attackers a blocker was declared blocking (`blockingCount`), match.ts reads it
+  'ev.damage.toSourceOwner', // edh-d-109 (CR 120.1, 108.3): the damaged player owns the source (match.ts)
+  'ev.attacks.withOtherDifferentPlayer', // edh-d-109 (CR 508.1b, 506.2): the other declared attacker attacks another player (match.ts reads the combat's attackers)
 ];
 
 const isQuantityCmp = (c: NumberCmp | undefined): boolean => c !== undefined && typeof c.value !== 'number';
@@ -195,6 +201,7 @@ export function eventPatternForms(p: EventPattern): string[] {
       // FAST5X E18 (CR 601.2i): counted from the history, so the spell filter must be one the history facts answer (rules/history.ts#historyPatternForms)
       if (p.anyCaster === true) out.push('feature:ev.cast.nthAnyCaster'); // edh-next-91 (CR 601.2i)
       if (p.nthMatching === true) out.push('feature:ev.cast.nthMatching', ...historyPatternForms({ ev: 'cast', ...(p.spell ? { spell: p.spell } : {}) }));
+      if (p.nthMatching === true && p.from !== undefined) out.push('feature:ev.cast.nthMatching.from'); // edhe32 (CR 601.2i): the count is of the spells cast from that zone (triggers/match.ts#nthMatchingOf)
       break;
     case 'abilityTriggered': if (p.causedBy === 'entering') out.push('feature:ev.abilityTriggered.entering'); break; // edh-next-74 (CR 603.6a)
     case 'beginTurn': if (p.extra !== undefined) out.push('feature:ev.beginTurn.extra'); break;
@@ -214,12 +221,17 @@ export function eventPatternForms(p: EventPattern): string[] {
       if (p.orPlaneswalker !== undefined) out.push('feature:ev.attacks.orPlaneswalker'); // M12-3 (CR 506.3, 508.1b)
       if (p.defending !== undefined) out.push('feature:ev.attacks.defending'); // edh-combat-1 (CR 508.5)
       if (p.withOther !== undefined) out.push('feature:ev.attacks.withOther'); // edh-combat-5 (CR 508.1)
+      if (p.withOtherAtLeast !== undefined) out.push('feature:ev.attacks.withOtherAtLeast'); // edh-d-109 (CR 508.1, 603.2c)
+      if (p.withOtherDifferentPlayer !== undefined) out.push('feature:ev.attacks.withOtherDifferentPlayer'); // edh-d-109 (CR 508.1b, 506.2)
       if (p.allAttack !== undefined) out.push('feature:ev.attacks.allAttack'); // edh-c-83 (CR 508.1, 603.2c)
       if (p.otherThanAttacker !== undefined) out.push('feature:ev.attacks.otherThanAttacker'); // edh-players-20 (CR 506.2, 508.1b)
       if (p.power !== undefined) out.push(isQuantityCmp(p.power) ? 'feature:ev.cmp.quantity' : 'feature:ev.attacks.power'); // Standard round 3, r3-trig (CR 508.1)
       break;
     case 'becomesBlocked':
       if (p.byAtLeast !== undefined) out.push('feature:ev.becomesBlocked.byAtLeast'); // edh-c-48 (CR 509.3e)
+      break;
+    case 'blocks':
+      if (p.attackerAtLeast !== undefined) out.push('feature:ev.blocks.attackerAtLeast'); // edh-d-109 (CR 509.3a)
       break;
     case 'damage':
       if (isQuantityCmp(p.amount)) out.push('feature:ev.cmp.quantity');
@@ -228,13 +240,15 @@ export function eventPatternForms(p: EventPattern): string[] {
       if (p.toSourceTarget !== undefined) out.push('feature:ev.damage.toSourceTarget'); // std-rx28 (CR 115.9b)
       if (p.sourcePermanent !== undefined) out.push('feature:ev.damage.sourcePermanent'); // edh-zones-19 (CR 109.2)
       if (p.toOtherThanSourceController !== undefined) out.push('feature:ev.damage.toOtherThanSourceController'); // edhd63 (CR 120.1, 109.4)
+      if (p.toSourceOwner !== undefined) out.push('feature:ev.damage.toSourceOwner'); // edh-d-109 (CR 120.1, 108.3)
+      if (p.toDefendingPlayer !== undefined) out.push('feature:ev.damage.toDefendingPlayer'); // edh-e-49 (CR 506.2, 510.2)
       break;
     case 'life':
       if (isQuantityCmp(p.amount)) out.push('feature:ev.cmp.quantity');
       if (p.fromDamage !== undefined) out.push('feature:ev.life.fromDamage'); // edh-players-3 (CR 120.3a)
       if (p.totalAmount !== undefined) out.push('feature:ev.life.totalAmount'); // edh-players-20 (CR 119.3, 603.2c)
       break;
-    case 'dieRoll': if (isQuantityCmp(p.result)) out.push('feature:ev.cmp.quantity'); break;
+    case 'dieRoll': if (isQuantityCmp(p.result)) out.push('feature:ev.cmp.quantity'); if (p.nth !== undefined) out.push('feature:ev.dieRoll.nth'); if (p.visit === true) out.push('feature:ev.dieRoll.visit'); break; // edhe34
     case 'counters':
       if (p.atLeast !== undefined && typeof p.atLeast !== 'number') out.push('feature:ev.cmp.quantity');
       if (p.byController !== undefined) out.push('feature:ev.counters.byController'); // edhn63 (CR 122.6)

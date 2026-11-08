@@ -1,0 +1,215 @@
+[
+  {
+    "id": "sta.edhe34.cast.graveyard.asLongAs.exileInstead",
+    "kind": "static",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 601.3",
+      "CR 404.1",
+      "CR 614.1a",
+      "CR 706.2"
+    ],
+    "pattern": "you may cast ~ from your graveyard as long as {c:Cond} . if you cast it this way and it would be put into your graveyard , exile it instead",
+    "build": {
+      "kind": "static",
+      "zone": [
+        "graveyard"
+      ],
+      "condition": "$c",
+      "effects": [
+        {
+          "s": "permit",
+          "who": {
+            "ref": "you"
+          },
+          "action": "cast",
+          "of": {
+            "self": true
+          },
+          "from": "graveyard",
+          "graveyardInstead": {
+            "to": {
+              "zone": "exile"
+            },
+            "yours": true
+          }
+        }
+      ]
+    },
+    "consumes": [
+      "as long as",
+      "may",
+      "if",
+      "would",
+      "instead",
+      "this way"
+    ],
+    "examples": [
+      {
+        "text": "You may cast ~ from your graveyard as long as you control a green permanent. If you cast it this way and it would be put into your graveyard, exile it instead."
+      },
+      {
+        "text": "You may cast ~ from your graveyard as long as you've gained life this turn. If you cast it this way and it would be put into your graveyard, exile it instead."
+      }
+    ],
+    "counterExamples": [
+      "You may cast ~ from your graveyard as long as you control a green permanent. If you cast it this way and it would be put into your graveyard, return it to your hand instead.",
+      "You may cast ~ from exile as long as you control a green permanent. If you cast it this way and it would be put into your graveyard, exile it instead."
+    ]
+  },
+  {
+    "id": "eff.edhe34.rollToVisit",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 701.52a",
+      "CR 706.1",
+      "CR 706.2"
+    ],
+    "pattern": "roll to visit your Attractions",
+    "build": {
+      "op": "rollDie",
+      "who": {
+        "ref": "you"
+      },
+      "sides": 6,
+      "visit": true
+    },
+    "subject": "none",
+    "examples": [
+      {
+        "text": "When ~ enters, you may roll to visit your Attractions."
+      },
+      {
+        "text": "{2}, {T}: Roll to visit your Attractions."
+      }
+    ],
+    "counterExamples": [
+      "When ~ enters, roll to visit target player's Attractions.",
+      "When ~ enters, roll to visit your Attractions twice.",
+      "When ~ enters, roll to visit."
+    ]
+  },
+  {
+    "id": "eff.edhe34.reorderGraveyard.atRandom",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 404.2",
+      "CR 701.24a"
+    ],
+    "pattern": "reorder your graveyard at random",
+    "build": {
+      "op": "shuffle",
+      "who": {
+        "ref": "you"
+      },
+      "reorderGraveyard": "random"
+    },
+    "subject": "none",
+    "needs": [
+      "op:shuffle.reorderGraveyard"
+    ],
+    "examples": [
+      {
+        "text": "Reorder your graveyard at random. Draw a card."
+      },
+      {
+        "text": "Gain 2 life, then reorder your graveyard at random."
+      }
+    ],
+    "counterExamples": [
+      "Reorder target player's graveyard at random.",
+      "Reorder your library at random.",
+      "Reorder your graveyard in any way."
+    ],
+    "consumes": [
+      "random"
+    ]
+  },
+  {
+    "id": "eff.edhe34.reorderGraveyard.asYouChoose",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 404.2",
+      "CR 701.24a"
+    ],
+    "pattern": "reorder your graveyard as you choose",
+    "build": {
+      "op": "shuffle",
+      "who": {
+        "ref": "you"
+      },
+      "reorderGraveyard": "chosen"
+    },
+    "subject": "none",
+    "needs": [
+      "op:shuffle.reorderGraveyard"
+    ],
+    "examples": [
+      {
+        "text": "Draw a card, then reorder your graveyard as you choose."
+      },
+      {
+        "text": "Reorder your graveyard as you choose. Draw a card."
+      }
+    ],
+    "counterExamples": [
+      "Reorder target player's graveyard at random.",
+      "Reorder your library at random.",
+      "Reorder your graveyard in any way."
+    ]
+  },
+  {
+    "id": "eff.edhe34.anOpponentChooses.randomInYourGraveyard",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 608.2d",
+      "CR 404.1",
+      "CR 400.7"
+    ],
+    "pattern": "an opponent chooses ( a | one ) card at random in your graveyard",
+    "build": {
+      "op": "chooseObjects",
+      "who": {
+        "ref": "anOpponent"
+      },
+      "from": {
+        "ref": "each",
+        "filter": {
+          "zone": "graveyard",
+          "owner": "you",
+          "isCard": true
+        }
+      },
+      "min": 1,
+      "max": 1,
+      "random": true,
+      "as": "chosen"
+    },
+    "subject": "none",
+    "consumes": [
+      "random"
+    ],
+    "examples": [
+      {
+        "text": "An opponent chooses a card at random in your graveyard. If it's a land card, put it onto the battlefield. Otherwise, put it into your hand."
+      },
+      {
+        "text": "Draw a card. An opponent chooses a card at random in your graveyard. If it's a creature card, put it onto the battlefield. Otherwise, exile it."
+      }
+    ],
+    "counterExamples": [
+      "An opponent chooses a card in your graveyard. If it's a land card, put it onto the battlefield.",
+      "An opponent chooses a card at random in their graveyard. If it's a land card, put it onto the battlefield.",
+      "An opponent chooses a card at random in your hand. If it's a land card, put it onto the battlefield."
+    ]
+  }
+]

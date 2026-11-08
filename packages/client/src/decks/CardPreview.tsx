@@ -5,7 +5,9 @@
  * is credited to its artist under the picture.
  */
 import { useMemo, type ComponentType, type Ref } from 'react';
-import type { CardDetailResponse, CardSummary, ManualPart } from '@openmtg/server/api';
+import type { CardDetailResponse, CardSummary, ManualPart, PrintingRef } from '@openmtg/server/api';
+import { withPrinting } from '../images/printings';
+import { printingLabel } from './model';
 import { AutomationBadge, Card, ManaCost, PartialWarning, SymbolText, modelFromSummary } from '../cards';
 import { keywordReminders } from './keywords';
 
@@ -14,14 +16,17 @@ export interface CardViewProps {
   card: CardSummary;
   /** Face index (0 = front). */
   face?: number;
+  /** deck-art-1: the printing the deck chose (its picture is shown). */
+  printing?: PrintingRef;
 }
 
 /**
  * C2's card for a search result or deck card, at its large size and without the hover zoom (the preview is the zoom); the badge is drawn by the preview
  * itself. A Scryfall picture is credited to its artist under it (the side shown, the "Back" toggle included).
  */
-export function DeckCardView({ card, face = 0 }: CardViewProps) {
-  const model = useMemo(() => modelFromSummary(card), [card]);
+export function DeckCardView({ card, face = 0, printing }: CardViewProps) {
+  const base = useMemo(() => modelFromSummary(card), [card]);
+  const model = withPrinting(base, printing);
   return <Card card={model} face={face} badge={false} size="large" zoom={false} credit />;
 }
 
@@ -48,6 +53,8 @@ export function CardPreview({
   floating = false,
   cardView: View = DeckCardView,
   sectionRef,
+  printing,
+  onPickPrinting,
 }: {
   card: CardSummary;
   detail?: CardDetailResponse;
@@ -61,12 +68,16 @@ export function CardPreview({
   cardView?: ComponentType<CardViewProps>;
   /** The preview region (the deckbuilder scrolls it into view and focuses it). */
   sectionRef?: Ref<HTMLElement>;
+  /** deck-art-1: the deck's chosen printing of this card, shown and named. */
+  printing?: PrintingRef;
+  /** deck-art-1: open the printing picker (a card of the deck). */
+  onPickPrinting?: () => void;
 }) {
   const reminders = useMemo(() => keywordReminders(card), [card]);
   return (
     <section className={`card-preview${floating ? ' card-preview-floating' : ''}`} aria-label="Card preview" tabIndex={-1} ref={sectionRef}>
       <div className="card-preview-art">
-        <View card={card} face={0} />
+        <View card={card} face={0} {...(printing ? { printing } : {})} />
       </div>
       <div className="card-preview-info">
         {card.faces.map((f, i) => (
@@ -120,8 +131,14 @@ export function CardPreview({
             </ul>
           </div>
         )}
-        {!floating && (onUseAsCover || onClose) && (
+        {printing && <p className="muted card-preview-printing">Printing {printingLabel(printing)}</p>}
+        {!floating && (onUseAsCover || onClose || onPickPrinting) && (
           <p className="card-preview-actions">
+            {onPickPrinting && (
+              <button type="button" onClick={onPickPrinting}>
+                Choose printing
+              </button>
+            )}
             {onUseAsCover && (
               <button type="button" onClick={onUseAsCover} disabled={isCover}>
                 {isCover ? 'Deck cover' : 'Use as deck cover'}

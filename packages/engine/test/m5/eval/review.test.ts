@@ -115,7 +115,10 @@ describe('design 5.2, D2: a history capability is advertised only together with 
       'filter:wasBlockedThisTurn' /* edh-c-18: "each creature that blocked or was blocked this turn", CR 509.1h */,
       'filter:controllerDealtCombatDamageBy' /* edh-next-134: Admiral Beckett Brass, N or more different sources this turn, CR 120.1, 510.2 */,
       'filter:foughtThisTurn' /* edh-next-139: Boxing Ring, "a creature that fought this turn", CR 701.14 */,
-      'filter:putThereThisCombat' /* edh-next-116: "put there from the battlefield this combat", CR 400.7 */].sort()); // FAST3 T14: dealtDamageBySourceThisTurn
+      'filter:putThereThisCombat' /* edh-next-116: "put there from the battlefield this combat", CR 400.7 */,
+      'filter:blockedWithThisTurn' /* edh-e-20: block pairs of this turn (Defiant Vanguard), CR 509.1h */,
+      'filter:dealtNoncombatDamageThisTurn' /* edh-e-50: "dealt noncombat damage this turn", CR 120.1 */,
+      'filter:enteredSinceYourLastTurn' /* edh-e-27: "entered since your last turn ended", CR 400.7, 500.1 */].sort()); // FAST3 T14: dealtDamageBySourceThisTurn
   });
   it('each is in ENGINE_CAPABILITIES if and only if feature:history is (WP8 writes GameState.history and registered both)', () => {
     for (const n of names) expect(ENGINE_CAPABILITIES.has(n), n).toBe(ENGINE_CAPABILITIES.has('feature:history'));

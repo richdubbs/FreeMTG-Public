@@ -179,8 +179,8 @@ func _draw() -> void:
 	if _face == null:
 		_face = cover if cover != null else sleeve_for(colors)
 	if _face != null:
-		var uv := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
-		draw_polygon(PackedVector2Array(front), PackedColorArray([Color(1, 1, 1, alpha)]), uv, _face)
+		TiltedPicture.draw(self, _face, func(uv: Vector2) -> Vector2: return p.call(Vector3(lerpf(-hw, hw, uv.x), lerpf(-hh, hh, uv.y), -hd)),
+			Color(1, 1, 1, alpha))
 	else:
 		_quad(front, Color(0.03, 0.05, 0.1))
 	draw_polyline(PackedVector2Array(front + [front[0]]), Color(neon, 0.55), 1.5, true)

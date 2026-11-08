@@ -1,0 +1,350 @@
+[
+  {
+    "id": "eff.edhe37.eachPlayer.putFromGraveyard.mvAtMost.bf",
+    "kind": "effect",
+    "since": 37,
+    "status": "stable",
+    "cr": [
+      "CR 101.4",
+      "CR 608.2d",
+      "CR 608.2e",
+      "CR 110.2a",
+      "CR 400.7",
+      "CR 202.3"
+    ],
+    "pattern": "each player puts ( a | an ) {f:Filter} card with mana value {n:Qty} or less from their graveyard onto the battlefield",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "iterating"
+        },
+        "perPlayer": {
+          "ref": "each",
+          "who": "player"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "anyOf": [
+              "$f"
+            ],
+            "zone": "graveyard",
+            "owner": {
+              "ref": "iterating"
+            },
+            "isCard": true,
+            "manaValue": {
+              "op": "<=",
+              "value": "$n"
+            }
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "as": "put"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "bound",
+          "name": "put"
+        },
+        "to": {
+          "zone": "battlefield",
+          "controller": "owner"
+        }
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "each"
+    ],
+    "examples": [
+      {
+        "text": "When ~ enters, each player puts an artifact card with mana value 2 or less from their graveyard onto the battlefield."
+      },
+      {
+        "text": "Each player puts a Goblin card with mana value 4 or less from their graveyard onto the battlefield."
+      }
+    ],
+    "counterExamples": [
+      "Each player may put a creature card with mana value 3 or less from their graveyard onto the battlefield.",
+      "Each opponent puts a creature card with mana value 3 or less from their graveyard onto the battlefield.",
+      "Each player puts a creature card with mana value 3 or less from their hand onto the battlefield.",
+      "Each player puts a creature card with mana value 3 or greater from their graveyard onto the battlefield."
+    ]
+  },
+  {
+    "id": "eff.edhe37.player.chooses.cardInTheirGraveyard",
+    "kind": "effect",
+    "since": 37,
+    "status": "stable",
+    "subject": "player",
+    "weak": 1,
+    "cr": [
+      "CR 608.2d",
+      "CR 101.4",
+      "CR 109.4"
+    ],
+    "pattern": "{p:Player} choose[s] ( a | an ) {f:Filter} card in their graveyard",
+    "build": {
+      "op": "chooseObjects",
+      "who": "$p",
+      "from": {
+        "ref": "each",
+        "filter": {
+          "anyOf": [
+            "$f"
+          ],
+          "isCard": true,
+          "zone": "graveyard",
+          "owner": "$p"
+        }
+      },
+      "min": 1,
+      "max": 1,
+      "as": "chosen"
+    },
+    "consumes": [
+      "their"
+    ],
+    "examples": [
+      {
+        "text": "Target opponent chooses a Zombie card in their graveyard. Put that card onto the battlefield under your control."
+      },
+      {
+        "text": "Target player chooses an artifact card in their graveyard. Put that card onto the battlefield under your control."
+      }
+    ],
+    "counterExamples": [
+      "Target opponent chooses a creature card in your graveyard. Put that card onto the battlefield under your control.",
+      "Target opponent chooses two creature cards in their graveyard. Put those cards onto the battlefield under your control.",
+      "Target opponent chooses a creature card in their hand. Put that card onto the battlefield under your control."
+    ]
+  },
+  {
+    "id": "eff.edhe37.mayAssignUnblocked.self.thisTurn",
+    "kind": "effect",
+    "since": 37,
+    "status": "stable",
+    "cr": [
+      "CR 510.1b",
+      "CR 510.1c",
+      "CR 609.4",
+      "CR 611.2a"
+    ],
+    "pattern": "you may have ~ assign its combat damage this turn as though it weren't blocked",
+    "build": {
+      "op": "may",
+      "who": {
+        "ref": "you"
+      },
+      "do": [
+        {
+          "op": "effect",
+          "duration": {
+            "d": "endOfTurn"
+          },
+          "effects": [
+            {
+              "s": "permit",
+              "who": {
+                "ref": "you"
+              },
+              "action": "assignAsUnblocked",
+              "of": {
+                "is": {
+                  "ref": "self"
+                }
+              },
+              "mandatory": true
+            }
+          ]
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "may",
+      "as though",
+      "its",
+      "it"
+    ],
+    "examples": [
+      {
+        "text": "{1}: You may have ~ assign its combat damage this turn as though it weren't blocked."
+      },
+      {
+        "text": "{T}: You may have ~ assign its combat damage this turn as though it weren't blocked."
+      }
+    ],
+    "counterExamples": [
+      "{2}: You may have ~ assign its combat damage as though it weren't blocked.",
+      "{2}: You may have target creature assign its combat damage this turn as though it weren't blocked.",
+      "{2}: You may have ~ assign its combat damage this turn as though it had trample."
+    ]
+  },
+  {
+    "id": "eff.edhe37.return.greatestPower.fromYourGraveyard.hand",
+    "kind": "effect",
+    "since": 37,
+    "status": "stable",
+    "cr": [
+      "CR 608.2d",
+      "CR 608.2c",
+      "CR 400.3",
+      "CR 208.1"
+    ],
+    "pattern": "return to your hand the {f:Filter} card in your graveyard with the greatest power",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "anyOf": [
+              "$f"
+            ],
+            "zone": "graveyard",
+            "owner": "you",
+            "isCard": true,
+            "power": {
+              "op": "==",
+              "value": {
+                "q": "stat",
+                "stat": "power",
+                "of": {
+                  "ref": "each",
+                  "filter": {
+                    "anyOf": [
+                      "$f"
+                    ],
+                    "zone": "graveyard",
+                    "owner": "you",
+                    "isCard": true
+                  }
+                },
+                "agg": "max"
+              }
+            }
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "as": "chosen"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "bound",
+          "name": "chosen"
+        },
+        "to": {
+          "zone": "hand"
+        }
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "the"
+    ],
+    "examples": [
+      {
+        "text": "When ~ enters, return to your hand the Goblin card in your graveyard with the greatest power. If two or more cards are tied for greatest power, you choose one of them."
+      },
+      {
+        "text": "Return to your hand the artifact card in your graveyard with the greatest power. If two or more cards are tied for greatest power, you choose one of them."
+      }
+    ],
+    "counterExamples": [
+      "Return to your hand the creature card in your graveyard with the least power. If two or more cards are tied for least power, you choose one of them.",
+      "Return to your hand the creature card in an opponent's graveyard with the greatest power. If two or more cards are tied for greatest power, you choose one of them.",
+      "Return to your hand the creature card in your graveyard with the greatest power."
+    ]
+  },
+  {
+    "id": "eff.edhe37.tiedGreatestPower.youChoose",
+    "kind": "effect",
+    "since": 37,
+    "status": "stable",
+    "cr": [
+      "CR 608.2d",
+      "CR 608.2c"
+    ],
+    "pattern": "if two or more cards are tied for greatest power , you choose one of them",
+    "build": [],
+    "subject": "none",
+    "consumes": [
+      "if",
+      "tied",
+      "two or more",
+      "one of them",
+      "them"
+    ],
+    "examples": [
+      {
+        "text": "Return to your hand the artifact card in your graveyard with the greatest power. If two or more cards are tied for greatest power, you choose one of them."
+      },
+      {
+        "text": "When ~ enters, return to your hand the Goblin card in your graveyard with the greatest power. If two or more cards are tied for greatest power, you choose one of them."
+      }
+    ],
+    "counterExamples": [
+      "Return to your hand the artifact card in your graveyard with the greatest power. If two or more cards are tied for least power, you choose one of them.",
+      "Return to your hand the artifact card in your graveyard with the greatest power. If two or more cards are tied for greatest power, an opponent chooses one of them.",
+      "If three or more cards are tied for greatest power, you choose one of them."
+    ]
+  },
+  {
+    "id": "eff.edhe37.thatControllerReturnsSelf.ownersGraveyard.bf",
+    "kind": "effect",
+    "since": 37,
+    "status": "stable",
+    "cr": [
+      "CR 303.4g",
+      "CR 303.4f",
+      "CR 400.3",
+      "CR 110.2a",
+      "CR 603.10a"
+    ],
+    "pattern": "that creature 's controller returns ~ from its owner 's graveyard to the battlefield",
+    "build": {
+      "op": "move",
+      "what": {
+        "ref": "self"
+      },
+      "to": {
+        "zone": "battlefield",
+        "controller": {
+          "ref": "controllerOf",
+          "object": {
+            "ref": "event",
+            "role": "subject"
+          }
+        }
+      }
+    },
+    "subject": "none",
+    "consumes": [
+      "that creature",
+      "its"
+    ],
+    "examples": [
+      {
+        "text": "When enchanted creature leaves the battlefield, that creature's controller returns ~ from its owner's graveyard to the battlefield. Draw a card."
+      },
+      {
+        "text": "When enchanted creature leaves the battlefield, that creature's controller returns ~ from its owner's graveyard to the battlefield. You gain 2 life."
+      }
+    ],
+    "counterExamples": [
+      "When enchanted creature leaves the battlefield, that creature's controller returns this Aura from its owner's graveyard to their hand.",
+      "When enchanted creature leaves the battlefield, you return this Aura from your graveyard to the battlefield.",
+      "When enchanted creature leaves the battlefield, that creature's controller returns another Aura from its owner's graveyard to the battlefield."
+    ]
+  }
+]

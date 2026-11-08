@@ -1,0 +1,412 @@
+[
+ {
+  "id": "eff.edhe36.permit.play.duringTurnAttackedWithSelf",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 611.2c",
+   "CR 508.1a",
+   "CR 305.1",
+   "CR 601.3",
+   "CR 400.7"
+  ],
+  "pattern": "during any turn you attacked with ~ , you may play {o:Obj}",
+  "build": {
+   "op": "effect",
+   "duration": {
+    "d": "permanent"
+   },
+   "effects": [
+    {
+     "s": "permit",
+     "who": {
+      "ref": "you"
+     },
+     "action": "play",
+     "of": {
+      "is": "$o"
+     },
+     "while": {
+      "cond": "happened",
+      "event": {
+       "ev": "attacks",
+       "attacker": {
+        "is": {
+         "ref": "self"
+        },
+        "controller": "you"
+       }
+      },
+      "scope": "turn"
+     }
+    }
+   ]
+  },
+  "subject": "none",
+  "consumes": [
+   "any",
+   "during",
+   "may"
+  ],
+  "examples": [
+   {
+    "text": "Whenever ~ deals combat damage to a player, exile the top card of your library. During any turn you attacked with ~, you may play that card."
+   },
+   {
+    "text": "{2}, {T}: Exile the top card of your library. During any turn you attacked with ~, you may play that card."
+   }
+  ],
+  "counterExamples": [
+   "When ~ enters, exile the top card of your library. During any turn you attacked with ~, you may cast that card.",
+   "When ~ enters, exile the top card of your library. During any turn an opponent attacked with ~, you may play that card.",
+   "When ~ enters, exile the top card of your library. During any turn you attacked with ~ or blocked with ~, you may play that card."
+  ]
+ },
+ {
+  "id": "eff.edhe36.permit.play.duringTurnAttackedWithN",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 611.2c",
+   "CR 508.1a",
+   "CR 305.1",
+   "CR 601.3",
+   "CR 400.7",
+   "CR 508.1"
+  ],
+  "pattern": "during any turn you attacked with {n:Count} or more {f:Filter} , you may play {o:Obj}",
+  "build": {
+   "op": "effect",
+   "duration": {
+    "d": "permanent"
+   },
+   "effects": [
+    {
+     "s": "permit",
+     "who": {
+      "ref": "you"
+     },
+     "action": "play",
+     "of": {
+      "is": "$o"
+     },
+     "while": {
+      "cond": "happened",
+      "event": {
+       "ev": "attacks",
+       "attacker": {
+        "anyOf": [
+         "$f"
+        ],
+        "controller": "you"
+       }
+      },
+      "scope": "turn",
+      "times": {
+       "op": ">=",
+       "value": "$n"
+      }
+     }
+    }
+   ]
+  },
+  "subject": "none",
+  "consumes": [
+   "any",
+   "during",
+   "may"
+  ],
+  "examples": [
+   {
+    "text": "Whenever ~ attacks, exile the top card of your library. During any turn you attacked with two or more creatures, you may play that card."
+   },
+   {
+    "text": "Whenever ~ attacks, exile the top card of your library. During any turn you attacked with four or more Goblins, you may play that card."
+   }
+  ],
+  "counterExamples": [
+   "Whenever ~ attacks, exile the top card of your library. During any turn you attacked with two or more creatures, you may cast that card.",
+   "Whenever ~ attacks, exile the top card of your library. During any turn you attacked with two creatures, you may play that card.",
+   "Whenever ~ attacks, exile the top card of your library. During any turn an opponent attacked with two or more creatures, you may play that card."
+  ]
+ },
+ {
+  "id": "eff.edhe36.choose.cardExiledWithSelf",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 607.2a",
+   "CR 608.2c",
+   "CR 608.2d"
+  ],
+  "pattern": "choose a card exiled with ~",
+  "build": [
+   {
+    "op": "chooseObjects",
+    "who": {
+     "ref": "you"
+    },
+    "from": {
+     "ref": "each",
+     "filter": {
+      "is": {
+       "ref": "linked",
+       "link": "exiled"
+      },
+      "zone": "exile"
+     }
+    },
+    "min": 1,
+    "max": 1,
+    "as": "chosen"
+   }
+  ],
+  "consumes": [],
+  "examples": [
+   {
+    "text": "{2}, {T}: Exile the top card of your library.\n{2}: Choose a card exiled with ~. You may play that card this turn."
+   },
+   {
+    "text": "{3}, {T}: Target player exiles a card from their hand.\n{2}: Choose a card exiled with ~. You may play that card this turn."
+   }
+  ],
+  "counterExamples": [
+   "{2}, {T}: Exile the top card of your library.\n{1}: Choose a card exiled with ~ this turn. You may play that card this turn.",
+   "{2}, {T}: Exile the top card of your library.\n{1}: Choose a card exiled with another permanent. You may play that card this turn.",
+   "{2}, {T}: Exile the top card of your library.\n{1}: Choose two cards exiled with ~. You may play those cards this turn."
+  ]
+ },
+ {
+  "id": "sta.edhe36.selfHas.asLongAsExiledCardHas.sameFor",
+  "kind": "static",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 607.2a",
+   "CR 613.1f",
+   "CR 702.14",
+   "CR 702.9a"
+  ],
+  "pattern": "~ has {k:Abilities} as long as a card exiled with it has {k2:Abilities} . the same is true for {a:Abilities}",
+  "build": {
+   "kind": "static",
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": {
+      "ref": "self"
+     },
+     "mods": [
+      {
+       "layer": 6,
+       "keywordsOf": {
+        "ref": "linked",
+        "link": "exiled"
+       },
+       "keywordsFirst": "$k",
+       "keywordsAmong": "$a"
+      }
+     ]
+    }
+   ]
+  },
+  "consumes": [
+   "has",
+   "long",
+   "same"
+  ],
+  "examples": [
+   {
+    "text": "{2}, {T}: Exile target creature card from a graveyard.\n~ has flying as long as a card exiled with it has flying. The same is true for reach, trample, and vigilance."
+   },
+   {
+    "text": "{3}, {T}: Exile target creature card from an opponent's graveyard.\n~ has haste as long as a card exiled with it has haste. The same is true for first strike and menace."
+   }
+  ],
+  "counterExamples": [
+   "{2}, {T}: Exile target creature card from a graveyard.\n~ has flying as long as a card exiled with it has reach. The same is true for trample and vigilance.",
+   "{2}, {T}: Exile target creature card from a graveyard.\n~ has flying as long as all cards exiled with it have flying. The same is true for reach and trample.",
+   "{2}, {T}: Exile target creature card from a graveyard.\n~ has flying as long as a card exiled with it has flying. The same is true for creature spells and trample."
+  ]
+ },
+ {
+  "id": "sta.edhe36.asLongAsExiledCardHas.selfHas.sameFor",
+  "kind": "static",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 607.2a",
+   "CR 613.1f",
+   "CR 702.14",
+   "CR 702.9a"
+  ],
+  "pattern": "as long as a card exiled with ~ has {k:Abilities} , ~ has {k2:Abilities} . the same is true for {a:Abilities}",
+  "build": {
+   "kind": "static",
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": {
+      "ref": "self"
+     },
+     "mods": [
+      {
+       "layer": 6,
+       "keywordsOf": {
+        "ref": "linked",
+        "link": "exiled"
+       },
+       "keywordsFirst": "$k",
+       "keywordsAmong": "$a"
+      }
+     ]
+    }
+   ]
+  },
+  "consumes": [
+   "has",
+   "long",
+   "same"
+  ],
+  "examples": [
+   {
+    "text": "{2}, {T}: Exile target creature card from a graveyard.\nAs long as a card exiled with ~ has flying, ~ has flying. The same is true for reach, trample, and vigilance."
+   },
+   {
+    "text": "{3}, {T}: Exile target creature card from an opponent's graveyard.\nAs long as a card exiled with ~ has haste, ~ has haste. The same is true for first strike and menace."
+   }
+  ],
+  "counterExamples": [
+   "{2}, {T}: Exile target creature card from a graveyard.\nAs long as a card exiled with ~ has flying, ~ has reach. The same is true for trample and vigilance.",
+   "{2}, {T}: Exile target creature card from a graveyard.\nAs long as all cards exiled with ~ have flying, ~ has flying. The same is true for reach and trample.",
+   "{2}, {T}: Exile target creature card from a graveyard.\nAs long as a card exiled with ~ has flying, another creature has flying. The same is true for reach and trample."
+  ]
+ },
+ {
+  "id": "sta.edhe36.self.has.allActivatedOf.creatureCardsExiledWith",
+  "kind": "static",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 613.1f",
+   "CR 607.2a",
+   "CR 602.1"
+  ],
+  "pattern": "~ has all activated abilities of all creature cards exiled with ( it | ~ )",
+  "build": {
+   "kind": "static",
+   "effects": [
+    {
+     "s": "continuous",
+     "affects": {
+      "ref": "self"
+     },
+     "mods": [
+      {
+       "layer": 6,
+       "addActivatedOf": {
+        "ref": "each",
+        "filter": {
+         "types": [
+          "Creature"
+         ],
+         "zone": "exile",
+         "is": {
+          "ref": "linked",
+          "link": "exiled"
+         }
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "consumes": [
+   "all"
+  ],
+  "examples": [
+   {
+    "text": "{2}{B}: Exile target creature card from a graveyard.\n~ has all activated abilities of all creature cards exiled with ~."
+   },
+   {
+    "text": "{3}, {T}: Exile target creature card from an opponent's graveyard.\n~ has all activated abilities of all creature cards exiled with ~."
+   }
+  ],
+  "counterExamples": [
+   "{2}{B}: Exile target creature card from a graveyard.\n~ has all activated abilities of all artifact cards exiled with it.",
+   "{2}{B}: Exile target creature card from a graveyard.\n~ has all activated abilities of all creature cards exiled with another creature.",
+   "{2}{B}: Exile target creature card from a graveyard.\n~ has all triggered abilities of all creature cards exiled with it."
+  ]
+ },
+ {
+  "id": "eff.edhe36.permit.cast.duringTurnAttackedWith.anyColor",
+  "kind": "effect",
+  "since": 9,
+  "status": "stable",
+  "cr": [
+   "CR 611.2c",
+   "CR 508.1a",
+   "CR 601.3",
+   "CR 609.4b",
+   "CR 506.3",
+   "CR 400.7"
+  ],
+  "pattern": "during any turn you attacked with {f:Filter} , you may cast {o:Obj} and you may spend mana as though it were mana of any color to cast that spell",
+  "build": {
+   "op": "effect",
+   "duration": {
+    "d": "permanent"
+   },
+   "effects": [
+    {
+     "s": "permit",
+     "who": {
+      "ref": "you"
+     },
+     "action": "cast",
+     "of": {
+      "is": "$o"
+     },
+     "anyManaColor": true,
+     "while": {
+      "cond": "happened",
+      "event": {
+       "ev": "attacks",
+       "attacker": {
+        "anyOf": [
+         "$f"
+        ],
+        "controller": "you"
+       }
+      },
+      "scope": "turn"
+     }
+    }
+   ]
+  },
+  "subject": "none",
+  "consumes": [
+   "any",
+   "as though",
+   "during",
+   "may"
+  ],
+  "examples": [
+   {
+    "text": "Whenever ~ attacks, exile the top card of your library. During any turn you attacked with a Pirate, you may cast that card and you may spend mana as though it were mana of any color to cast that spell."
+   },
+   {
+    "text": "Whenever ~ attacks, exile the top card of target opponent's library. During any turn you attacked with a token, you may cast that card and you may spend mana as though it were mana of any color to cast that spell."
+   }
+  ],
+  "counterExamples": [
+   "Whenever ~ attacks, exile the top card of your library. During any turn you attacked with a Pirate, you may play that card and you may spend mana as though it were mana of any color to cast that spell.",
+   "Whenever ~ attacks, exile the top card of your library. During any turn an opponent attacked with a Pirate, you may cast that card and you may spend mana as though it were mana of any color to cast that spell.",
+   "Whenever ~ attacks, exile the top card of your library. During any turn you attacked with a Pirate, you may cast that card."
+  ]
+ }
+]

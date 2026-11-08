@@ -150,6 +150,23 @@ export function colorTest(input: string, defaultOp: '>=' | '<='): ((m: number) =
   }
 }
 
+/**
+ * How many colors a card has outside the searched ones (the colors filter's letters), so that a search for "BR" lists the black-red cards before
+ * those that also need a third color, and those before the four- and five-color ones. Null when the filter names no color (colorless, or none).
+ */
+export function colorsOutside(input: string): ((m: number) => number) | null {
+  const m = /^\s*(<=|>=|!=|<|>|=)?\s*([wubrgcWUBRGC]+)\s*$/.exec(input);
+  if (!m) return null;
+  const letters = [...new Set(m[2]!.toUpperCase())];
+  if (letters.includes('C')) return null;
+  const want = mask(letters as Color[]);
+  return (c) => {
+    let n = 0;
+    for (let rest = c & ~want; rest; rest &= rest - 1) n++;
+    return n;
+  };
+}
+
 function positiveInt(v: string | undefined, fallback: number, max: number, name: string): number | string {
   if (v === undefined || v === '') return fallback;
   if (!/^\d+$/.test(v)) return `${name} must be a positive whole number`;

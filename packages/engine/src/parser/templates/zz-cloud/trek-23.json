@@ -1,0 +1,187 @@
+[
+  {
+    "id": "eff.trek23.player.looksAtYourTopCard.thenExilesFaceDown",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 701.20e",
+      "CR 406.3",
+      "CR 608.2c"
+    ],
+    "pattern": "{p:Player} looks at the top card of your library , then exiles it face down",
+    "build": [
+      {
+        "op": "look",
+        "who": "$p",
+        "at": {
+          "ref": "topCards",
+          "player": {
+            "ref": "you"
+          },
+          "count": 1
+        },
+        "as": "seen"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "bound",
+          "name": "seen"
+        },
+        "to": {
+          "zone": "exile",
+          "faceDown": true
+        },
+        "by": "$p"
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "then"
+    ],
+    "examples": [
+      {
+        "text": "When ~ enters, target opponent looks at the top card of your library, then exiles it face down."
+      },
+      {
+        "text": "{2}, {T}: Target opponent looks at the top card of your library, then exiles it face down. Draw a card."
+      }
+    ],
+    "counterExamples": [
+      "When ~ enters, target opponent looks at the top card of your library, then exiles it.",
+      "When ~ enters, target opponent looks at the top two cards of your library, then exiles it face down.",
+      "When ~ enters, target opponent looks at the top card of your graveyard, then exiles it face down."
+    ]
+  },
+  {
+    "id": "eff.trek23.you.lookTheirTopN.thenExileFaceDown",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 701.20e",
+      "CR 406.3",
+      "CR 608.2c"
+    ],
+    "pattern": "you look at the top {n:Qty} cards of their library , then exile them face down",
+    "build": [
+      {
+        "op": "look",
+        "who": {
+          "ref": "you"
+        },
+        "at": {
+          "ref": "topCards",
+          "player": {
+            "ref": "bound",
+            "name": "",
+            "$anaphor": {
+              "sort": "player",
+              "number": "plural",
+              "text": "their"
+            }
+          },
+          "count": "$n"
+        },
+        "as": "seenTheirs"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "bound",
+          "name": "seenTheirs"
+        },
+        "to": {
+          "zone": "exile",
+          "faceDown": true
+        },
+        "by": {
+          "ref": "you"
+        }
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "then"
+    ],
+    "examples": [
+      {
+        "text": "Target opponent loses 2 life. You look at the top two cards of their library, then exile them face down."
+      },
+      {
+        "text": "When ~ enters, target opponent draws a card. You look at the top three cards of their library, then exile them face down."
+      }
+    ],
+    "counterExamples": [
+      "Target opponent loses 2 life. You look at the top two cards of their library, then exile them.",
+      "Target opponent loses 2 life. You look at the top two cards of their graveyard, then exile them face down.",
+      "Target opponent loses 2 life. You reveal the top two cards of their library, then exile them face down."
+    ]
+  },
+  {
+    "id": "eff.trek23.eachExiled.exilerMayPlay.dur",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 608.2c",
+      "CR 611.2a",
+      "CR 611.2b",
+      "CR 601.3",
+      "CR 305.1",
+      "CR 400.7"
+    ],
+    "pattern": "for each card exiled this way , the player who exiled it may play it {d:Dur}",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "permit",
+          "who": {
+            "ref": "each",
+            "who": "player"
+          },
+          "action": "play",
+          "of": {
+            "is": {
+              "ref": "bound",
+              "name": "",
+              "$anaphor": {
+                "sort": "set",
+                "number": "plural",
+                "participle": "exiled this way",
+                "text": "exiled this way",
+                "every": true
+              }
+            }
+          },
+          "exiledByOnly": true
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "each",
+      "may",
+      "this way"
+    ],
+    "examples": [
+      {
+        "text": "Target opponent looks at the top card of your library, then exiles it face down. You look at the top three cards of their library, then exile them face down. For each card exiled this way, the player who exiled it may play it for as long as it remains exiled."
+      },
+      {
+        "text": "{2}{U}, {T}: Target opponent looks at the top card of your library, then exiles it face down. For each card exiled this way, the player who exiled it may play it this turn."
+      }
+    ],
+    "counterExamples": [
+      "Target opponent looks at the top card of your library, then exiles it face down. For each card exiled this way, the player who exiled it may look at it for as long as it remains exiled.",
+      "Target opponent looks at the top card of your library, then exiles it face down. For each card exiled this way, the player who exiled it may play it.",
+      "Target opponent looks at the top card of your library, then exiles it face down. For each card exiled this way, its owner may play it for as long as it remains exiled.",
+      "Each opponent looks at the top card of your library, then exiles it face down. For each card exiled this way, the player who exiled it may play it for as long as it remains exiled.",
+      "Target opponent looks at the top card of your library, then exiles it face down. For each card exiled this way, the player who exiled it may play it until the end of their next turn.",
+      "Up to one target opponent looks at the top card of your library, then exiles it face down. For each card exiled this way, the player who exiled it may play it this turn."
+    ]
+  }
+]

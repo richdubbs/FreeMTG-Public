@@ -82,7 +82,7 @@ const textOf = (step: EffectStep, fallback: string): string => step.span ?? fall
 /** edh-next-121: a guard on "You may roll again." (a player who never declines); far above any real game. */
 const MAX_ROLL_AGAIN = 1000;
 
-export const OP_FORMS: readonly string[] = ['op:rollDie.countQty', 'op:rollDie.modifier', 'op:rollDie.chooseOne', 'op:rollDie.afterRoll' /* edh-mana-keywords-10 */, 'op:rollDie.highest' /* edh-top-16 */, 'op:rollDie.keepHighest' /* edh-d-49 */, 'op:rollDie.again' /* edh-next-121 */, 'op:flipCoin.untilLose', 'op:flipCoin.mayStop' /* edh-next-129 */, 'op:flipCoin.stakes' /* edh-next-129 */, 'op:flipCoin.called', 'op:flipCoin.onTails' /* edh-d-20 */, 'op:extraTurn.skipUntap' /* edh-next-46 */, 'op:controlPlayer.thenExtraTurn' /* edh-next-119 */, 'op:flipCoin.times' /* edh-next-128 */];
+export const OP_FORMS: readonly string[] = ['op:rollDie.countQty', 'op:rollDie.modifier', 'op:rollDie.chooseOne', 'op:rollDie.afterRoll' /* edh-mana-keywords-10 */, 'op:rollDie.highest' /* edh-top-16 */, 'op:rollDie.keepHighest' /* edh-d-49 */, 'op:rollDie.again' /* edh-next-121 */, 'op:rollDie.visit' /* edhe34 */, 'op:flipCoin.untilLose', 'op:flipCoin.mayStop' /* edh-next-129 */, 'op:flipCoin.stakes' /* edh-next-129 */, 'op:flipCoin.called', 'op:flipCoin.onTails' /* edh-d-20 */, 'op:extraTurn.skipUntap' /* edh-next-46 */, 'op:controlPlayer.thenExtraTurn' /* edh-next-119 */, 'op:flipCoin.times' /* edh-next-128 */];
 
 /** The most flips "until you lose a flip" makes before it is handed to the player (a fair coin never gets there; a guard only). */
 const MAX_FLIPS_UNTIL_LOSE = 200;
@@ -282,6 +282,7 @@ export const GAME_HANDLERS: OpHandlers = {
     const modifier = step.modifier === undefined ? 0 : evalQty(cx, step.modifier);
     if (n === undefined || !Number.isInteger(sides) || sides < 1 || !Number.isInteger(n) || n < 0 || (table.length > 0 && (players.length !== 1 || (n !== 1 && step.keepHighest !== true)))
       || (step.keepHighest === true && (players.length !== 1 || step.chooseOne === true || step.highest !== undefined || step.modifier !== undefined)) // edh-d-49: the dice of one roller, nothing else to choose or add
+      || (step.visit === true && (sides !== 6 || n !== 1 || players.length !== 1 || table.length > 0 || step.keepHighest === true || step.chooseOne === true || step.modifier !== undefined)) // edhe34 (CR 701.52a): roll to visit is one six-sided die of one player
       || modifier === undefined || !Number.isInteger(modifier) || (step.modifier !== undefined && (players.length !== 1 || n !== 1)) // a modifier is for the one die of one roller (CR 706.2)
       || (step.chooseOne === true && (players.length !== 1 || n < 2))
       || (step.highest !== undefined && (n !== 1 || table.length > 0 || step.chooseOne === true || step.modifier !== undefined))) { // edh-top-16: one die each, no table
@@ -297,7 +298,7 @@ export const GAME_HANDLERS: OpHandlers = {
       // p2-c-dieroll-1 (CR 706.6, 614.1a, unverified): "instead roll that many dice plus one and ignore the lowest roll" (statics/hooks.ts#diceAdvantage); the kept rolls count
       const byPlayer = new Map<PlayerId, number>(); // edh-top-16 (CR 706.2): the result of each player, for "the highest result" (one die each)
       // edh-d-49 (CR 706.2, 706.6; Iron Mastiff): roll `n` dice and ignore all but the highest (n - 1 more ignored beside the lowest of diceAdvantage): one kept roll
-      for (const p of players) for (const r of n > 0 ? (step.keepHighest === true ? rollDice(cx.g, p, sides, 1, n - 1 + diceAdvantage(cx.g.s, p), 0, rollHook(cx.g, p, sides)) : rollDice(cx.g, p, sides, n, diceAdvantage(cx.g.s, p), modifier, rollHook(cx.g, p, sides))) : []) { results.push(r.result); total += r.result; byPlayer.set(p, r.result); } // CR 706.2: the result is the natural result after the modifiers (and after the roller's own "after you roll" options, edh-d-49)
+      for (const p of players) for (const r of n > 0 ? (step.keepHighest === true ? rollDice(cx.g, p, sides, 1, n - 1 + diceAdvantage(cx.g.s, p), 0, rollHook(cx.g, p, sides)) : rollDice(cx.g, p, sides, n, diceAdvantage(cx.g.s, p), modifier, rollHook(cx.g, p, sides), step.visit === true)) : []) { results.push(r.result); total += r.result; byPlayer.set(p, r.result); } // CR 706.2: the result is the natural result after the modifiers (and after the roller's own "after you roll" options, edh-d-49)
       if (players.length === 1) { // edh-mana-keywords-10 (CR 706.2): every die's result, for "each even result" and "rolled 6 exactly seven times"
         cx.vars.set(DICE_COUNT_VAR, results.length);
         results.forEach((r, i) => cx.vars.set(`${DICE_RESULT_PREFIX}${i}`, r));
@@ -355,6 +356,7 @@ export const GAME_HANDLERS: OpHandlers = {
     if ((step.onWin !== undefined || step.onLose !== undefined) && coins !== 1) return askManual(cx, textOf(step, 'flip coins'), 'a coin flip with win or lose instructions flips one coin');
     let won = 0;
     let heads = 0;
+    const sides: { heads: PlayerId[]; tails: PlayerId[] } = { heads: [], tails: [] }; // edh-e-62 (CR 705.2): who's coin came up which way, for `{ref:'coinSide'}`
     for (const p of players) {
       // r4-mech (CR 705.1-705.2, 614.1a): the first instruction this turn by which p flips coins, under "those coins come up heads and you win those flips"
       const stats = g.player(p).turnStats;
@@ -366,11 +368,13 @@ export const GAME_HANDLERS: OpHandlers = {
           won++;
           flipped++;
           heads++;
+          sides.heads.push(p);
           if (step.onWin && step.onWin.length > 0) runSteps(cx, step.onWin);
           continue;
         }
         if (step.onTails !== undefined) {
           const side = flipCoin(g, p, undefined, false, 2 ** coinAdvantage(g.s, p) - 1).side; // (no call: nobody wins or loses it; Krark's Thumb still flips more coins and ignores one)
+          (side === 'heads' ? sides.heads : sides.tails).push(p);
           if (side === 'heads') heads++;
           else runSteps(cx, step.onTails);
           continue;
@@ -382,6 +386,7 @@ export const GAME_HANDLERS: OpHandlers = {
           }).ids[0] as 'heads' | 'tails'
           : undefined;
         const flip = flipCoin(g, p, call, false, 2 ** coinAdvantage(g.s, p) - 1); // (n Thumbs: each flip of the one before is doubled again, ruling 2019-01-25, so 2^n coins; core/dice.ts flips and emits
+        (flip.side === 'heads' ? sides.heads : sides.tails).push(p);
         if (flip.side === 'heads') heads++;
         if (call === undefined) continue;
         flipped++;
@@ -396,7 +401,7 @@ export const GAME_HANDLERS: OpHandlers = {
     // edh-d-28 (CR 705.1, 705.2; Two-Headed Giant): the step's count is the flips won only when the step's own instructions or a later count call them ("for each flip you win", `called`); a flip called only
     // because the source watches flips ("whenever you win a coin flip") still reports the coins that came up heads
     const countsWins = (step.onWin?.length ?? 0) > 0 || (step.onLose?.length ?? 0) > 0 || step.called === true;
-    return { performed: players.length > 0 && (step.times === undefined || coins > 0), count: countsWins ? won : heads, ...(step.called === true ? { lost: flipped - won } : {}) };
+    return { performed: players.length > 0 && (step.times === undefined || coins > 0), count: countsWins ? won : heads, ...(step.called === true ? { lost: flipped - won } : {}), ...(step.as !== undefined && coins === 1 && step.times === undefined ? { coinSides: sides } : {}) };
   },
 
   /**

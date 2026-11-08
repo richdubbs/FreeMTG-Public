@@ -128,7 +128,10 @@ function whoseMatches(pred: PlayerPred | undefined, player: PlayerId, controller
 
 /** "Until end of turn" (CR 514.2) and "until end of combat" (CR 500.5a): the simple forms, which the step code ends with its own filter for the legacy records. */
 export function expireSimple(g: Game, d: 'endOfTurn' | 'endOfCombat'): void {
-  const ids = new Set(lastings(g).filter((x) => x.duration.d === d).map((x) => x.id));
+  // edh-d-104 (CR 611.2a, 500.5a): "until end of combat on your next turn", armed as that turn began (lastTurnBegins), ends at the end of the turn's first combat phase, or in its
+  // cleanup step when the turn had none
+  const armed = (x: Lasting): boolean => x.duration.d === 'endOfCombatNextTurn' && x.duration.turn === g.s.turn.number;
+  const ids = new Set(lastings(g).filter((x) => x.duration.d === d || armed(x)).map((x) => x.id));
   if (ids.size === 0) return;
   // The continuous effects of this form are also removed by core/steps.ts (both the legacy and the typed records); this removes the delayed triggers and chips.
   expire(g, ids, d === 'endOfTurn' ? 'until end of turn' : 'until end of combat', [d === 'endOfTurn' ? 'CR 514.2' : 'CR 500.5a']);
@@ -169,7 +172,7 @@ export function expireAtLeaversTurn(g: Game, leaver: PlayerId): void {
     const d = x.duration;
     if (d.d === 'untilNextTurn') return (playersOfRef(d.whose) ?? [x.controller]).includes(leaver);
     // edh-cast-7 (CR 800.4m, 611.2a; Single Combat ruling 2019-05-03): "until the end of your next turn" of a player who left lasts until their next turn would have begun
-    if (d.d === 'endOfNextTurn') return (playersOfRef(d.whose) ?? [x.controller]).includes(leaver);
+    if (d.d === 'endOfNextTurn' || d.d === 'endOfCombatNextTurn') return (playersOfRef(d.whose) ?? [x.controller]).includes(leaver); // edh-d-104: the same for its combat form
     if (d.d === 'untilNextStep' || d.d === 'throughNextUntap') return d.whose !== undefined && whoseMatches(d.whose, leaver, x.controller);
     return false;
   };
@@ -186,6 +189,13 @@ export function expireAtLeaversTurn(g: Game, leaver: PlayerId): void {
 function lastTurnBegins(g: Game, active: PlayerId): void {
   const due = (d: Duration | undefined, controller: PlayerId): boolean => d?.d === 'endOfNextTurn' && (playersOfRef(d.whose) ?? [controller]).includes(active);
   const END: Duration = { d: 'endOfTurn' };
+  // edh-d-104 (CR 611.2a, 500.5a): "until end of combat on your next turn": armed with this turn's number (expireSimple ends it at the end of this turn's first combat phase)
+  const turn0 = g.s.turn.number;
+  const dueCombat = (d: Duration | undefined, controller: PlayerId): boolean => d?.d === 'endOfCombatNextTurn' && d.turn === undefined && (playersOfRef(d.whose) ?? [controller]).includes(active);
+  const arm = (d: Duration): Duration => ({ ...d, turn: turn0 } as Duration);
+  if (g.s.continuousEffects.some((e) => dueCombat(e.duration, e.controller))) g.s.continuousEffects = g.s.continuousEffects.map((e) => (dueCombat(e.duration, e.controller) ? { ...e, duration: arm(e.duration) } : e));
+  if (g.s.delayedTriggers.some((d) => dueCombat(d.duration, d.controller))) g.s.delayedTriggers = g.s.delayedTriggers.map((d) => (dueCombat(d.duration, d.controller) ? { ...d, duration: arm(d.duration!) } : d));
+  if (g.s.reminders.some((r) => dueCombat(r.until, r.controller))) g.s.reminders = g.s.reminders.map((r) => (dueCombat(r.until, r.controller) ? { ...r, until: arm(r.until) } : r));
   if (g.s.continuousEffects.some((e) => due(e.duration, e.controller))) {
     g.s.continuousEffects = g.s.continuousEffects.map((e) => (due(e.duration, e.controller) ? { ...e, duration: END } : e));
   }
@@ -244,13 +254,23 @@ export function expireAfterUntapStep(g: Game, active: PlayerId): void {
     const o = g.s.objects[h.id];
     return o && o.zone === h.zone ? h.id : '';
   };
-  const ids = new Set(lastings(g).filter((x) => {
+  const hit = new Set(lastings(g).filter((x) => {
     const d = x.duration;
     if (d.d !== 'throughNextUntap') return false;
     if (d.whose !== undefined) return whoseMatches(d.whose, active, x.controller);
     const id = objectOf(x.id);
     return id === null || id === '' || g.s.objects[id]!.controller === active;
   }).map((x) => x.id));
+  // edh-e-25 (CR 502.3, 611.2a; Telekinesis): "doesn't untap during its controller's next two untap steps": each untap step it applies in uses up one step; it ends with the last
+  const more = new Set(g.s.continuousEffects.filter((e) => hit.has(e.id) && e.duration.d === 'throughNextUntap' && (e.duration.steps ?? 1) > 1).map((e) => e.id));
+  if (more.size > 0) {
+    g.s.continuousEffects = g.s.continuousEffects.map((e) => {
+      if (!more.has(e.id) || e.duration.d !== 'throughNextUntap') return e;
+      const { steps, ...rest } = e.duration;
+      return { ...e, duration: (steps ?? 1) - 1 > 1 ? { ...rest, steps: (steps ?? 1) - 1 } : rest };
+    });
+  }
+  const ids = new Set([...hit].filter((id) => !more.has(id)));
   expire(g, ids, `${g.player(active).name}'s untap step ends`, ['CR 502.3', 'CR 611.2a']);
 }
 

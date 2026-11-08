@@ -249,7 +249,9 @@ function givenPiles(cx: ExecCtx, st: Step<'piles'>, second: ObjRef, firstHandles
   }
   const [chooser] = playersOf(cx, st.chooser); // "An opponent chooses one of those piles.": the opponent is chosen as that instruction is followed, after the turn (CR 608.2c)
   if (chooser === undefined) return none();
-  const label = (i: number): string => (i === up || up === -1 && seenByAll(g, piles[i]!.map((h) => h.id), allPlayers(g)) ? `Pile ${i + 1}: ${names(i)}` : `Pile ${i + 1}: ${count(piles[i]!.length)} face down`);
+  // edhe35 (CR 700.3, 406.3, Abstract Performance): a pile exiled face down stays hidden from the chooser unless every player has seen it (a face-up pile exiled with it is shown)
+  const open = (i: number): boolean => seenByAll(g, piles[i]!.map((h) => h.id), allPlayers(g)) && piles[i]!.every((h) => g.s.objects[h.id]?.faceDown !== true || allPlayers(g).every((p) => (g.s.objects[h.id]?.revealedTo ?? []).includes(p)));
+  const label = (i: number): string => (i === up || up === -1 && open(i) ? `Pile ${i + 1}: ${names(i)}` : `Pile ${i + 1}: ${count(piles[i]!.length)} face down`);
   const pick = g.choose({
     kind: 'chooseOption', player: chooser, prompt: 'Choose a pile.', min: 1, max: 1,
     options: [{ id: 'pile1', label: label(0) }, { id: 'pile2', label: label(1) }], rules: ['CR 608.2d'],

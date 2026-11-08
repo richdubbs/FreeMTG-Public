@@ -92,7 +92,9 @@ function unenforcedWhy(r: RestrictionDef): string | undefined {
   const you = r.atLeastOne === true && r.otherPlayer !== undefined && r.otherPlayer.ref === 'you' && Object.keys(r.otherPlayer).length === 1;
   // edh-d-85 (CR 119.1, 508.1d; Galactus): or "an opponent with the most life among your opponents", read as attackers are declared (statics/match.ts#playersOf)
   const mostLife = r.otherPlayer !== undefined && r.otherPlayer.ref === 'mostLife' && r.otherPlayer.who === 'opponent' && Object.keys(r.otherPlayer).length === 2;
-  if (r.otherPlayer !== undefined && (!(REQUIREMENT_PLAYER_ACTIONS as readonly string[]).includes(r.action) || (r.otherPlayer.ref !== 'fixed' && !opponents && !you && !mostLife))) return "the player it names can't be evaluated";
+  // edh-e-49 (CR 303.4, 508.1d; Public Enemy): or "enchanted creature's controller", the controller of the permanent the source Aura is attached to now (statics/match.ts#playersOf)
+  const enchantedController = r.otherPlayer !== undefined && r.otherPlayer.ref === 'controllerOf' && r.otherPlayer.object.ref === 'attachedTo' && Object.keys(r.otherPlayer).length === 2 && Object.keys(r.otherPlayer.object).length === 1;
+  if (r.otherPlayer !== undefined && (!(REQUIREMENT_PLAYER_ACTIONS as readonly string[]).includes(r.action) || (r.otherPlayer.ref !== 'fixed' && !opponents && !you && !mostLife && !enchantedController))) return "the player it names can't be evaluated";
   if (r.max !== undefined) return 'it has a limit';
   if (r.when !== undefined && !staticallyEvaluable(r.when)) return "its condition can't be evaluated";
   return undefined;
@@ -195,7 +197,8 @@ function sourceHits(s: GameState, action: RequirementAction, subjects: readonly 
       }
       if (e.otherPlayer !== undefined && why === undefined) {
         // M6-12: the player it must attack (CR 508.1d: "attacks that opponent"), one still in the game (CR 800.4a: a player who left can't be attacked)
-        among = [...(among ?? []), ...playersOf(cx, e.otherPlayer).filter((p) => s.players.some((x) => x.id === p && !x.hasLost))];
+        // edh-e-49 (CR 508.1d, 506.2; Public Enemy): never its own controller (a creature can't attack its controller, so the requirement can't be obeyed for it and is not counted)
+        among = [...(among ?? []), ...playersOf(cx, e.otherPlayer).filter((p) => s.players.some((x) => x.id === p && !x.hasLost) && (action !== 'attack' || p !== s.objects[id]?.controller))];
       }
       if (among !== undefined && among.length === 0) continue; // CR 508.1d, 509.1c: a requirement that can't be obeyed is not counted
       out.push({

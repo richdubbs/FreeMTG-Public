@@ -132,7 +132,7 @@ export const FACE_OPS: ChangeFaceTable = { faceUp, faceDown, manifest: manifestP
 export const FACE_NATIVE_FEATURES: readonly string[] = [
   'action.native.manifest', 'action.native.cloak', 'action.native.manifestDread',
   // FAST5X E25 (model/cap-walk.ts#stepForms): "manifest dread X times" (CR 701.62a, `n`); "shuffle that pile, then cloak them" (CR 701.58e, `arg: 'shuffle'`)
-  'action.manifestDread.n', 'action.cloak.shuffle', 'action.manifest.shuffle' /* edh-d-39 (CR 701.40a, 701.24a): "exile them in a face-down pile, shuffle that pile, then manifest those cards" */,
+  'action.manifestDread.n', 'action.cloak.shuffle', 'action.faceDown.tapped' /* edh-e-4 (CR 614.1c): "They enter tapped." */, 'action.manifest.shuffle' /* edh-d-39 (CR 701.40a, 701.24a): "exile them in a face-down pile, shuffle that pile, then manifest those cards" */,
   // edh-mana-keywords-12 (CR 708.2a; model/cap-walk.ts): a face-down permanent with set characteristics ("It's a Forest land.", FaceDownSet)
   'faceDown.set',
 ];
@@ -143,12 +143,12 @@ const RULE: Record<'manifest' | 'cloak', string> = { manifest: 'CR 701.40a', clo
  * Put one card onto the battlefield face down under `player`'s control as a manifested (or cloaked) permanent (CR 701.40a, 701.58a). The card is named only to
  * `player` (who controls it and may look at it, CR 708.5). Null when it was not manifested (CR 701.40f: it stays where it was).
  */
-export function manifestCard(cx: ExecCtx, player: PlayerId, h: ObjHandle, by: 'manifest' | 'cloak', profile: FaceDownProfile): ObjHandle | null {
+export function manifestCard(cx: ExecCtx, player: PlayerId, h: ObjHandle, by: 'manifest' | 'cloak', profile: FaceDownProfile, tapped = false): ObjHandle | null {
   const g = cx.g;
   const card = g.s.objects[h.id];
   if (!card || card.kind !== 'card' || card.zone !== h.zone) return null;
   const known = realName(g, card);
-  const m = proposeMove(cx, h, 'battlefield', { controller: player, faceDown: true, faceDownInfo: { by, profile }, cause: by });
+  const m = proposeMove(cx, h, 'battlefield', { controller: player, faceDown: true, faceDownInfo: { by, profile }, cause: by, ...(tapped ? { tapped: true } : {}) });
   const who = g.player(player).name;
   const verb = by === 'manifest' ? 'manifests' : 'cloaks';
   if (!m.ok || !m.to || m.to.zone !== 'battlefield' || !g.s.objects[m.to.id]?.faceDown) {
@@ -184,6 +184,8 @@ function topCards(by: 'manifest' | 'cloak', profile: FaceDownProfile): StepHandl
     const manual = modifiedByManualText(g, MODIFIES_MANIFEST);
     if (manual) return askManual(cx, textOf(st, by), `${by} is changed by text the engine does not run (${manual})`);
     const made: ObjHandle[] = [];
+    // edh-e-4: `tapped` is run only for the cards a subject stands for ("..., then cloak those cards. They enter tapped."); a cloak of the top cards ignores it, so it is done by hand
+    if (st.tapped === true && st.subject === undefined) return askManual(cx, textOf(st, by), `the engine does not run "enter tapped" for the top cards of a library`);
     if (st.arg !== undefined && st.subject === undefined) return askManual(cx, textOf(st, by), `the engine does not run "${st.arg}" for ${by}`);
     if (st.subject !== undefined) {
       // "Manifest that card" (CR 701.40a: a card in any zone): the cards the subject stands for, one at a time (CR 701.40e); a permanent is turned face down
@@ -205,7 +207,7 @@ function topCards(by: 'manifest' | 'cloak', profile: FaceDownProfile): StepHandl
           if (g.s.objects[h.id]?.faceDown) made.push(h);
           continue;
         }
-        const m = manifestCard(cx, player, h, by, profile);
+        const m = manifestCard(cx, player, h, by, profile, st.tapped === true); // edh-e-4 (CR 614.1c): "They enter tapped."
         if (m) made.push(m);
       }
       bindAs(cx, st.as, made);

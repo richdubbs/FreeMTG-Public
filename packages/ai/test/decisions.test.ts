@@ -16,10 +16,10 @@ import { aiAgent, randomAgent, type Agent } from './harness';
 import { createGame } from '@openmtg/engine';
 
 // M6-1: Fog is automated since milestone 6 runs prevention effects of resolved spells; M6-10: so is Fatigue (zz-m6/gate.json), and p2-attack-block-1 Beseech the Queen (its
-// comparison with "the number of lands you control"), so Cytoshape (a manual instant; edh-d-63 automated Order of Succession, the manual sorcery it used before) keeps a manualResolve decision in the games
+// comparison with "the number of lands you control"), so Wojek Apothecary (its radiance ability "Prevent the next 1 damage ... each other creature that shares a color with it" is manual; edh-e-1 automated Cytoshape, the manual instant it used before, and edh-d-63 Order of Succession) keeps a manualResolve decision in the games (11-07: 1 in the six seeded games; Primal Clay was tried and not cast)
 const MIX: DeckList = [
   ['Plains', 5], ['Island', 5], ['Swamp', 5], ['Mountain', 5], ['Forest', 5], ['Birds of Paradise', 2], ['Soul Warden', 3], ["Ajani's Pridemate", 2],
-  ['Fire // Ice', 3], ['Fireball', 2], ["Kolaghan's Command", 2], ['Fog', 1], ['Cytoshape', 2], ['Lightning Bolt', 2], ['Giant Growth', 2], ['Counterspell', 2],
+  ['Fire // Ice', 3], ['Fireball', 2], ["Kolaghan's Command", 2], ['Fog', 1], ['Wojek Apothecary', 2], ['Lightning Bolt', 2], ['Giant Growth', 2], ['Counterspell', 2],
   ['Mana Leak', 2], ['Doom Blade', 2], ['Raise the Alarm', 1], ['Gravedigger', 2], ['Garruk Wildspeaker', 1], ['Pacifism', 1], ['Serra Angel', 1],
   ['Grizzly Bears', 2], ['Craw Wurm', 1],
 ];

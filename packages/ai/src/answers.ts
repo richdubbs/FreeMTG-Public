@@ -226,6 +226,7 @@ function chooseOption(ctx: Ctx, d: ChooseOptionDecision): string[] {
   const rules = d.rules ?? [];
   if (isPileChoice(d)) return [choosePile(ctx, usable)];
   if (isProliferate(d)) return chooseProliferate(ctx, d); // CR 701.34a
+  if (rules.includes('CR 702.132a')) return []; // assist: the bot pays the whole cost itself and asks nobody for help
   if (rules.includes('CR 700.2')) {
     const scores = modeScores(ctx, usable.map((o) => Number(o.id)));
     const ranked = usable.map((o, i) => ({ id: o.id, s: scores[i]! })).sort((a, b) => b.s - a.s);
@@ -337,6 +338,14 @@ function chooseColor(ctx: Ctx, d: ChooseColorDecision): ManaType {
   return [...d.options].sort((a, b) => (count.get(b) ?? 0) - (count.get(a) ?? 0))[0]!;
 }
 
+/** CR 201.3 (core/validate.ts): a card with these types fits the kind of card name asked for; edh-e-8: 'artifact' and 'nonartifactNonland' too. */
+function cardKindFits(types: readonly string[], kind: NonNullable<ChooseNameDecision['cardKind']>): boolean {
+  if (kind === 'creature') return types.includes('Creature');
+  if (kind === 'artifact') return types.includes('Artifact');
+  if (kind === 'nonartifactNonland') return !types.includes('Artifact') && !types.includes('Land');
+  return types.includes('Land') === (kind === 'land');
+}
+
 /** CR 607.2d, 608.2d: name what the opponent has shown most of; a creature type the bot itself has most of. */
 function chooseName(ctx: Ctx, d: ChooseNameDecision): string {
   const tally = new Map<string, number>();
@@ -347,7 +356,7 @@ function chooseName(ctx: Ctx, d: ChooseNameDecision): string {
     const theirs = o.owner !== ctx.me;
     // std-rx28 (CR 201.3): a land or nonland card name only, when the decision says which
     // edh-next-146 (CR 201.3): a creature card name only (Psychic Paper)
-    const kindOk = d.cardKind === undefined || (d.cardKind === 'creature' ? c.types.includes('Creature') : c.types.includes('Land') === (d.cardKind === 'land'));
+    const kindOk = d.cardKind === undefined || cardKindFits(c.types, d.cardKind);
     if (d.what === 'cardName' && theirs && o.kind === 'card' && kindOk) add(c.name, value(ctx, o.id));
     if (d.what === 'creatureType' && !theirs) for (const t of c.subtypes) if (c.types.includes('Creature')) add(t);
     if (d.what === 'cardType' && theirs) for (const t of c.types) add(t);
@@ -357,7 +366,7 @@ function chooseName(ctx: Ctx, d: ChooseNameDecision): string {
   const top = [...tally].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
   if (top) return top;
   if (d.options && d.options.length > 0) return d.options[0]!;
-  const nameable = Object.values(ctx.view.defs).find((x) => !x.isToken && (d.cardKind === undefined || x.faces.some((f) => (d.cardKind === 'creature' ? f.types.includes('Creature') : f.types.includes('Land') === (d.cardKind === 'land')))));
+  const nameable = Object.values(ctx.view.defs).find((x) => !x.isToken && (d.cardKind === undefined || x.faces.some((f) => cardKindFits(f.types, d.cardKind!))));
   const fallback = { cardName: nameable?.name ?? (d.cardKind === 'nonland' ? 'Lightning Bolt' : d.cardKind === 'creature' ? 'Grizzly Bears' : undefined), creatureType: 'Human', cardType: 'Creature', landType: 'Forest', planeswalkerType: 'Jace' }[d.what];
   return fallback ?? 'Forest';
 }

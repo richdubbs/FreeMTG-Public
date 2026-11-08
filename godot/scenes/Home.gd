@@ -162,23 +162,6 @@ func _progress_panel(stats: Dictionary) -> Control:
 		if Val.text(d, "key") != "standard":
 			box.add_child(_bar(Val.text(d, "label"), d, "mid", 0.8 + i * 0.12))
 			i += 1
-	var sets: Array = Val.list(stats, "standardSets")
-	if not sets.is_empty():
-		box.add_child(Hud.kicker("Standard sets", Hud.MUTED))
-		var grid := GridContainer.new()
-		grid.columns = 2
-		grid.add_theme_constant_override("h_separation", 14)
-		grid.add_theme_constant_override("v_separation", 8)
-		var k := 0
-		for s: Variant in sets:
-			var d := Val.as_dict(s)
-			var cell := _bar(Val.text(d, "code"), d, "set", 1.3 + k * 0.06)
-			cell.tooltip_text = "%s: %s of %s cards fully automated" % [Val.text(d, "name"), Hud.thousands(int(Val.num(d, "full"))),
-				Hud.thousands(int(Val.num(d, "cards")))]
-			cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			grid.add_child(cell)
-			k += 1
-		box.add_child(grid)
 	box.add_child(Hud.text("Fully automated: the engine plays every ability. Measured %s%s." % [Val.text(stats, "measured"),
 		" (%s)" % Val.text(stats, "revision") if Val.text(stats, "revision") != "" else ""], 11))
 	return panel

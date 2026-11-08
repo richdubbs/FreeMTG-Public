@@ -45,6 +45,7 @@ export const FIELD_COVERAGE: {
     differentControllers: 'read', // CLOUD std-tmt
     sameController: 'read', // std-rx30: rules/targets.ts#sameControllerHolds (CR 115.1, 601.2c)
     perCardType: 'read', // std-cardcopy-7: rules/targets.ts#perCardTypeHolds (CR 115.1, 601.2c, 205.2a)
+    perQuality: 'read', // edh-e-64: rules/targets.ts#perCardTypeHolds (CR 105.1, 110.4, 115.1, 601.2c)
     link: 'read', // LNK1: effects/run.ts#rememberTargets remembers the legal targets on the source as the ability resolves (CR 607.1)
     sharedPermanentType: 'read', // edh-next-54: rules/targets.ts#sharedCardTypeHolds (CR 110.4, 205.2a)
     eachWithOne: 'read', // edh-next-127: rules/targets.ts#targetRange (CR 115.1, 601.2c)
@@ -118,10 +119,12 @@ export function costPartForms(p: CostPart): string[] {
       if (p.filter) out.push('cost:removeCounters.filter');
       if (p.counter === 'any') out.push('cost:removeCounters.any'); // CLOUD std-ecl: counters of any kinds, the payer's choice (CR 122.1, 118.3)
       if (p.among === true) out.push('cost:removeCounters.among'); // r3-cost: "from among <permanents>", in all (CR 118.3)
+      if (p.oneOrMore === true) out.push('cost:removeCounters.oneOrMore'); // edh-d-111: "Remove one or more <kind> counters from ~", X announced at least 1 (CR 107.3a)
       if (p.all === true) out.push('cost:removeCounters.all'); // p2-counters-move-2: "Remove all <kind> counters from ~", X fixed to those counters (CR 118.3, 107.3a)
       break;
     case 'moveCards': // edh-d-54 (CR 118.3): a fixed count of cards of the filter, rules/cost.ts#toPlanPart
       if (p.count === 'any') out.push('cost:moveCards.anyNumber');
+      if (p.to === 'libraryBottom') out.push('cost:moveCards.libraryBottom'); // edh-e-37 (CR 401.4): from your graveyard to the bottom of your library
       break;
     case 'tapUntapped':
       if (p.other) out.push('cost:tapUntapped.other');
@@ -149,6 +152,10 @@ export function costPartForms(p: CostPart): string[] {
       if (p.symbolTotal !== undefined) out.push('cost:exileFrom.symbolTotal'); // std-cardcopy-7 (CR 118.3, 107.4)
       if (p.mvTotal !== undefined) out.push('cost:exileFrom.mvTotal'); // edh-d-100 (CR 118.3, 202.3)
       if (p.typesAmong !== undefined) out.push('cost:exileFrom.typesAmong'); // edh-d-100 (CR 118.3, 205.2a)
+      if (p.top === true) out.push('cost:exileFrom.top'); // edhe7 (CR 404.2, 118.3)
+      if (p.top === true && p.count !== 1) out.push('cost:exileFrom.topCount'); // edh-d-107 (CR 404.2)
+      if (p.anyGraveyard === true) out.push('cost:exileFrom.anyGraveyard'); // edh-d-107 (CR 118.3, 404.1)
+      if (p.singleGraveyard === true) out.push('cost:exileFrom.singleGraveyard'); // edh-d-107 (CR 118.3, 404.1)
       break;
     case 'returnToHand':
       if (p.beamUp === true) out.push('cost:returnToHand.beamUp'); // trek-1: a beam me up cost, which a "can't be beamed up" permanent can't pay (rules/cant.ts)
@@ -211,6 +218,7 @@ function quantityAnnounceForms(q: Quantity, where: AnnounceWhere): string[] {
     case 'happenedCount':
       if (isOpponentSpellsPerPlayer(q)) return ['feature:announce.qty.happenedCount.opponentSpellsPerPlayer']; // p2-cost-statics-1 (CR 601.2i)
       if (isOpponentDrawsPerPlayer(q)) return ['feature:announce.qty.happenedCount.opponentDrawsPerPlayer']; // edh-next-3 (CR 121.1, 601.2f)
+      if (isTurnDamageSourcesToYou(q)) return ['feature:announce.qty.happenedCount.damageSourcesToYou']; // edh-e-16 (CR 120.1, 118.9)
       if (where === 'activate' && isTurnEnergySpent(q)) return ['feature:announce.qty.happenedCount.energySpent']; // edh-replace-5 (CR 107.14, 602.5b)
       return where === 'activate' && isTurnDamageTotal(q) ? ['feature:announce.qty.happenedCount.damageTotal', ...historySourceFieldForms(q.event)] : ['feature:announce.qty.happenedCount'];
     // edh-c-30 (CR 102.3, 118.9; Lavaball Trap): "an opponent had two or more lands enter the battlefield under their control this turn", the opponents of the announcing player each judged alone on this turn's history
@@ -305,7 +313,8 @@ export function announceCondForms(c: Condition, where: AnnounceWhere): string[] 
     // edh-mana-keywords-6 (CR 702.131c, 725.1, 602.5): "Activate only if you have the city's blessing" / "if you're the monarch": a designation is a fact of the game state
     // (state.designations), read as it is now, for a player the announcement can name
     case 'designation': return [...out, ...playerRefForms(c.who, 'cond')];
-    case 'playerIs': return [...out, ...playerRefForms(c.who, 'cond')]; // edh-players-18
+    case 'hasPlayer': return [...out, ...playerRefForms(c.who, 'cond')]; // edh-e-62
+    case 'playerIs': return [...out, ...playerRefForms(c.who, 'cond'), ...(c.among === undefined ? [] : ['feature:announce.playerIs.among'])]; // edh-players-18; edh-e-4: a group read as an effect resolves is not announced (fail closed)
     case 'attackedYouLastTurn': return c.who === undefined ? out : [...out, 'feature:announce.cond.attackedYouLastTurn.who']; // edh-d-45; edh-d-85: a named player is not announced (fail closed)
     case 'eventDied': return out; // edh-next-97
     case 'otherOpponentNotAttacked': return [...out, ...playerRefForms(c.of, 'cond')]; // edh-next-53
@@ -427,6 +436,17 @@ export function isTurnDamageTotal(q: Quantity): boolean {
 }
 
 /**
+ * edh-e-16 (CR 120.1, 118.9; Inferno Trap's "If you've been dealt damage by two or more creatures this turn"): the different creatures that dealt damage to the announcing player this
+ * turn (`happenedCount` `per: 'source'` without a `sum`, a damage event to you from a creature with no reference). Read as a spell is cast, from the turn's history. Pure.
+ */
+export function isTurnDamageSourcesToYou(q: Quantity): boolean {
+  if (typeof q !== 'object' || q.q !== 'happenedCount' || q.per !== 'source' || q.sum !== undefined || q.by !== undefined || q.beforeEvent !== undefined || q.scope !== 'turn') return false;
+  const e = q.event;
+  if (e.ev !== 'damage' || e.amount !== undefined || e.excess !== undefined || e.combat !== undefined || e.recipient?.player !== 'you' || e.recipient.object !== undefined) return false;
+  return JSON.stringify(e.source ?? {}) === '{"types":["Creature"]}';
+}
+
+/**
  * edh-replace-5 (CR 107.14, 122.1, 602.5b; Izzet Generatorium's "Activate only if you've paid or lost four or more {E} this turn"): the energy counters removed from the
  * activating player this turn added up (`sum` of the `amount` of the turn's `counters` entries: a payment is the removal of the counters, CR 107.14), in an activation
  * restriction only (the one position that reads the history). Nothing else about the counters is asked. Pure.
@@ -487,6 +507,7 @@ export function targetSpecForms(spec: TargetSpec): string[] {
   if (spec.differentControllers !== undefined) out.push('feature:target.differentControllers'); // CLOUD std-tmt
   if (spec.sameController !== undefined) out.push('feature:target.sameController'); // std-rx30
   if (spec.perCardType !== undefined) out.push('feature:target.perCardType'); // std-cardcopy-7
+  if (spec.perQuality !== undefined) out.push('feature:target.perQuality'); // edh-e-64
   if (spec.sharedPermanentType !== undefined) out.push('feature:target.sharedPermanentType'); // edh-next-54
   if (spec.onlyIf !== undefined) out.push('feature:target.onlyIf');
   if (spec.chooser !== undefined) out.push('feature:target.chooser');

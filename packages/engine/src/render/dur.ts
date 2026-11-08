@@ -38,7 +38,7 @@ export function dur(d: Duration, st: RenderState, _o: { context?: 'mods' | 'rule
       return alt(`until ${step}`, `until the beginning of ${step}`);
     }
     // MX5: the display form of a chip or record (Oracle says it inside the sentence: render/stat.ts#nextUntapRestriction)
-    case 'throughNextUntap': return `until the end of ${d.whose === undefined ? "its controller's next untap step" : possessiveStep('untap', d.whose, st, true)}`;
+    case 'throughNextUntap': return `until the end of ${d.whose === undefined ? (d.steps === 2 ? "its controller's next two untap steps" : "its controller's next untap step") : possessiveStep('untap', d.whose, st, true)}`;
     case 'asLongAs': return `for as long as ${K.cond(d.cond, st)}`;
     // std-rx32 (CR 611.2b): about the object the effect names ("it", "that creature"), not the source
     case 'whileObject': {
@@ -50,10 +50,13 @@ export function dur(d: Duration, st: RenderState, _o: { context?: 'mods' | 'rule
       }
       // audit-fix-2 (CR 702.62a): suspend's haste (keyword expansion only; no Oracle sentence is parsed to it)
       if (d.as === 'kept') return 'until you lose control of the spell or the permanent it becomes';
+      if (d.as === 'enchanted') return `for as long as ${o} is enchanted`; // edh-e-2 (CR 611.2b, 303.4)
       return d.as === 'tapped' ? `for as long as ${o} remains tapped` : `for as long as ${o} has ${/^[aeiou]/.test(d.counter ?? '') ? 'an' : 'a'} ${d.counter ?? ''} counter on it`;
     }
     // FAST5X E29 (CR 611.2a, 514.2): "until the end of your next turn"
     case 'endOfNextTurn': return `until the end of ${turnOf(d.whose, st, true)}`;
+    // edh-d-104 (CR 611.2a, 500.5a): "until end of combat on your next turn" (the record armed with its turn is never rendered: the parser writes no `turn`)
+    case 'endOfCombatNextTurn': if (d.turn !== undefined) throw new NoRenderer('an armed end-of-combat duration'); return `until end of combat on ${turnOf(d.whose, st, true)}`;
     // FAST5X E29 (CR 611.2b, 400.7): the objects are the ones the permission names, said again as a pronoun or "that card"
     // std-control-1 (CR 500.7, 611.2a): the extra turn the sentence before added (parser/lower/ability.ts#joinSpeedFloor joins the two)
     case 'duringNextTurn': return 'during that turn';

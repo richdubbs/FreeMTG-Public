@@ -47,10 +47,10 @@ import { addPlans, applyOnlyX, costFilterHasX, manaCostText, costHasX, countX, e
 import { hasRestrictedMana, type SpendContext } from '../rules/sources';
 import { programFiltersMentionX } from '../rules/targets';
 import { deny, assertAllowed, throwDenial, type Denial } from '../rules/denial';
-import { distinctHistory, happenedCountOf, happenedPlayersOf, opponentsAttackedCount } from '../rules/history';
+import { distinctHistory, happenedCountOf, happenedPlayersOf, opponentsAttackedCount, opponentsAttackedNow } from '../rules/history';
 import { gameOf, hookpoints } from '../rules/hookpoints';
-import { payPlan, resolveAnyCounts } from '../rules/pay';
-import { applyPaymentOptions, emergePayableCandidates, emergeReduction, offeringReduction, payableWithOptions, reduceGeneric } from '../rules/payment-options';
+import { payPlan, resolveAnyCounts, type Paid } from '../rules/pay';
+import { applyAssist, applyPaymentOptions, emergePayableCandidates, emergeReduction, offeringReduction, payableWithOptions, reduceGeneric } from '../rules/payment-options';
 import { partCandidates } from '../rules/cost-pick';
 import { castsOnlySorcerySpeed, castTiming, flashWithoutOffTimingPermit, sorceryTiming, splitSecondDenial } from '../rules/timing';
 import { announceCond, type AnnounceEnv } from './announce-cond';
@@ -61,7 +61,7 @@ import { CAST_OPTION_PROVIDERS, castOptionProvider, castOptionsOf, isKickerName,
 import { announceSplice } from './cast-splice';
 import { announceMandatoryCosts, announceOptionalCosts, commanderTaxCost, countCap, groupedCostsDenial, ungroupedMandatoryCosts, withAnnouncedCount } from './cast-costs';
 import { commanderOfCard, isCommander } from '../statics/commander';
-import { costModsFor, modifyMana, type CostModHit } from '../statics/costmods';
+import { costModsFor, costQuantity, modifyMana, type CostModHit } from '../statics/costmods';
 import { spellTargetTotal } from '../rules/target-total';
 import { charsViewOf, overlayAsSpell } from '../statics/rule-sources';
 import { evalQuantity } from '../statics/match';
@@ -867,6 +867,7 @@ export function modifiedPlan(s: GameState, player: PlayerId, spell: ObjectId, pl
     : q.q === 'casterControlledCount' ? findObjects(s, { ...q.filter, controller: 'you' }, filterCtxOutside(s, { controller: player, x: null })).length // edh-c-73 (CR 601.2f, 109.4; Hum of the Radix): the permanents the caster controls
     : q.q === 'lifeGainedThisTurn' ? s.players.find((p) => p.id === hit.controller)?.turnStats.lifeGained ?? 0 // edh-next-9 (CR 119.3, 601.2f): the life the caster gained so far this turn
     : q.q === 'opponentsAttacked' && q.scope === 'turn' ? opponentsAttackedCount(s, hit.controller, null)
+    : q.q === 'opponentsAttacked' && q.present === true && q.scope === undefined ? opponentsAttackedNow(s, hit.controller) // edh-e-16 (CR 506.3, 601.2f): "for each opponent you're attacking"
     // edh-next-9 (CR 601.2f, 102.3, 120.2a; Gnoll War Band ruling 2022-06-10: opponents who left the game are not counted): "for each opponent who was dealt damage this turn", the players of `of` still in the game with enough matching events in the history, each judged alone
     : q.q === 'happenedPlayers' && q.of.ref === 'each' && (q.of.who === 'opponent' || q.of.who === 'player')
       ? happenedPlayersOf(s, s.players.filter((p) => !p.hasLost && (q.of.ref === 'each' && q.of.who === 'player' || p.id !== hit.controller)).map((p) => p.id), q.event, q.scope, q.times, { you: hit.controller, ...(hit.source !== null ? { sourceId: hit.source } : {}) }).length
@@ -874,7 +875,16 @@ export function modifiedPlan(s: GameState, player: PlayerId, spell: ObjectId, pl
   const r = modifyMana(plan.mana, hits, history);
   if ('unknown' in r) return { denial: deny(`The engine can't work out the cost change "${r.unknown.text}" (${r.unknown.name}), so the total cost of this spell is unknown.`, 'CR 601.2f') };
   // r5-cost (CR 601.2f, 119.4): "cost an additional 3 life to cast": the total cost includes paying that life (`CostModDef.change.life`)
-  const life = hits.flatMap((h) => (h.def.change.kind === 'increase' && h.def.change.life !== undefined && h.def.change.life > 0 ? [{ kind: 'payLife' as const, amount: h.def.change.life }] : []));
+  // edh-e-46 (CR 601.2f, 119.4; Phyrexian Purge): with `times`, "costs 3 life more to cast for each target": the life is paid once for each time (a count that can't be worked out makes the cost unknown)
+  let lifeUnknown: CostModHit | undefined;
+  const life = hits.flatMap((h) => {
+    if (h.def.change.kind !== 'increase' || h.def.change.life === undefined || h.def.change.life <= 0) return [];
+    const t = h.def.change.times === undefined ? 1 : costQuantity(h, h.def.change.times, history);
+    if (t === undefined) { lifeUnknown ??= h; return []; }
+    const amount = h.def.change.life * Math.max(0, Math.floor(t));
+    return amount > 0 ? [{ kind: 'payLife' as const, amount }] : [];
+  });
+  if (lifeUnknown) return { denial: deny(`The engine can't work out the cost change "${lifeUnknown.name}", so the total cost of this spell is unknown.`, 'CR 601.2f') };
   return { plan: applyOnlyX({ ...plan, mana: r.mana, ...(life.length > 0 ? { other: [...plan.other, ...life] } : {}) }) }; // edh-next-85: "Spend only black mana on X" after every cost change (CR 601.2f)
 }
 
@@ -887,7 +897,7 @@ export function castRecordOf(spell: GameObject, turn: number): NonNullable<GameO
   if (!info || info.kind !== 'spell' || info.isCopy) return undefined;
   const paid = JSON.parse(JSON.stringify(info.costsPaid)) as typeof info.costsPaid;
   return { costsPaid: paid, ...(info.x !== undefined ? { x: info.x } : {}), from: info.castFrom ?? 'hand', ...(paid.alternative !== undefined ? { via: paid.alternative } : {}), turn, ...(info.caster !== undefined ? { by: info.caster } : {}),
-    ...(info.controlLost === true ? { controlLost: true as const } : {}), ...(info.castChecks !== undefined ? { castChecks: { ...info.castChecks } } : {}) }; // std-rx22: CR 702.62a, the caster lost control of the spell; edh-next-37: the "as you cast" answers stay on the permanent
+    ...(info.controlLost === true ? { controlLost: true as const } : {}), ...(info.castChecks !== undefined ? { castChecks: { ...info.castChecks } } : {}), ...(info.castOrdinal !== undefined ? { nth: info.castOrdinal.turn } : {}) }; // edh-d-111: its place among its caster's spells that turn // std-rx22: CR 702.62a, the caster lost control of the spell; edh-next-37: the "as you cast" answers stay on the permanent
 }
 
 export function castSpell(g: Game, action: Extract<Action, { type: 'cast' }>, during?: ResolutionCastOptions): void {
@@ -984,6 +994,8 @@ export function castSpell(g: Game, action: Extract<Action, { type: 'cast' }>, du
   };
   // Could the player pay this plan (every payment option considered, CR 601.2f-h) once the modifiers and the emerge reduction are applied?
   const payable = (plan: CostPlan): boolean => payableWithOptions(g.s, player, stackId, finish(plan)) === null;
+  // edh-e-29: the X offered counts only the caster's own mana (a computer caster picks the largest X and cannot rely on a helper); assist still makes a fixed cost castable
+  const payableOwn = (plan: CostPlan): boolean => payableWithOptions(g.s, player, stackId, finish(plan), false) === null;
 
   // CR 601.2b, 118.8: the costs paid besides the base cost: mandatory additional costs, chosen optional ones (kicker, buyback, entwine; multikicker any number of
   // times) and the costs of the chosen modes. They are kept as definitions so that each is built again with the announced X (CR 107.3a).
@@ -1034,7 +1046,7 @@ export function castSpell(g: Game, action: Extract<Action, { type: 'cast' }>, du
   const modesAreX = info.programs.some((p) => p.modes?.countIsX === true);
   if (modesAreX) {
     // review fix (CR 107.3b): a cast that does not pay the mana cost with {X} (free, an alternative cost without X) has X = 0, so no mode
-    const xs = info.baseHasX ? payableXs((n) => payable(addPlans(basePlan(n), planFromCostDefs(costs, n))), false) : [0];
+    const xs = info.baseHasX ? payableXs((n) => payableOwn(addPlans(basePlan(n), planFromCostDefs(costs, n))), false) : [0];
     aenv.xMax = xs.length ? xs[xs.length - 1]! : 0;
   }
   // CR 601.2b, 700.2: modes. The additional costs announced above may change how many (kicked, entwine, CR 601.4); the cost of the whole chosen SET is checked (CR 700.2h).
@@ -1058,7 +1070,7 @@ export function castSpell(g: Game, action: Extract<Action, { type: 'cast' }>, du
     // edh-perms-24 (CR 107.3, 601.2b; Thieving Skydiver): "X can't be 0" on an optional cost that was paid is a floor for X
     // edh-d-98 (CR 107.3, 601.2b; Mind Grind): and "X can't be 0." of the spell itself is a floor for the X of its mana cost
     const floor = Math.max(0, spellXMin, ...info.additional.filter((o) => o.xMin !== undefined && (paid.additional ?? []).includes(o.name ?? 'additional')).map((o) => o.xMin!));
-    const xs = payableXs((n) => payable(planAt(n)), costFilterHasX(info.alt?.cost) || allCosts.some(costFilterHasX) || hasRestrictedMana(g.s, player)).filter((n) => n <= cap && n >= floor);
+    const xs = payableXs((n) => payableOwn(planAt(n)), costFilterHasX(info.alt?.cost) || allCosts.some(costFilterHasX) || hasRestrictedMana(g.s, player)).filter((n) => n <= cap && n >= floor);
     if (xs.length === 0) throw new IllegalAction(`You can't pay for ${spellName} with any value of X.`, ['CR 601.2h', 'CR 107.3a']);
     // edh-cast-4 (CR 601.2b, 202.3e; Void Winnower): only the values of X that leave the spell castable are offered (a "can't cast" effect that reads its mana value)
     // (and, for the permission that limits the mana value, a value of X that keeps the spell within it: CR 202.3e, "mana value 3 or less" is judged with the X chosen, Serra Paragon)
@@ -1088,11 +1100,14 @@ export function castSpell(g: Game, action: Extract<Action, { type: 'cast' }>, du
   allCosts = withTargetTotals(allCosts, spellTargetTotal(g.s, spell.stack.targets)); // std-costs-1: CR 601.2f, the total cost reads the chosen targets
 
   // CR 601.2e: the game checks that the proposed spell can be cast; CR 601.2f: total cost, then the payment options (convoke, delve, improvise).
-  const total = applyPaymentOptions(g, player, stackId, resolveAnyCounts(g, player, null, finish(planAt(x)), spellName), spellName);
+  const helperSpent: Paid['manaSpent'] = [];
+  const total = applyAssist(g, player, stackId, applyPaymentOptions(g, player, stackId, resolveAnyCounts(g, player, null, finish(planAt(x)), spellName), spellName), spellName,
+    (gg, helper, share) => { helperSpent.push(...payPlan(gg, helper, null, share, spellName, {}).manaSpent); }); // edh-e-29: assist (CR 702.132)
 
   // CR 601.2g-h: payment.
   const paidNow = payPlan(g, player, null, total, spellName, { announcedX });
   if (total.convoked?.length) paid.convoked = [...total.convoked]; // edh-mana-keywords-8: "each creature that convoked this spell" (CR 702.51a)
+  paidNow.manaSpent = [...helperSpent, ...paidNow.manaSpent]; // the mana another player paid with assist is mana spent to cast the spell too (CR 601.2h)
   paid.manaSpent = paidNow.manaSpent;
   // edh-cast-8 (CR 106.3, 205.2a, 601.2h; Inga and Esika): the card types of the source of each mana spent, as it was as the mana was paid (its last known information when it left the
   // battlefield to pay, a sacrificed creature)
@@ -1139,7 +1154,7 @@ export function castSpell(g: Game, action: Extract<Action, { type: 'cast' }>, du
     const ts = g.player(player).turnStats;
     const counts = (ts.castFromCount ??= {});
     counts[castFrom ?? 'hand'] = (counts[castFrom ?? 'hand'] ?? 0) + 1;
-    spell.stack.castOrdinal = { turn: ts.spellsCast, fromZone: counts[castFrom ?? 'hand']!, notHand: (castFrom ?? 'hand') === 'hand' ? 0 : Object.entries(counts).filter(([z]) => z !== 'hand').reduce((n, [, c]) => n + (c ?? 0), 0) };
+    spell.stack.castOrdinal = { turn: ts.spellsCast, all: spellsBefore + 1, fromZone: counts[castFrom ?? 'hand']!, notHand: (castFrom ?? 'hand') === 'hand' ? 0 : Object.entries(counts).filter(([z]) => z !== 'hand').reduce((n, [, c]) => n + (c ?? 0), 0) };
     // edh-mana-keywords-12 (CR 106.3, 601.2i; Rain of Riches): and among the spells that had mana from a source of each subtype spent on them (each subtype once per spell)
     const fromSubtypes = [...new Set(paid.manaSpent.flatMap((u) => u.sourceSubtypes ?? []))];
     if (fromSubtypes.length > 0) {

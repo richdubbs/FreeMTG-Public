@@ -13,7 +13,7 @@ extends Control
 const SEARCH_DELAY_S: float = 0.32
 const CHECK_DELAY_S: float = 0.3
 const PREVIEW_DELAY_S: float = 0.25
-const RESULT_W: float = 132.0
+const RESULT_W: float = 200.0
 const SCRY_KEYWORDS: Array[String] = ["name", "c", "color", "colors", "id", "identity", "ci", "commander", "t", "type", "o", "oracle", "fo",
 	"fulloracle", "kw", "keyword", "m", "mana", "mv", "cmc", "manavalue", "pow", "power", "tou", "toughness", "pt", "powtou", "loy",
 	"loyalty", "def", "defense", "f", "format", "legal", "banned", "restricted", "is", "not", "has", "layout", "produces", "devotion",
@@ -1295,7 +1295,7 @@ func _result_tile(card: Dictionary) -> Control:
 	name_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_button.tooltip_text = "Show %s large" % card_name
 	name_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	name_button.add_theme_font_size_override("font_size", 13)
+	name_button.add_theme_font_size_override("font_size", 15)
 	name_button.add_theme_color_override("font_color", Color("#e6f6ff"))
 	name_button.pressed.connect(func() -> void: _pin_preview(card))
 	tile.add_child(name_button)
@@ -1381,6 +1381,15 @@ func _hover_card(card: Dictionary, thumb: Control) -> void:
 	_floating.z_index = 90
 	_floating.custom_minimum_size = Vector2(600, 0)
 	add_child(_floating)
+	# Its text wraps only once it has its width, and a container never shrinks by itself: keep it as tall as its contents.
+	_floating.minimum_size_changed.connect(_fit_floating)
+	_fit_floating()
+
+
+func _fit_floating() -> void:
+	if _floating == null or not is_instance_valid(_floating):
+		return
+	_floating.reset_size()
 	_place_floating()
 
 

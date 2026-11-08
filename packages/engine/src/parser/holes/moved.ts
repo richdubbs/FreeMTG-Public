@@ -12,7 +12,7 @@ import type { Condition, ObjectFilter } from '../../types/ability';
 import type { Alt, HoleCtx } from './core';
 import { P, phraseAt } from './core';
 import { npAlts, type NpAlt } from './filter';
-import { MOVED_MARK, MOVED_OP, MOVED_TO, PASSIVE, type MovedKind } from './moved-words';
+import { MOVED_MARK, MOVED_OP, MOVED_TO, PASSIVE, RETURNED_THIS_WAY, type MovedKind } from './moved-words';
 
 /** A description of the moved objects: one singular noun phrase (an "or" of two is one phrase too) that names no controller, owner or zone of its own. */
 function plainNp(n: NpAlt, number: 'singular' | 'plural' = 'singular'): boolean {
@@ -21,10 +21,12 @@ function plainNp(n: NpAlt, number: 'singular' | 'plural' = 'singular'): boolean 
 }
 
 const W_IS = [P('is'), P('was')];
+const W_OR = P('or');
 const W_AT_LEAST_ONE = P('at least one');
 const W_ONE_OR_MORE = P('one or more');
 const W_YOU = P('you');
 const W_SACRIFICED = P('sacrificed'); // edh-d-53
+const W_DESTROYED_THIS_WAY = P('destroyed this way'); // edh-d-104
 /** "you <verb> <np> <words>": the verb before the noun phrase, the words after it ("this way" included), the kind, and whether it is negated. */
 const ACTIVE: readonly (readonly [readonly string[], readonly string[], MovedKind, boolean])[] = [
   [P('exiled'), P('this way'), 'exiled', false],
@@ -40,6 +42,9 @@ const ACTIVE: readonly (readonly [readonly string[], readonly string[], MovedKin
   [P('do not put'), P('onto the battlefield this way'), 'battlefield', true],
   [P("didn't put"), P('onto the battlefield this way'), 'battlefield', true],
   [P('did not put'), P('onto the battlefield this way'), 'battlefield', true],
+  // edh-d-104 (CR 608.2c, 701.21a; Gargantuan Gorilla: "you may sacrifice a Forest. If you sacrifice a snow Forest this way, ... If you don't sacrifice a Forest, sacrifice ~ ..."): the
+  // optional sacrifice said again with its own words, negated (no "this way"): nothing of that description was sacrificed by it (lower/conditions.ts#resolveDid reads the sacrifice)
+  [P("don't sacrifice"), [], 'sacrificed', true],
 ];
 
 /** The condition: the marker of the instruction right before, the description, and the kind (its destination, or the op of an action). */
@@ -71,10 +76,39 @@ export function movedCondAt(ctx: HoleCtx, pos: number): Alt[] {
         const v = phraseAt(ctx, n.end, is);
         if (v < 0) continue;
         for (const [ws, kind, adds] of PASSIVE) {
+          if (ws === RETURNED_THIS_WAY) continue; // edh-e-26: a count's words only
           const e = phraseAt(ctx, v, ws);
           if (e >= 0) out.push({ end: e, value: movedCond({ ...n.filter, ...adds }, kind, false) });
         }
       }
+    }
+    // edh-e-41 (CR 608.2c, 608.2h, 205.2a; Check for Traps): "an instant card or a card with flash is exiled this way": two descriptions, each with its own article, one of which the
+    // moved object matched (`anyOf` of the two, each as it last existed); only two plain singular phrases and the passive verb of the same kinds as above
+    for (const n of npAlts(ctx, start)) {
+      if (!plainNp(n)) continue;
+      const o = phraseAt(ctx, n.end, W_OR);
+      const art2 = o >= 0 ? ctx.toks[o]?.norm : undefined;
+      if (art2 !== 'a' && art2 !== 'an') continue;
+      for (const m of npAlts(ctx, o + 1)) {
+        if (!plainNp(m)) continue;
+        for (const is of W_IS) {
+          const v = phraseAt(ctx, m.end, is);
+          if (v < 0) continue;
+          for (const [ws, kind, adds] of PASSIVE) {
+            const e = phraseAt(ctx, v, ws);
+            if (e >= 0) out.push({ end: e, value: movedCond({ anyOf: [{ ...n.filter, ...adds }, { ...m.filter, ...adds }] }, kind, false) });
+          }
+        }
+      }
+    }
+  }
+  // edh-d-104 (CR 608.2c, 608.2h, 701.8a; Cosmic Horror: "destroy ~ unless you pay {3}{B}{B}{B}. If ~ is destroyed this way, it deals 7 damage to you."): the object itself, destroyed by the
+  // instruction right before (regenerated or indestructible, it was not destroyed: ruling 2013-07-01); only the destroy (`which` {self}, the object as it last existed)
+  if (ctx.toks[pos]?.kind === 'SELF') {
+    for (const is of W_IS) {
+      const v = phraseAt(ctx, pos + 1, is);
+      const e = v < 0 ? -1 : phraseAt(ctx, v, W_DESTROYED_THIS_WAY);
+      if (e >= 0) out.push({ end: e, value: movedCond({ self: true }, 'destroyed', false) });
     }
   }
   // edh-d-53 (CR 602.2b, 608.2h; Lethal Throwdown): "If the modified creature was sacrificed, ...": the object the COST sacrificed, said with no "this way" and a definite article.

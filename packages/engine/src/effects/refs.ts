@@ -63,6 +63,8 @@ export const REF_RESOLVERS: Readonly<Record<string, true>> = {
   randomOpponent: true, // trek-17: "a random opponent" (Alexander, Ship's Fool)
   withLife: true, // edh-next-72: "each player with exactly 13 life" (CR 119.1, 104.3b)
   costUnattached: true, // edh-next-141: the permanent an unattach cost unattached (CR 701.3d; Captain America, First Avenger)
+  coinSide: true, // edh-e-62: "each player whose coin comes up tails" (CR 705.2)
+  extremePlayer: true, // edh-e-62: "the player with the most life" (CR 119.1, 402.1)
   mostLife: true, // edh-d-85: "an opponent with the most life among your opponents" (CR 119.1, 102.3)
   grantCaster: true, // edh-next-146: "the player who cast ¤" (CR 601.2a, 611.2c): fixed by effects/handlers/lasting.ts#fixGrantCaster as a spell's effect is created, nobody anywhere else
 };
@@ -538,6 +540,19 @@ export function resolvePlayers(cx: ExecCtx, ref: PlayerRef): PlayerId[] {
       const opp = g.apnap().filter((p) => p !== cx.controller && !g.player(p).hasLost);
       const top = Math.max(...opp.map((p) => g.player(p).life));
       return opp.filter((p) => g.player(p).life === top);
+    }
+    case 'coinSide': { // edh-e-62 (CR 705.1, 705.2, 101.4, 608.2c): the players whose coin came up that way in the named flip, still in the game, in APNAP order (a flip that did not happen: nobody)
+      const sides = cx.results.get(ref.step)?.coinSides;
+      const who = sides === undefined ? [] : ref.side === 'tails' ? sides.tails : sides.heads;
+      return g.apnap().filter((p) => who.includes(p) && !g.player(p).hasLost);
+    }
+    case 'extremePlayer': { // edh-e-62 (CR 119.1, 402.1, 101.4, 608.2h): the one player (with `tied`: the two or more tied) whose life total / hand size is the greatest (`fewest`: least) among the players still in the game
+      const live = g.apnap().filter((p) => !g.player(p).hasLost);
+      const stat = (p: PlayerId): number => (ref.stat === 'life' ? g.player(p).life : (g.s.zones.hand[p] ?? []).length);
+      if (live.length === 0) return [];
+      const best = ref.fewest === true ? Math.min(...live.map(stat)) : Math.max(...live.map(stat));
+      const holders = live.filter((p) => stat(p) === best);
+      return ref.tied === true ? (holders.length >= 2 ? holders : []) : (holders.length === 1 ? holders : []);
     }
     case 'withLife': // edh-next-72 (CR 119.1, 104.3b, 101.4, 608.2h): the players of the group whose life total compares with the fixed number now, in APNAP order, still in the game
       return g.apnap().filter((p) => (ref.who === 'player' || p !== cx.controller) && !g.player(p).hasLost && compareNumbers(ref.op, g.player(p).life, ref.n));

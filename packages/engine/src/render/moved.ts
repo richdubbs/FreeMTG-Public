@@ -44,7 +44,7 @@ function wordsOf(kind: MovedKind, which: ObjectFilter, their = false): { words: 
   const words: Record<MovedKind, string> = {
     destroyed: 'destroyed this way', exiled: alt('exiled this way', 'put into exile this way'), discarded: 'discarded this way', sacrificed: 'sacrificed this way',
     graveyard: alt('put into a graveyard this way', 'put into graveyards this way', ...(their ? ['put into their graveyard this way'] : [])), battlefield: 'put onto the battlefield this way',
-    hand: alt("returned to their owners' hands this way", "returned to its owner's hand this way"), top: 'you put on top of your library', milled: 'milled this way',
+    hand: alt("returned to their owners' hands this way", "returned to its owner's hand this way", 'returned this way'), top: 'you put on top of your library', milled: 'milled this way',
   };
   return { words: words[kind], rest };
 }
@@ -131,7 +131,14 @@ export function movedCondPhrase(c: Extract<Condition, { cond: 'did' }>, st: Rend
   if (c.to === 'hand') return null;
   const kind: MovedKind = c.to === 'exile' ? 'exiled' : c.to === 'graveyard' ? 'graveyard' : c.to === 'battlefield' ? 'battlefield' : kindOf(c.step, st);
   if (kind === 'destroyed' && (which.controller !== undefined || which.anyOf !== undefined)) return null;
-  if (which.anyOf !== undefined) throw new NoRenderer('an "or" in a description of moved objects');
+  // edh-e-41 (CR 608.2c, 205.2a; Check for Traps): "an instant card or a card with flash is exiled this way": two plain descriptions, each with its own article (parser/holes/moved.ts);
+  // the present tense only (a past one is not read), no negation, and only the kinds whose words need no owner
+  if (which.anyOf !== undefined) {
+    const ors = which.anyOf;
+    const plain = (f: ObjectFilter): boolean => f.owner === undefined && f.controller === undefined && f.zone === undefined && f.anyOf === undefined;
+    if (Object.keys(which).length !== 1 || ors.length !== 2 || !ors.every(plain) || c.not === true || kind === 'top' || kind === 'hand') throw new NoRenderer('an "or" in a description of moved objects');
+    return `${movedNp(ors[0]!, kind, st, { det: 'a' })} or ${movedNp(ors[1]!, kind, st, { det: 'a' })} is ${wordsOf(kind, {}).words}`;
+  }
   // Cloud C7 review (CR 701.9a, 701.21a, 608.2h): what YOU discarded is a card you owned, what you sacrificed a permanent you controlled as it last existed: "if
   // you discarded a card this way", "if you sacrificed a creature this way" (parser/holes/moved.ts); the passive words count every player's, so they have no
   // active alternative
@@ -144,6 +151,13 @@ export function movedCondPhrase(c: Extract<Condition, { cond: 'did' }>, st: Rend
     // std-ra (CR 603.12, 608.2c): ... and "When you discard one or more nonland cards this way, ...", the same `did` (one or more such objects; parser/holes/moved.ts)
     const np = alt(movedNp(plain, kind, st, { det: 'a' }), `one or more ${movedNp(plain, kind, st, { det: 'none', plural: true })}`);
     return `you ${alt(kind, kind === 'discarded' ? 'discard' : 'sacrifice')} ${np} this way`;
+  }
+  // edh-d-104 (CR 608.2c, 701.21a; Gargantuan Gorilla; parser/holes/moved.ts): "if you don't sacrifice a Forest": nothing you controlled of that description was sacrificed by the optional
+  // sacrifice the sentence names again (no "this way")
+  if (yours && c.not === true && kind === 'sacrificed') {
+    const plain: ObjectFilter = { ...which };
+    delete plain.controller;
+    return `you don't sacrifice ${movedNp(plain, kind, st, { det: 'a' })}`;
   }
   const { words, rest, owned } = wordsOf(kind, which);
   const one = movedNp(rest, kind, st, { det: 'a' });

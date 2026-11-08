@@ -184,7 +184,8 @@ describe('edh-d-92 parser, lowering and lint changes (one test each)', () => {
   });
   it('review fix (Summoner\'s Egg, Clone Shell): with a bare "it" in the same ability the link is not offered, so "it" can\'t become the dying object (fail closed)', () => {
     const f = face('Example Egg', 'Artifact Creature — Construct', 'Imprint — When Example Egg enters, you may exile a card from your hand face down.\nWhen Example Egg dies, turn the exiled card face up. If it\'s a creature card, put it onto the battlefield under your control.', ['0', '4']);
-    expect(fullyAutomated(f)).toBe(false);
+    // edh-e-61: the exact pair "Turn the exiled card face up. If it's a <type> card, put it onto the battlefield under your control." is joined (join-edhd101.ts) and read as one linked instruction, so this card is now full; "it" still never becomes the dying object
+    expect(fullyAutomated(f)).toBe(true);
     expect(JSON.stringify(f.abilities[1])).not.toContain('"what":{"ref":"event","role":"subject"},"to":{"zone":"battlefield"');
   });
   it('parse.ts#exiledCardLinkable: the singular "the exiled card" is not linked to an instruction that exiles several cards (p2-refs-1\'s near misses stay refused)', () => {

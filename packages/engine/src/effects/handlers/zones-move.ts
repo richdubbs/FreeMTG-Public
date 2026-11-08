@@ -39,7 +39,7 @@ import {
 type Move = Extract<EffectStep, { op: 'move' }>;
 
 /** FAST4 MX1: the value forms of `move` this handler runs (model/capabilities.ts; the walker names them, model/cap-walk.ts). */
-export const OP_FORMS: readonly string[] = ['op:move.until', 'op:move.remember', 'op:move.attackingAsReturned', 'op:move.statusIf', 'op:move.countersIf.when' /* edh-c-6: CR 614.1c, 608.2c */, 'op:move.countersIf' /* edh-perms-10: CR 614.1c */, 'op:move.arrangedBy' /* p2-dig-1: CR 401.4 */, 'op:move.ownerChoosesEnd' /* edh-zones-21: CR 401.4, 400.3 */, 'op:move.endChosenBy' /* edh-c-107: CR 401.4, 400.3 */, 'op:move.attackingOrPlaneswalkers' /* edh-zones-22: CR 508.4 */, 'op:move.enchantOnly' /* edh-perms-21: CR 303.4f */, 'op:move.attachedToPlayer' /* edh-d-29: CR 303.4f */, 'op:move.faceUpOrDown' /* edh-next-80: CR 708.3 */, 'op:move.becomes' /* edh-next-125: CR 614.1c, 613.4b */, 'op:move.asAura' /* edh-next-140: CR 303.4f, 614.1c, 613.1d */]; // FAST5X E13: `remember` (craft, CR 702.167c); std-typechange-1: ninjutsu (CR 702.49c); std-typechange-2: `to.statusIf` (CR 608.2c, 508.4)
+export const OP_FORMS: readonly string[] = ['op:move.until', 'op:move.remember', 'op:move.attackingAsReturned', 'op:move.statusIf', 'op:move.countersIf.when' /* edh-c-6: CR 614.1c, 608.2c */, 'op:move.countersIf' /* edh-perms-10: CR 614.1c */, 'op:move.arrangedBy' /* p2-dig-1: CR 401.4 */, 'op:move.ownerChoosesEnd' /* edh-zones-21: CR 401.4, 400.3 */, 'op:move.endChosenBy' /* edh-c-107: CR 401.4, 400.3 */, 'op:move.attackingOrPlaneswalkers' /* edh-zones-22: CR 508.4 */, 'op:move.enchantOnly' /* edh-perms-21: CR 303.4f */, 'op:move.attachedToPlayer' /* edh-d-29: CR 303.4f */, 'op:move.faceUpOrDown' /* edh-next-80: CR 708.3 */, 'op:move.becomes' /* edh-next-125: CR 614.1c, 613.4b */, 'op:move.asAura' /* edh-next-140: CR 303.4f, 614.1c, 613.1d */, 'op:move.by' /* trek-23: CR 608.2c, 406.3 */]; // FAST5X E13: `remember` (craft, CR 702.167c); std-typechange-1: ninjutsu (CR 702.49c); std-typechange-2: `to.statusIf` (CR 608.2c, 508.4)
 
 /**
  * FAST4 MX1 (CR 610.3): the one `until` a move runs: exiled until the source leaves the battlefield (`{d:'until', event:{ev:'zoneChange', subject:{self:true},
@@ -285,6 +285,12 @@ const moveStep: StepHandler<Move> = (cx, st) => {
       return NOTHING;
     }
     watched = { id: ws[0]!.id, zone: 'battlefield' };
+  }
+  // trek-23 re-review (CR 608.2b, 608.2c): the player the instruction names as the one who moves (`by`) does not exist ("up to one target opponent looks at the top card of your
+  // library, then exiles it face down" with no opponent chosen, or the target became illegal): nobody performs the move, so nothing moves
+  if (st.by !== undefined && resolvePlayers(cx, st.by).length === 0) {
+    bindAs(cx, st.as, []);
+    return NOTHING;
   }
   const objs = actOn(cx, st.what).filter((h) => {
     const o = g.s.objects[h.id]!;
@@ -542,6 +548,12 @@ const moveStep: StepHandler<Move> = (cx, st) => {
     }
   }
   bindMoved(cx, st.as, moved, to.zone);
+  // trek-23 (CR 608.2c, 406.3; Vulcan Mind-Meld): the player the instruction names as the one who exiles (`by`) is remembered, for the rest of this resolution, as the exiler of each card
+  // this move really put into exile (a card a replacement sent elsewhere was not exiled); one player only (none or several: nobody is remembered, so no permission reads one)
+  if (st.by !== undefined && to.zone === 'exile') {
+    const by = [...new Set(resolvePlayers(cx, st.by))];
+    if (by.length === 1) for (const h of moved.flatMap(movedHandles)) if (h.zone === 'exile') (cx.exiledBy ??= new Map()).set(h.id, by[0]!);
+  }
   // FAST5 T75 (CR 608.2c, 608.2h, 400.7): what a move to the hand really put there, as each card was before it moved ("if you put a Town card into your hand this way",
   // `{cond:'did', which, to:'hand'}`); only for a named step (only a named step's result can be read), only the cards that ended in the hand (a replacement may have put
   // one elsewhere); Cloud std-fin: the same for a move to exile ("if a creature card was exiled this way")

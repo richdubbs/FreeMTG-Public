@@ -4,7 +4,7 @@
  */
 import type { ResolveResponse } from '@openmtg/server/api';
 import { findFormatId, formatOption } from './formats';
-import { emptyDeck, mergeEntries, type Deck, type DeckEntry, type DeckSection } from './model';
+import { emptyDeck, mergeEntries, printingLabel, type Deck, type DeckEntry, type DeckSection } from './model';
 
 export type ExportFormat = 'arena' | 'mtgo' | 'plain';
 
@@ -14,7 +14,11 @@ export const EXPORT_FORMATS: readonly { id: ExportFormat; label: string; hint: s
   { id: 'plain', label: 'Plain text', hint: 'Readable text with a header per section; also keeps the deck name, format, cover card and notes (best for a backup).' },
 ];
 
-const lines = (entries: readonly DeckEntry[]) => entries.map((e) => `${e.count} ${e.name}`);
+/**
+ * One line per entry; with `printings` a chosen printing is written the Arena way, "1 Lightning Bolt (M10) 146" (deck-art-1), which the parser reads
+ * back. MTGO's own text format has no set codes, so the MTGO export leaves them out.
+ */
+const lines = (entries: readonly DeckEntry[], printings = true) => entries.map((e) => `${e.count} ${e.name}${printings && e.printing ? ` ${printingLabel(e.printing)}` : ''}`);
 
 function block(header: string, entries: readonly DeckEntry[]): string[] {
   return entries.length ? [header, ...lines(entries), ''] : [];
@@ -31,8 +35,8 @@ export function exportDeck(deck: Deck, format: ExportFormat): string {
     case 'mtgo': {
       const side = [...deck.commander, ...deck.companion, ...deck.sideboard];
       if (deck.main.length) {
-        out = [...lines(deck.main)];
-        if (side.length) out.push('', ...lines(side));
+        out = [...lines(deck.main, false)];
+        if (side.length) out.push('', ...lines(side, false));
       } else {
         // Without main-deck lines the parser cannot tell where the sideboard starts, so mark each line (the parser reads "SB:").
         out = side.map((e) => `SB: ${e.count} ${e.name}`);
@@ -130,7 +134,8 @@ export const GENERIC_LINK_STEPS = [
 export function deckFromResolve(res: ResolveResponse, opts: { name: string; format: string; now: string; id?: string; notes?: string; cover?: string }): Deck {
   const deck = emptyDeck(opts.name, opts.format, opts.now, opts.id);
   const by: Record<DeckSection, DeckEntry[]> = { main: [], sideboard: [], commander: [], companion: [] };
-  for (const c of res.cards) by[c.section].push({ name: c.name, count: c.count, oracleId: c.oracleId });
+  // A line's "(SET) number" is kept as the chosen printing; one the printings list does not have shows the default picture with a note (PrintingPicker).
+  for (const c of res.cards) by[c.section].push({ name: c.name, count: c.count, oracleId: c.oracleId, ...(c.printing ? { printing: c.printing } : {}) });
   return {
     ...deck,
     main: mergeEntries(by.main),

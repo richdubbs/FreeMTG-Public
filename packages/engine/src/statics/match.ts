@@ -125,6 +125,7 @@ export const STATIC_QUANTITY_KINDS: ReadonlySet<string> = new Set([
   'mostByController', 'lifeLostTotal', // edh-cast-3 (CR 109.4, 119.3): Cavern-Hoard Dragon, Rakdos Lord of Riots
   'lifeLostThisTurn', // Cloud std-woe (CR 119.3, 120.3a): "where X is the amount of life you lost this turn"
   'descendedThisTurn', // FAST5X E22 (CR 700.11)
+  'graveyardUsesThisTurn', // edh-d-108 (CR 601.2, 602.2, 404.1)
   'chosenNumber', // edh-c-95 (CR 702.82b, 607.2d): the number a link of the source holds (devour: "if it devoured a creature")
   'turnsBegun', // std-r9 (CR 500.7, 500.11): "You can't cast ~ during your first, second, or third turns of the game"
   'extraTurnsBegun', // trek-18 (CR 500.7): "if you haven't begun an extra turn this game"
@@ -1007,6 +1008,7 @@ export function evalQuantity(cx: EvalCx, q: Quantity): number | undefined {
       return ps.length === 1 ? cx.s.players.find((p) => p.id === ps[0])?.turnStats.lifeLost : undefined;
     }
     case 'descendedThisTurn': { noteLayerRead(READ_TURN_STATS); const p = cx.s.players.find((x) => x.id === cx.controller); return p === undefined ? undefined : p.turnStats.descended ?? 0; } // FAST5X E22 (CR 700.11)
+    case 'graveyardUsesThisTurn': { noteLayerRead(READ_TURN_STATS); const p = cx.s.players.find((x) => x.id === cx.controller); return p === undefined ? undefined : (p.turnStats.castFromCount?.['graveyard'] ?? 0) + (p.turnStats.activatedFromGraveyard ?? 0); } // edh-d-108 (CR 601.2, 602.2, 404.1)
     case 'chosenNumber': { // edh-c-95 (CR 702.82b, 607.2d; Hellkite Hatchling): the number the source kept under the link (a whole number as a string), like the `chosen` condition reads a link
       if (q.extreme !== undefined) return undefined; // edh-next-120: the highest or lowest of several players' numbers is read by steps only (effects/eval.ts)
       const v = readLink(objOf(cx, cx.source), q.link)?.values?.[0];
@@ -1097,6 +1099,7 @@ export function evalCondition(cx: EvalCx, c: Condition): boolean {
         ? { costsPaid: st.costsPaid, ...(st.x !== undefined ? { x: st.x } : {}), ...(st.castFrom !== undefined ? { from: st.castFrom } : {}), via: st.costsPaid.alternative, ...(st.caster !== undefined ? { by: st.caster } : {}) }
         : o?.cast;
       if (!cast) return false;
+      if (c.nth !== undefined) return false; // edh-d-111: "the nth spell you cast this turn" is read by triggers/cond.ts and effects/eval.ts only (fail closed)
       if (c.kicked !== undefined && (typeof c.kicked === 'boolean' ? (cast.costsPaid.kicked ?? 0) > 0 !== c.kicked : cast.costsPaid.alternative !== c.kicked && !(cast.costsPaid.additional ?? []).includes(c.kicked))) return false;
       // p2-graveyard-1 (CR 601.3, 113.6f): a cost also usable from another zone is the method `<name>:2` (actions/cast-options.ts#castOptionsOf), still its cost
       if (c.via !== undefined && !viaOf(cast.via, c.via) && !viaOf(cast.costsPaid.alternative, c.via)) return false;

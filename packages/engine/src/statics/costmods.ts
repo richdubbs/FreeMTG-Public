@@ -32,6 +32,7 @@ import type { ObjectId, PlayerId } from '../types/ids';
 import type { Color, ManaCost, ManaSymbol } from '../types/mana';
 import type { GameObject, GameState, TargetChoice } from '../types/state';
 import type { Chars } from '../rules/characteristics';
+import { attachedPlayer } from './attached-player';
 import { commanderOfCard } from './commander';
 import { readLink } from './links';
 import { isFirstTypedActivation } from './typed-activations';
@@ -228,6 +229,13 @@ export function abilityCostModsFor(s: GameState, player: PlayerId, source: GameO
       if (Object.keys(c).some((k) => c[k] !== undefined && k !== 'mana' && !(k === 'other' && discardSelfOnly))) continue;
       }
     }
+    // edh-e-46 (CR 702.29a, 118.9, 601.2f; New Perspectives): "you may pay {0} rather than pay cycling costs" (a set cost of every ability of one keyword): like the first-each-turn form, only an ability
+    // whose cost is mana alone (the discard of the card itself is part of the cycling ability but not of the cycling cost); any other cost part: the option is not taken
+    if (e.applies.firstEachTurn === undefined && e.change.kind === 'set' && a.keyword === 'cycling') {
+      const c = def.cost as unknown as Record<string, unknown>;
+      const discardSelfOnly = Array.isArray(c['other']) && (c['other'] as { kind?: string; self?: boolean }[]).every((o) => o.kind === 'discard' && o.self === true);
+      if (Object.keys(c).some((k) => c[k] !== undefined && k !== 'mana' && !(k === 'other' && discardSelfOnly))) continue;
+    }
     const cx: EvalCx = { s, all: ctx.view, source: src.source, controller: src.controller };
     if (!playerPredIncludes(cx, e.applies.caster, player)) continue;
     // r3-cost (CR 109.2): "activated abilities of creatures" are those of creature permanents: a source filter that names no zone is the battlefield
@@ -360,6 +368,15 @@ function spellTargetsSource(cx: EvalCx, e: CostModDef, spell: ObjectId, targets:
   // you control": one of the spell's chosen targets is an object of the description, as it is when the total cost is determined (an object filter only; a player
   // target never matches it)
   const each = targets.ref === 'each' && 'filter' in targets ? targets.filter : undefined;
+  // edh-e-46 (CR 303.4, 115.1, 601.2c, 601.2f; capability `feature:costMod.spellTargets.enchantedPlayer`; Infectious Curse): "spells you cast that target enchanted player": one of the spell's chosen
+  // targets is the player the modifier's own Aura is attached to (an Aura attached to no player applies to no spell)
+  if (targets.ref === 'enchantedPlayer') {
+    if (cx.source === null) return undefined;
+    const st0 = cx.s.objects[spell]?.stack;
+    if (st0 === undefined) return e.change.kind === 'reduce'; // castCheck: the cheapest the targets could make it
+    const who = attachedPlayer(cx.s, cx.s.objects[cx.source]);
+    return st0.targets.flat().some((t) => t.kind === 'player' && who.includes(t.id));
+  }
   if ((targets.ref !== 'self' && each === undefined) || cx.source === null) return undefined;
   const st = cx.s.objects[spell]?.stack;
   if (st === undefined) return e.change.kind === 'reduce'; // castCheck: the cheapest the targets could make it (statics/costmods.ts#filteredTargetCount)
@@ -626,6 +643,16 @@ export function modifyMana(mana: readonly ManaSymbol[], hits: readonly CostModHi
   };
   const manaOf = (h: CostModHit, t: number): ManaSymbol[] => Array.from({ length: t }, () => h.def.change.mana ?? []).flat();
 
+  // edh-e-46 (CR 118.9, 601.2f, 602.2b; New Perspectives, ruling: an alternative activation cost): "you may pay {0} rather than pay the cycling cost" is the cost the ability has; increases and
+  // reductions then apply to it as to any total cost. So a set cost of a KEYWORD's abilities is taken as the starting mana, before the increases (it would otherwise erase them).
+  const altSet = (h: CostModHit): boolean => h.def.change.kind === 'set' && h.def.applies.abilities?.keyword !== undefined;
+  for (const h of byKind('set').filter(altSet)) {
+    const n = amountOf(h);
+    if (n === undefined || h.def.change.times !== undefined || (h.def.change.mana ?? []).some((m) => m.kind === 'variable')) return { unknown: h };
+    rest = (h.def.change.mana ?? []).filter((m) => m.kind !== 'generic');
+    generic = genericOf(h.def.change.mana ?? []) + (n ?? 0);
+    applied.push(`${h.name}: costs ${describe(h.def.change.mana, n)}`);
+  }
   // Increases (and additional mana) first (CR 601.2f).
   for (const h of byKind('increase')) {
     if (h.def.change.loyalty !== undefined && h.def.change.mana === undefined && h.def.change.generic === undefined) continue; // edh-next-142: a loyalty increase alone changes no mana (actions/activate.ts#costChangeOf)
@@ -666,7 +693,7 @@ export function modifyMana(mana: readonly ManaSymbol[], hits: readonly CostModHi
     applied.push(`${h.name}: -${describe(h.def.change.mana, n, t)}`);
   }
   // A cost set outright ("costs {N}") directly affects the total cost: applied last (CR 601.2f).
-  for (const h of byKind('set')) {
+  for (const h of byKind('set').filter((x) => !altSet(x))) {
     const n = amountOf(h);
     if (n === undefined || h.def.change.times !== undefined || (h.def.change.mana ?? []).some((m) => m.kind === 'variable')) return { unknown: h }; // `times` is not for a set cost
     rest = (h.def.change.mana ?? []).filter((m) => m.kind !== 'generic');

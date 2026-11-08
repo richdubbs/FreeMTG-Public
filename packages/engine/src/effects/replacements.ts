@@ -217,7 +217,10 @@ export function matchProposed(g: Game, pattern: EventPattern, e: Proposed, sourc
   if (p.ev === 'draw' && p.firstEachTurn === true) {
     // edh-d-98 (CR 121.2, 614.1a; Scion of Halaster): "the first time you would draw a card each turn": the draw being proposed is the player's first proposed draw this turn
     // (effects/propose.ts#runPipeline counted it before the replacements were looked at)
-    if (e.ev !== 'draw' || (g.s.players.find((x) => x.id === e.player)?.turnStats.drawsProposed ?? 0) !== 1) return false;
+    // edh-e-48 (CR 121.2, 504.1, 614.1a; Reed Richards, Smartest Man): "the first time you would draw a card each turn except the first card you draw during each of your draw steps": the first draw
+    // proposal of the turn that is not that draw step card (`turnStats.drawsExceptDrawStep`, counted by effects/propose.ts#runPipeline)
+    const stats = e.ev === 'draw' ? g.s.players.find((x) => x.id === e.player)?.turnStats : undefined;
+    if (e.ev !== 'draw' || ((p.exceptFirstInDrawStep === true ? stats?.drawsExceptDrawStep : stats?.drawsProposed) ?? 0) !== 1) return false;
     const { firstEachTurn: _f, ...rest } = p;
     p = rest;
   }

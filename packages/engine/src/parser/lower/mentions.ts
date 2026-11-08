@@ -38,7 +38,7 @@ const VERB_OF_OP: Readonly<Record<string, string>> = {
 
 export function targetMention(t: TargetSpec, unit: number): Mention {
   // STD-FRA (CR 115.1, 601.2c): one target for each opponent is a set of as many targets as there are opponents: "those creatures" names it, and a singular pronoun may too (`alsoSingular`)
-  const plural = !(t.max === 1) || t.perOpponent === true || t.perPlayer === true || t.perCardType === true; // r5-fxb: one for each player too; std-cardcopy-7: one of each card type
+  const plural = !(t.max === 1) || t.perOpponent === true || t.perPlayer === true || t.perCardType === true || t.perQuality !== undefined; // r5-fxb: one for each player too; std-cardcopy-7: one of each card type
   const number = plural ? 'plural' : 'singular';
   if (t.kind === 'player') return { sort: 'player', number, heads: t.players?.who === 'opponent' ? ['player', 'opponent'] : ['player'], ref: { ref: 'target', id: t.id }, origin: 'target', unit, ...(t.max !== 1 && !(t.perOpponent === true || t.perPlayer === true) ? { eachOne: true } : {}) };
   if (t.kind === 'anyTarget' || t.kind === 'objectOrPlayer') {
@@ -52,7 +52,7 @@ export function targetMention(t: TargetSpec, unit: number): Mention {
   // r3-copy (CR 110.1, 110.4b): a target permanent of no stated card type ("up to one other target permanent you control") is on the battlefield, never "that spell"
   const notSpell = t.kind === 'object' && where === 'battlefield' && heads.includes('*');
   const controls = controlsOf(t.filter);
-  return { sort: 'object', number, heads, ref: { ref: 'target', id: t.id }, origin: 'target', unit, ...(t.perOpponent === true || t.perPlayer === true || t.perCardType === true ? { alsoSingular: true } : {}), ...(notSpell ? { notHeads: ['spell'] } : {}), ...(controls ? { controls } : {}), ...(where === 'battlefield' ? { onBattlefield: true } : {}) };
+  return { sort: 'object', number, heads, ref: { ref: 'target', id: t.id }, origin: 'target', unit, ...(t.perOpponent === true || t.perPlayer === true || t.perCardType === true || t.perQuality !== undefined ? { alsoSingular: true } : {}), ...(notSpell ? { notHeads: ['spell'] } : {}), ...(controls ? { controls } : {}), ...(where === 'battlefield' ? { onBattlefield: true } : {}) };
 }
 
 /**
@@ -555,7 +555,8 @@ function producedBy(step: Rec, unit: Unit, path: string, headsOf: (ref: unknown)
   if (op === 'revealUntil') {
     const one = step['count'] === undefined || step['count'] === 1;
     // edh-zones-22 (CR 701.20a, 608.2c; Old Stickfingers): the X cards a counted reveal until stopped at are also "<cards> revealed this way" (parser/holes/object.ts#revealedThisWay)
-    return { ...base, sort: 'object', number: one ? 'singular' : 'plural', heads: [...new Set(['card', ...headsOfFilter(step['filter'] as ObjectFilter, 'other')])], verbs: one ? ['revealed'] : ['revealed', REVEALED_THIS_WAY] };
+    // edh-e-10 (CR 701.20a, 205.2a; Erratic Mutation): "a nonland card" names no card type (headsOfFilter's `*`), so the card it stopped at is never "that creature"/"that permanent": that is a chosen target's
+    return { ...base, sort: 'object', number: one ? 'singular' : 'plural', heads: [...new Set(['card', ...headsOfFilter(step['filter'] as ObjectFilter, 'other').filter((h) => h !== '*')])], verbs: one ? ['revealed'] : ['revealed', REVEALED_THIS_WAY] };
   }
   if (op === 'chooseObjects') {
     const from = isRec(step['from']) && isRec(step['from']['filter']) ? (step['from']['filter'] as ObjectFilter) : undefined;
@@ -573,6 +574,10 @@ function producedBy(step: Rec, unit: Unit, path: string, headsOf: (ref: unknown)
   // names "them" or "those cards" ("you may reveal a creature card from among them"); one card is no group
   if (op === 'look' && isRec(step['at']) && step['at']['ref'] === 'topCards' && step['at']['count'] !== 1) {
     return { ...base, sort: 'object', number: 'plural', heads: ['card'], verbs: ['seen'] };
+  }
+  // edhe35 (CR 700.3, 701.20e, 608.2c; Abstract Performance): the cards of the other of two given piles a player looked at ("Look at the cards in the other pile. You may cast a spell from among them")
+  if (op === 'look' && isRec(step['at']) && step['at']['ref'] === 'bound' && step['at']['name'] === 'otherPile' && Object.keys(step['at']).length === 2) {
+    return { ...base, sort: 'object', number: 'plural', heads: ['card'], verbs: ['seen-pile'], participleOnly: true }; // (the `OtherPile` anaphor only: these cards are in exile, not in a library)
   }
   // edh-cast-10 (CR 701.20e, 402.3, 608.2c; Silent-Blade Oni): the cards of ONE player's hand a player looked at ("Look at that player's hand. You may cast a spell from among
   // those cards"): a group only the `SeenInHand` hole names (participle "seen-in-hand"), never the library groups of "seen"
@@ -1071,10 +1076,12 @@ export function namedPlayerOf(t: TargetSpec, unit: number): Mention | null {
   // std-rx30 (CR 115.1, 110.2): or several targets controlled by the same opponent (`sameController`), "that player" being their one controller
   if ((t.kind !== 'object' && t.kind !== 'spell') || (t.max !== 1 && t.sameController !== true) || t.filter === undefined) return null; // trek-21: or a target spell (Brazen Bluff: "target noncreature spell an opponent controls. That player may ...")
   // edh-c-74 (Incriminate): several targets controlled by the same player, whoever it is, are as well (their one controller)
-  const by = t.filter.controller === 'opponent' || (t.sameController === true && t.filter.controller === undefined && t.filter.owner === undefined) ? 'controllerOf' : t.filter.owner === 'opponent' ? 'ownerOf' : null;
+  // edh-e-62 (CR 101.4, 608.2c; Barroom Brawl): "target creature the opponent to your left controls. Then that player ...": the player to your left is the one player the phrase names
+  const seatOpponent = isRec(t.filter.controller) && (t.filter.controller as Rec)['ref'] === 'seat' && Object.keys(t.filter.controller).length === 2;
+  const by = t.filter.controller === 'opponent' || seatOpponent || (t.sameController === true && t.filter.controller === undefined && t.filter.owner === undefined) ? 'controllerOf' : t.filter.owner === 'opponent' ? 'ownerOf' : null;
   if (by === null || (t.filter.controller === 'opponent' && t.filter.owner === 'opponent')) return null;
   // r4-refs (CR 608.2c): the opponent who controls the target is also "they" ("... target permanent an opponent controls. They create a Treasure token.")
-  return { sort: 'player', number: 'singular', heads: ['player', 'opponent'], ref: { ref: by, object: { ref: 'target', id: t.id } }, origin: 'target', unit, headOnly: true, ...(by === 'controllerOf' ? { alsoThey: true } : {}) };
+  return { sort: 'player', number: 'singular', heads: ['player', 'opponent'], ref: seatOpponent ? (t.filter.controller as unknown as Rec) : { ref: by, object: { ref: 'target', id: t.id } } /* edh-e-62: the seat itself, so the player is still named when the target is illegal */, origin: 'target', unit, headOnly: true, ...(by === 'controllerOf' ? { alsoThey: true } : {}) };
 }
 
 /**
@@ -1164,7 +1171,8 @@ function ownerNamed(d: Draft, u: Unit, beforeStep: number): Mention | null {
  */
 function searchedPlayer(d: Draft, u: Unit, beforeStep: number): Mention | null {
   const words = u.tokens.map((t) => t.norm.toLowerCase());
-  if (!words.some((w, i) => w === 'its' && (words[i + 1] === 'controller' || words[i + 1] === 'owner'))) return null;
+  // edh-e-64 (Invasive Surgery): "the graveyard, hand, and library of that spell's controller": the controller of a named object, as well as "its controller"
+  if (!words.some((w, i) => (w === 'its' || w === "'s") && (words[i + 1] === 'controller' || words[i + 1] === 'owner'))) return null;
   const searches = stepsInOrder(u.steps).filter(({ step, path }) => Number(path.split('/')[1]) < beforeStep && step['op'] === 'search' && isRec(step['owner']));
   if (searches.length !== 1) return null;
   const owner = searches[0]!.step['owner'] as Rec;
@@ -1416,6 +1424,11 @@ export function mentionsAt(d: Draft, seq: readonly Unit[], upTo: number, beforeS
     };
     scan(u.steps);
     if (u.rider) scan(u.rider.patch);
+    // edh-e-64 (CR 115.1, 608.2c; Suffer the Past): the player of "target cards from target player's graveyard" is a target of the sentence too ("that player")
+    for (const id of [...usedIds]) {
+      const own = d.targets.find((t) => t.id === id)?.filter?.owner;
+      if (isRec(own) && own['ref'] === 'target' && typeof own['id'] === 'string' && !usedIds.includes(own['id'])) usedIds.push(own['id']);
+    }
     // r3-choose (CR 115.1, 608.2c): the targets a sentence of its own announced ("Choose target artifact card in your graveyard.", Cloud std-eoe's node, lower/choose.ts) are
     // "the chosen card" from then on ("If you do, return the chosen card to the battlefield"): the participle names them, and only them
     const announced = u.steps.length === 1 && isRec(u.steps[0]) && u.steps[0]['lower'] === 'chooseTargets';

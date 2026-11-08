@@ -77,6 +77,7 @@ export const FEATURES: readonly string[] = [
   'shield.batch', // edh-next-122: "the next time one or more creatures or planeswalkers enter" (effects/replace-bodies.ts#applyBody, effects/entering-together.ts; CR 614.1c, 616.1)
   'replace.beginTurn.extra', // p2-replace-events-3: "would begin an extra turn" (the turn proposal's `extra`, triggers/match.ts#beginTurn, CR 500.7, 614.10)
   'replace.draw.firstEachTurn', // edh-d-98: "the first time you would draw a card each turn" (effects/replacements.ts#matchProposed, turnStats.drawsProposed, CR 121.2, 614.1a)
+  'shield.each', // edh-d-103: "prevent the next N damage that would be dealt to each creature and each player": one shield each as it resolves (effects/handlers/lasting.ts#eachShields; CR 615.7)
 ];
 
 /**
@@ -115,7 +116,12 @@ export function runPipeline(g: Game, e: Proposed, shares?: ReadonlyMap<string, n
   // first time you would draw a card each turn" is the first such proposal of the turn, whether it was then replaced or not (a replaced draw's own "then draw a card" is the second)
   if (e.ev === 'draw') {
     const ts = g.s.players.find((p) => p.id === e.player)?.turnStats;
-    if (ts !== undefined) ts.drawsProposed = (ts.drawsProposed ?? 0) + 1;
+    if (ts !== undefined) {
+      ts.drawsProposed = (ts.drawsProposed ?? 0) + 1;
+      // edh-e-48 (Reed Richards): the draw step's own card is the first proposal of the active player's draw step (core/steps.ts#drawStepFrom); the others are counted apart
+      if (g.s.turn.step === 'draw' && g.s.turn.activePlayer === e.player && ts.drawStepFrom !== undefined && ts.drawStepFrom === ts.cardsDrawn) ts.drawStepProposed = true; // the same test as replacements.ts#firstInDrawStep: while no card was drawn in the step, the proposal is its card
+      else ts.drawsExceptDrawStep = (ts.drawsExceptDrawStep ?? 0) + 1;
+    }
   }
   const cantHappen = forbiddenBy(g, e) !== null;
   // CR 614.5, M6-1 (m6 design D3, E2, 3.1.5): the effects already applied to this event and to the events it replaces, per BRANCH: a proposal made while a

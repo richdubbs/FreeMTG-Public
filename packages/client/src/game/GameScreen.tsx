@@ -58,6 +58,9 @@ import { attachComputerPacer } from './computerPacer';
 import { acceleratedBudgetMs } from '../board/fx/stackPace';
 import { unanimatedCues } from '../board/fx/sounds';
 import type { PlayerSleeves } from '../board/sleeves';
+import { GamePrintingsContext, pictureKeysInGame, type GamePrintings } from './printings';
+
+const NO_PRINTINGS: GamePrintings = {};
 import { soundsOf } from '../audio/engine';
 import { soundEngine } from '../audio/sfx';
 import { BugReportDialog } from '../bugs/BugReportDialog';
@@ -104,6 +107,8 @@ export interface GameScreenProps {
   hosted?: HostedLink;
   /** Each player's deck sleeve (the game route's `sleeves`), kept for a rematch. */
   sleeves?: PlayerSleeves;
+  /** deck-art-1: each player's chosen printings (the game route's `printings`), kept for a rematch. */
+  printings?: GamePrintings;
   /** What New game started the game with (the game route's `setup`), kept for a rematch; the end screen's "Change decks" opens New game with it. */
   setup?: GameSetup;
 }
@@ -151,7 +156,7 @@ function isTyping(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
 }
 
-function GameTable({ connection: source, rematch, slots = DEFAULT_SLOTS, coverDelayMs = 600, brand = BRAND, settings = settingsStore(), online, hosted, sleeves, setup }: GameScreenProps) {
+function GameTable({ connection: source, rematch, slots = DEFAULT_SLOTS, coverDelayMs = 600, brand = BRAND, settings = settingsStore(), online, hosted, sleeves, printings, setup }: GameScreenProps) {
   const nav = useNav();
   // Online: leaving the screen for good leaves the game at the local server (the other side gets a bye) and closes the page's socket. The server
   // concedes a running game for this player first (CL4, CR 104.3a), so the other side sees that it won and why.
@@ -201,7 +206,7 @@ function GameTable({ connection: source, rematch, slots = DEFAULT_SLOTS, coverDe
   const stale = useSyncExternalStore(connection.subscribe, connection.stale);
   const view = useGameView(connection);
   // The pictures of the cards in play are read before the board draws them again in another zone (cards/prefetch.ts).
-  usePrefetchPictures(view.defs);
+  usePrefetchPictures(view.defs, printings ? (m) => pictureKeysInGame(printings, m) : undefined);
   const legalActions = useLegalActions(connection);
   const handoff = useHandoff(connection);
   const canUndo = useSyncExternalStore(connection.subscribe, connection.canUndo);
@@ -379,6 +384,7 @@ function GameTable({ connection: source, rematch, slots = DEFAULT_SLOTS, coverDe
   // RPL-2: another build's replay is checked before its table is drawn, and one that cannot be watched here says so in its place.
   const replayCovered = replayBadge === 'checking' || replayBadge === 'unplayable';
   return (
+    <GamePrintingsContext.Provider value={printings ?? NO_PRINTINGS}>
     <div className="game-screen" style={style} data-animation={animationSpeed} data-replay={replay ? '' : undefined}>
       {replay && replayCovered ? (
         <>
@@ -427,7 +433,7 @@ function GameTable({ connection: source, rematch, slots = DEFAULT_SLOTS, coverDe
                           view={view}
                           result={view.result}
                           {...(rematch
-                            ? { onRematch: () => nav.reset({ screen: 'game', connection: sealConnection(rematch()), rematch, ...(sleeves ? { sleeves } : {}), ...(setup ? { setup } : {}) }) }
+                            ? { onRematch: () => nav.reset({ screen: 'game', connection: sealConnection(rematch()), rematch, ...(sleeves ? { sleeves } : {}), ...(printings ? { printings } : {}), ...(setup ? { setup } : {}) }) }
                             : {})}
                           {...(setup ? { setup, onChangeDecks: () => leaveTo({ screen: 'newGame', setup }) } : {})}
                           onNewGame={() => leaveTo({ screen: 'newGame' })}
@@ -457,5 +463,6 @@ function GameTable({ connection: source, rematch, slots = DEFAULT_SLOTS, coverDe
         />
       )}
     </div>
+    </GamePrintingsContext.Provider>
   );
 }

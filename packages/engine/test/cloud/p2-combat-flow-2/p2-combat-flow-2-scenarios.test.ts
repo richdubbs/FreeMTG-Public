@@ -24,9 +24,9 @@ describe('the synthetic cards are automated', () => {
   it('every synthetic card plays fully', () => {
     for (const d of DEFS.filter((x) => x !== FOG)) expect(full(d), `${d.name}: ${JSON.stringify(d.automation)}`).toBe(true);
   });
-  it('the group form ("Attacking creatures become blocked.") is automated; its template is experimental, so the card is capped at partial (design 6.9)', () => {
+  it('the group form ("Attacking creatures become blocked.") is automated; edh-e-61 made its template stable (design 6.9 narrow wording, Choking Vines), so the card plays fully', () => {
     expect((FOG.automation.faces ?? [])[0]!.abilities.every((a) => a.level === 'full')).toBe(true);
-    expect(FOG.automation.level).toBe('partial');
+    expect(FOG.automation.level).toBe('full'); // edh-e-61: was 'partial' while eff.p2cf2.becomeBlocked.group was experimental
   });
 });
 

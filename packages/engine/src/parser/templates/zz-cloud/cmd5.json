@@ -263,7 +263,7 @@
     "id": "sta.cmd5.spells.less.opp.targetSelf",
     "kind": "static",
     "since": 8,
-    "status": "experimental",
+    "status": "stable",
     "cr": [
       "CR 601.2c",
       "CR 601.2f",

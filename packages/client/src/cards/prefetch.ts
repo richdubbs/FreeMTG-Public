@@ -33,7 +33,11 @@ function noneUploaded(uploads: UploadedImages, keys: readonly string[]): Promise
   });
 }
 
-export function usePrefetchPictures(defs: Readonly<Record<string, CardDef>>): void {
+/**
+ * `keysOf` (deck-art-1): the picture look-up keys of a card in this game (the players' chosen printings, images/printings.ts printedKey); absent: the
+ * default picture only (its name).
+ */
+export function usePrefetchPictures(defs: Readonly<Record<string, CardDef>>, keysOf?: (model: ReturnType<typeof cardModelOf>) => readonly string[]): void {
   const images = useCardImages();
   const [showScryfall] = useShowScryfallImages();
   useEffect(() => {
@@ -47,8 +51,11 @@ export function usePrefetchPictures(defs: Readonly<Record<string, CardDef>>): vo
       if (!showScryfall) continue;
       void noneUploaded(images.uploads, keys).then(async (none) => {
         if (!none) return;
-        for (const u of (await images.scryfall.get(model.name)) ?? []) holdPicture(pickScryfallUrl(u, 'normal'), true);
+        for (const key of keysOf ? keysOf(model) : [model.name]) {
+          for (const u of (await images.scryfall.get(key)) ?? []) holdPicture(pickScryfallUrl(u, 'normal'), true);
+        }
       });
     }
+    // `keysOf` is fixed for a game (its route's printings).
   }, [defs, showScryfall, images]);
 }

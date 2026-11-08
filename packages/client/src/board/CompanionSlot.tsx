@@ -29,7 +29,7 @@ export function CompanionSlot({ player }: { player: PlayerState }) {
     <div className="companion-slot commander-slot is-away" role="group" aria-label={`${player.name}'s companion, ${name}: ${where}`} title={title} data-companion={rec.defId} data-player-id={player.id}>
       <span className="command-card">
         <span className="command-card-away companion-card" aria-hidden="true">
-          {board.renderCard({ def, face: 0, chars: null, size: 'small', faceDown: false })}
+          {board.renderCard({ def, face: 0, chars: null, size: 'small', faceDown: false, owner: player.id })}
         </span>
       </span>
       <span className="commander-info">

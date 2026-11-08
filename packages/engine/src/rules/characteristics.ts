@@ -154,7 +154,7 @@ function defsReadHistory(defs: GameState['defs']): boolean {
     let r = DEF_READS_HISTORY.get(d);
     // FAST5X E28: and the history filter "attacked this turn" (statics/match.ts reads it, CR 611.3a)
     // CLOUD std-ecl: and the history count "the number of creatures that entered the battlefield under your control this turn" (statics/match.ts `happenedCount`)
-    if (r === undefined) { const j = JSON.stringify(d); DEF_READS_HISTORY.set(d, (r = j.includes('"cond":"happened"') || j.includes('"firstCastOf":') || j.includes('"attackedThisTurn":') || j.includes('"enteredThisTurn":') || j.includes('"countersPutThisTurn":') || j.includes('"q":"happenedCount"') || j.includes('"q":"attacksThisTurn"'))); }
+    if (r === undefined) { const j = JSON.stringify(d); DEF_READS_HISTORY.set(d, (r = j.includes('"cond":"happened"') || j.includes('"firstCastOf":') || j.includes('"attackedThisTurn":') || j.includes('"enteredThisTurn":') || j.includes('"enteredSinceYourLastTurn":') || j.includes('"countersPutThisTurn":') || j.includes('"q":"happenedCount"') || j.includes('"q":"attacksThisTurn"'))); }
     if (r) { v = true; break; }
   }
   DEFS_READ_HISTORY.set(defs, { v, n });

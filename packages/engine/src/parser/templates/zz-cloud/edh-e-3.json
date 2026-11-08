@@ -1,0 +1,275 @@
+[
+  {
+    "id": "eff.edhe3.destroy.oneOfThem.atRandom",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 608.2d",
+      "CR 701.8a",
+      "CR 700.2",
+      "CR 702.12b"
+    ],
+    "pattern": "destroy one of {o:Them} at random",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "is": "$o"
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "random": true,
+        "as": "randomPick"
+      },
+      {
+        "op": "destroy",
+        "what": {
+          "ref": "bound",
+          "name": "randomPick"
+        }
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "random",
+      "one of"
+    ],
+    "examples": [
+      {
+        "text": "Choose two target creatures. Destroy one of them at random."
+      },
+      {
+        "text": "Choose four target artifacts. Destroy one of them at random."
+      }
+    ],
+    "counterExamples": [
+      "Destroy one of them at random.",
+      "Choose three target nonenchantment permanents. Destroy all of them at random.",
+      "Choose three target nonenchantment permanents. Exile one of them at random."
+    ]
+  },
+  {
+    "id": "eff.edhe3.chooseName.revealRandomHand",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 701.20a",
+      "CR 608.2d",
+      "CR 201.2",
+      "CR 607.2d"
+    ],
+    "pattern": "choose a card name , then reveal a card at random from your hand",
+    "build": [
+      {
+        "op": "chooseValue",
+        "who": {
+          "ref": "you"
+        },
+        "what": "cardName",
+        "as": "chosenCardName",
+        "link": "chosenCardName"
+      },
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "zone": "hand",
+            "owner": {
+              "ref": "you"
+            }
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "random": true,
+        "as": "picked"
+      },
+      {
+        "op": "reveal",
+        "who": {
+          "ref": "you"
+        },
+        "what": {
+          "ref": "bound",
+          "name": "picked"
+        },
+        "as": "them"
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "random",
+      "then"
+    ],
+    "examples": [
+      {
+        "text": "{2}, {T}: Choose a card name, then reveal a card at random from your hand. If that card has the chosen name, ~ deals 3 damage to target creature."
+      },
+      {
+        "text": "When ~ enters, choose a card name, then reveal a card at random from your hand. If that card has the chosen name, you gain 3 life."
+      }
+    ],
+    "counterExamples": [
+      "Choose a card name, then reveal a card from your hand.",
+      "Choose a card name, then target opponent reveals a card at random from their hand."
+    ],
+    "priority": 1
+  },
+  {
+    "id": "eff.edhe3.if.thatCard.hasChosenName",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 608.2c",
+      "CR 201.2",
+      "CR 607.2d"
+    ],
+    "pattern": "if that card has the chosen name , {e:Effects}",
+    "build": {
+      "op": "if",
+      "cond": {
+        "cond": "matches",
+        "object": {
+          "ref": "bound",
+          "name": "picked"
+        },
+        "filter": {
+          "chosen": {
+            "link": "chosenCardName",
+            "quality": "cardName"
+          }
+        }
+      },
+      "then": "$e"
+    },
+    "subject": "none",
+    "consumes": [
+      "if",
+      "chosen"
+    ],
+    "examples": [
+      {
+        "text": "{2}, {T}: Choose a card name, then reveal a card at random from your hand. If that card has the chosen name, ~ deals 3 damage to target creature."
+      },
+      {
+        "text": "When ~ enters, choose a card name, then reveal a card at random from your hand. If that card has the chosen name, you gain 3 life."
+      }
+    ],
+    "counterExamples": [
+      "If that card has the chosen name, you gain 3 life.",
+      "Choose a card name, then reveal a card at random from your hand. If that card has a different name, you gain 3 life."
+    ],
+    "priority": 1
+  },
+  {
+    "id": "eff.edhe3.if.thenUnlessPayLife",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "priority": 2,
+    "cr": [
+      "CR 118.12",
+      "CR 118.12a",
+      "CR 119.4",
+      "CR 608.2c"
+    ],
+    "pattern": "if {c:Cond} , {e:Effects} unless {p:Player} pay[s] {n:Qty} life",
+    "build": {
+      "op": "if",
+      "cond": "$c",
+      "then": [
+        {
+          "op": "pay",
+          "who": "$p",
+          "cost": {
+            "other": [
+              {
+                "kind": "payLife",
+                "amount": "$n"
+              }
+            ]
+          },
+          "else": "$e"
+        }
+      ]
+    },
+    "consumes": [
+      "if",
+      "unless"
+    ],
+    "examples": [
+      {
+        "text": "Target player reveals a card at random from their hand. If it's a land card, that player discards it unless they pay 2 life."
+      },
+      {
+        "text": "Target player reveals a card at random from their hand. If it's a creature card, that player discards it unless they pay 1 life."
+      }
+    ],
+    "counterExamples": [
+      "Target player reveals a card at random from their hand. That player discards it unless they pay 1 life.",
+      "Target player reveals a card at random from their hand. If it's a land card, that player discards it if they pay 1 life."
+    ]
+  },
+  {
+    "id": "eff.edhe3.if.thenUnlessPayLifeEqual",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "priority": 2,
+    "cr": [
+      "CR 118.12",
+      "CR 118.12a",
+      "CR 119.4",
+      "CR 608.2c"
+    ],
+    "pattern": "if {c:Cond} , {e:Effects} unless {p:Player} pay[s] life equal to {n:Qty}",
+    "build": {
+      "op": "if",
+      "cond": "$c",
+      "then": [
+        {
+          "op": "pay",
+          "who": "$p",
+          "cost": {
+            "other": [
+              {
+                "kind": "payLife",
+                "amount": "$n"
+              }
+            ]
+          },
+          "else": "$e"
+        }
+      ]
+    },
+    "consumes": [
+      "if",
+      "unless"
+    ],
+    "examples": [
+      {
+        "text": "Target player reveals a card at random from their hand. If it isn't an instant card, the player discards it unless they pay life equal to its mana value."
+      },
+      {
+        "text": "Target player reveals a card at random from their hand. If it's a creature card, the player discards it unless they pay life equal to its mana value."
+      }
+    ],
+    "counterExamples": [
+      "Target player reveals a card at random from their hand. The player discards it unless they pay life equal to its mana value.",
+      "Target player reveals a card at random from their hand. If it's a land card, the player discards it unless they pay 1 life."
+    ]
+  }
+]

@@ -80,6 +80,8 @@ export interface StepResult {
   stated?: number;
   /** edh-next-128 ADDITION (optional), CR 705.2, 608.2c: of a called `flipCoin` of several coins, the flips lost, read by `{q:'resultCount', lost: true}` ("for each flip you lose"). */
   lost?: number;
+  /** edh-e-62 ADDITION (optional), CR 705.1, 705.2, 608.2c: of a named `flipCoin`, the players whose coin came up heads / tails (APNAP order), read by `{ref:'coinSide'}` ("each player whose coin comes up tails"). */
+  coinSides?: { heads: PlayerId[]; tails: PlayerId[] };
   /**
    * FAST5X E17 ADDITION (optional): the last known information of the objects the step actually moved, as they were before it moved them (CR 608.2h; a token
    * that ceased to exist too). Set by `destroy` (effects/handlers/zones-remove.ts); read by `{cond:'did', which}` ("a creature you controlled was destroyed
@@ -127,6 +129,13 @@ export interface StepResult {
    * optional action (effects/handlers/control.ts). Absent for every other step.
    */
   countersPut?: ReadonlyMap<string, number>;
+  /**
+   * edh-d-86-fix ADDITION (optional), CR 603.12, 122.6 (Craig Boone, Novac Guard ruling 2024-06-07; Etched Slith): of a `putCounters` step that puts a stated number of
+   * counters on ONE holder, that stated number (before any replacement). A reflexive "When you do" waiting for that step triggers once for every that many counters
+   * actually put this way (`countersPut`): a doubler that makes "put two quest counters" put four makes it trigger twice (effects/handlers/lasting.ts#reflexive).
+   * Absent for every other step and for a put on several holders.
+   */
+  countersStated?: number;
   /**
    * M12-3 ADDITION (optional), CR 701.38a-b: of a vote, the votes each choice got (a word, an object id or a player id -> the number of votes; every choice is
    * listed, 0 included), read by `{q:'votes'}`. Absent for every other step.
@@ -195,6 +204,11 @@ export interface ExecCtx {
    * one other player ("that player may put a +1/+1 counter on ~") while its optional instructions run. Read by counters events (`by`); absent = the controller.
    */
   performer?: PlayerId;
+  /**
+   * trek-23 INTERFACE CHANGE (additive), CR 608.2c, 406.3 (Vulcan Mind-Meld): the player who exiled each card a move with `by` put into exile during THIS resolution (the card's id in exile),
+   * read by a play permission with `exiledByOnly` as its effect begins (effects/handlers/lasting.ts#exiledByPermits). Absent outside a resolution, and for cards no such move exiled.
+   */
+  exiledBy?: Map<ObjectId, PlayerId>;
   /** Set while a continuous effect's modifications are evaluated, for {ref:'subject'}. */
   subject?: ObjHandle;
   /**
@@ -363,7 +377,7 @@ export interface DestinationFacts {
   /** Why it moves, for the log and the trigger normalizer ("destroy", "resolve", "sacrifice", ...). */
   cause?: string;
   /** Choices made as it enters, stored in the new object's link store (CR 614.12a, 607.2d). */
-  chosen?: { link: string; values?: string[]; players?: PlayerId[]; objects?: ObjHandle[] /* std-cardcopy-3: cards exiled as it enters, CR 607.2a */ }[];
+  chosen?: { link: string; values?: string[]; players?: PlayerId[]; secret?: PlayerId[] /* edhe35: a secret choice, CR 608.2d */; objects?: ObjHandle[] /* std-cardcopy-3: cards exiled as it enters, CR 607.2a */ }[];
   /** It enters attached to this object or player (CR 303.4f, 614.1c). */
   attachTo?: ObjectId | PlayerId;
   /** It enters with these abilities (CR 614.1c): granted by a layer 6 effect on the new object. */

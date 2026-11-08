@@ -9,7 +9,7 @@ import { isPlayerOnlyRef, TARGETED_PLAYER_LINK } from '../types/ability';
 import { entersOrAttacks, EVENT_ROLES, implicitRole, mixedCombatRole, opponentTargets, silentRole, TARGETING_CONTROLLER } from '../model/lint-roles';
 import { K, type NpOpts } from './kernel';
 import { cloneState, objKey, personOf, playerKey, type Form, type Phrase, type RefInfo, type RenderState } from './state';
-import { alt, article, COLOR_WORD, displayFirst, firstAlt, joinList, NoRenderer, numWord, pluralize, withArticle } from './text';
+import { alt, ALT_CLOSE, ALT_OPEN, article, COLOR_WORD, displayFirst, firstAlt, joinList, NoRenderer, numWord, pluralize, withArticle } from './text';
 
 const POSSESSIVE = (text: string): string => (/s$/.test(text) && !/'s$/.test(text) ? `${text}'` : `${text}'s`);
 
@@ -152,7 +152,7 @@ function candidateCheck(st: RenderState, key: string, info: RefInfo): { pronoun:
   // (no `by` in any event), so it is no rival of the creature that became blocked, "it"
   const sacrificedNamed = (a: Antecedent): boolean => a.id !== mine && (st.info.get(a.id)?.alts ?? []).length > 0 && (st.info.get(a.id)?.alts ?? []).every((x) => x.startsWith('the sacrificed ')) && st.info.get(mine)?.zone !== 'graveyard' && st.info.get(mine) !== undefined;
   const silentBlocker = key === 'e:attacker' && info.player !== true && (st.trigger ?? []).length > 0 && st.trigger!.every((ev) => ev.ev === 'becomesBlocked' && ev.by === undefined) ? identityOf(st, 'e:blocker') : null;
-  const others = antecedents(st).filter((a) => a.id !== mine && a.id !== st.notAntecedent && a.id !== silentBlocker && !onStackOnly(a) && !sacrificedNamed(a) && !noPower(a) && !creatureOnly(a) && !mayBePlayer(a) && a.player === (info.player === true) && a.plural === info.plural
+  const others = antecedents(st).filter((a) => a.id !== mine && a.id !== st.notAntecedent && a.id !== silentBlocker && !(st.cardOnly === true && a.id === 'self' && (st.ctx.selfTypes ?? []).some((x) => PERMANENT_TYPES.has(x.toLowerCase()))) && !onStackOnly(a) && !sacrificedNamed(a) && !noPower(a) && !creatureOnly(a) && !mayBePlayer(a) && a.player === (info.player === true) && a.plural === info.plural
     && !(st.info.get(a.id)?.hand === true && info.hand !== true) /* edh-c-104 (the parser's rule, parser/lower/mentions.ts, participleOnly: the whole hand a step looked at is named only by its own participle, never by "them" or "it"): not a rival of the cards chosen out of it */);
   // FAST2 T10 (the parser's rule, parser/lower/anaphora.ts#compatible, Mention.selfObject): while a trigger's events leave the object where it is, "that
   // creature" never names the object itself (Oracle calls it "~" or "it", CR 201.5)
@@ -252,6 +252,8 @@ export function anaphor(info: RefInfo, form: Form, st?: RenderState, key?: strin
     return { text: pick(them, (n) => (n === 'opponent' ? ['that opponent'] : ['that player', 'the player']), info.alts ?? []), plural: false, person: 'sg', ...(form === 'subject' && pronounOk ? { they: true } : {}) };
   }
   const extra = [...(info.alts ?? [])];
+  // edh-e-38 (CR 608.2c, 608.2h; Flesh // Blood, family exiled-card-you-exiled): the one card an instruction of the ability exiled is also "the card you exiled" (Oracle's relative clause for "the exiled card"; the performer is always the ability's controller)
+  if (!info.plural && !info.player && form !== 'possessive' && extra.includes('the exiled card')) extra.push('the card you exiled');
   // FAST4 T19: "that creature or planeswalker" (parser/holes/object.ts): only when each of the two nouns alone names it uniquely
   if (info.orNouns !== undefined && !info.plural && form !== 'possessive' && info.orNouns.every(nounOk)) extra.push(`that ${info.orNouns[0]} or ${info.orNouns[1]}`);
   // edh-c-106 (the parser's rule, parser/holes/object.ts, AnaphorInfo.otherParty; CR 608.2c): "the other creature" is the `object` role of the trigger's event (the creature dealt
@@ -466,7 +468,9 @@ function roleLookup(role: EventRole, st: RenderState): RoleInfo | null {
       && Object.keys(ev.by).every((k) => k === 'controller' || (ev.by as Record<string, unknown>)[k] === undefined);
     // FAST3 T18: the object roles of a batch trigger are a group (CR 603.2c; parser/lower/scope.ts#eventMentions): "those creatures", "them"
     // Standard round 5, r5-trig (CR 603.2c): ... but the creature of "one or more counters are put on a creature" is one creature (one occurrence each, the scope rule)
-    const plural = st.triggerBatch === true && !(ev.ev === 'counters' && r.slot === 'counters.subject' && st.triggerWholeBatch !== true && f.self !== true);
+    // edh-e-19 (CR 509.3c, 603.2c; Hedron Blade): "Whenever equipped creature becomes blocked by one or more colorless creatures, it ...": the one creature itself, whatever the group of its blockers
+    const oneBlocked = ev.ev === 'becomesBlocked' && ev.by !== undefined && st.trigger?.length === 1 && (f.attachedToSource === true || f.self === true) && f === ev.attacker;
+    const plural = st.triggerBatch === true && !oneBlocked && !(ev.ev === 'counters' && r.slot === 'counters.subject' && st.triggerWholeBatch !== true && f.self !== true);
     // std-rD (CR 701.9a, 400.7): the object of a discard is a card ("Whenever you discard a card, exile that card from your graveyard"), wherever the discard put it
     // (a graveyard, or exile with madness, CR 702.35a): it is "that card", and no zone is implied
     if (ev.ev === 'action' && ev.verb === 'discard' && r.slot === 'action.object' && !self && !nouns.includes('card')) nouns = [...nouns, 'card'];
@@ -696,6 +700,14 @@ export function specPhrase(spec: TargetSpec, st: RenderState, extra: NpOpts = {}
     st.used.add(spec.id);
     return 'target permanent another player controls that shares a card type with it';
   }
+  // edh-e-38 (CR 601.2c, 601.7a, 404.1; Mausoleum Turnkey): "target creature card of an opponent's choice from your graveyard": one card of your graveyard chosen by an opponent (the words come before the zone)
+  if (spec.kind === 'object' && spec.min === 1 && spec.max === 1 && JSON.stringify(spec.chooser) === '{"ref":"anOpponent"}' && spec.random !== true && spec.chooserControls !== true && spec.filter?.zone === 'graveyard' && spec.filter.owner === 'you') {
+    // the zone words are a group of readings ("from your graveyard" / "in your graveyard"): the phrase up to them, then the chooser, then the zone as Oracle prints it
+    const base = specPhraseBase(spec, st, extra);
+    const open = base.lastIndexOf(ALT_OPEN);
+    if (open > 0 && base.endsWith(`${ALT_CLOSE} your graveyard`)) return `${base.slice(0, open).trimEnd()} of an opponent's choice from your graveyard`;
+    if (base.endsWith(' from your graveyard')) return `${base.slice(0, -' from your graveyard'.length)} of an opponent's choice from your graveyard`;
+  }
   // edh-d-74 (CR 601.2c, 601.7a; Karplusan Minotaur): "any target of an opponent's choice": one any-target chosen by an opponent (the controller picks which one in a multiplayer game)
   if (spec.kind === 'anyTarget' && spec.min === 1 && spec.max === 1 && JSON.stringify(spec.chooser) === '{"ref":"anOpponent"}' && spec.random !== true) return `${specPhraseBase(spec, st, extra)} of an opponent's choice`;
   const ctl = spec.filter?.controller as { ref?: string; role?: string } | undefined;
@@ -826,8 +838,11 @@ function specPhraseBase(spec: TargetSpec, st: RenderState, extra: NpOpts = {}): 
       }
       if (tf !== undefined) {
         if (single !== '' || count !== undefined || other.other === true) throw new NoRenderer(`target ${spec.id}: a count, limit or "other" on a spell or ability by what it targets`);
-        if (tf.ref === 'each' && tf.filter !== undefined) return `target spell or ability that targets ${K.np(tf.filter, st, { det: 'a' })}`;
-        if (isPlayerOnlyRef(tf as PlayerRef)) return `target spell or ability that targets ${K.player(tf as PlayerRef, st, 'object').text}`;
+        // edh-e-47 (CR 109.4, 115.9b; Teferi's Response): "target spell or ability an opponent controls that targets a land you control": the controller said after the noun
+        const ctl = f.controller === 'opponent' ? ' an opponent controls' : f.controller === 'you' ? ' you control' : f.controller === undefined ? '' : null;
+        if (ctl === null) throw new NoRenderer(`target ${spec.id}: a spell or ability by what it targets, with a controller other than you or an opponent`);
+        if (tf.ref === 'each' && tf.filter !== undefined) return `target spell or ability${ctl} that targets ${K.np(tf.filter, st, { det: 'a' })}`;
+        if (isPlayerOnlyRef(tf as PlayerRef)) return `target spell or ability${ctl} that targets ${K.player(tf as PlayerRef, st, 'object').text}`;
         throw new NoRenderer(`target ${spec.id}: a spell or ability by what it targets other than an object description or a player`);
       }
       // edh-next-74 (CR 115.9c; Radiant Performer): "target spell or ability that targets only a single permanent or player"
@@ -857,7 +872,7 @@ function specPhraseBase(spec: TargetSpec, st: RenderState, extra: NpOpts = {}): 
       const objects = K.np({ ...f, ...other }, st, opts);
       const bare = K.np({ ...f, ...other }, st, { det: 'none', plural });
       // edh-c-109 (CR 115.1; Price of Betrayal; family object-list-or-player): a list of kinds of permanent and a player is one list: "target artifact, creature, planeswalker, or opponent"
-      const listed = !plural && tail === '' && other.other !== true && (f.types?.length ?? 0) > 1 && Object.keys(f).every((k) => k === 'types') ? /^(.*?)(?:,)? or ([^,]+)$/.exec(firstAlt(objects)) : null;
+      const listed = !plural && tail === '' && (f.types?.length ?? 0) > 1 /* edh-e-68: "another target creature, planeswalker, or player" too (Captain's Maneuver) */ && Object.keys(f).every((k) => k === 'types') ? /^(.*?)(?:,)? or ([^,]+)$/.exec(firstAlt(objects)) : null;
       return alt(`${objects} or ${plural ? pluralize(noun) : noun}${tail}`, `${lead} ${plural ? pluralize(noun) : noun} or ${bare}${tail}`,
         ...(listed !== null ? [`${listed[1]}, ${listed[2]}, or ${noun}`] : []));
     }
@@ -987,6 +1002,12 @@ function specPhraseBase(spec: TargetSpec, st: RenderState, extra: NpOpts = {}): 
         if (f.zone !== 'graveyard' || f.owner !== 'you' || plural || spec.groupLimit !== undefined || spec.sharedCardType === true || spec.sharedCreatureType === true || spec.differentControllers === true || spec.sameController === true) throw new NoRenderer(`target ${spec.id}: one of each card type other than one card from your graveyard`);
         return `${K.np({ ...f, ...other, zone: 'graveyard' }, st, { ...opts, noZone: true })} of each card type from your graveyard`;
       }
+      // edh-e-64 (CR 105.1, 115.1; All Suns' Dawn, Rogues' Gallery): "for each color, return up to one target card of that color from your graveyard to your hand"
+      // (the lead "for each color," is said by render/steps.ts#perPlayerLead): the card, then its color, one card of your graveyard at most for each
+      if (spec.perQuality !== undefined) {
+        if (f.zone !== 'graveyard' || f.owner !== 'you' || plural || spec.groupLimit !== undefined || spec.sharedCardType === true || spec.sharedCreatureType === true || spec.differentControllers === true || spec.sameController === true) throw new NoRenderer(`target ${spec.id}: one of each color other than one card from your graveyard`);
+        return `${K.np({ ...f, ...other, zone: 'graveyard' }, st, { ...opts, noZone: true })} of that color from your graveyard`;
+      }
       // CLOUD std-ecl: a spec that shares both a card type and a creature type has no wording
       if (spec.sharedCardType === true && spec.sharedCreatureType === true) throw new NoRenderer(`target ${spec.id}: a shared card type and a shared creature type`);
       const shared0 = spec.sharedCardType === true ? (spec.sharedPermanentType === true ? ' that share a permanent type' /* edh-next-54 (CR 110.4) */ : ' that share a card type') : ''; // FAST5 T66 (CR 205.2a): the set chosen has a card type in common
@@ -1109,7 +1130,7 @@ export const isSpellOrPermanent = (f: ObjectFilter): boolean => {
 
 function specInfo(spec: TargetSpec): RefInfo {
   // STD-FRA (CR 115.1, 601.2c): one target for each opponent is a set (as many targets as there are opponents), "those creatures"
-  const plural = spec.perOpponent === true || spec.perPlayer === true || spec.perCardType === true || (!(spec.min === 1 && spec.max === 1) && !(spec.min === 0 && spec.max === 1)); // std-cardcopy-7: one of each card type is a set too
+  const plural = spec.perOpponent === true || spec.perPlayer === true || spec.perCardType === true || spec.perQuality !== undefined || (!(spec.min === 1 && spec.max === 1) && !(spec.min === 0 && spec.max === 1)); // std-cardcopy-7: one of each card type is a set too
   switch (spec.kind) {
     case 'player': return { nouns: ['player'], plural, player: true };
     case 'anyTarget': return { nouns: ['creature', 'permanent', 'player', 'planeswalker'], plural, ...(plural ? {} : { orNouns: ['permanent', 'player'] as [string, string] }) }; // edhv31 (CR 115.4, 608.2c; Arrow Storm): "any target" is "that permanent or player" later
@@ -1188,7 +1209,7 @@ export function obj(ref: ObjRef, st: RenderState, form: Form, o: { prefer?: 'all
       if (st.mentioned.has(key)) return anaphor(info, form, st, key);
       mention(st, key, info);
       // LNK1 (the parser's rule, parser/lower/mentions.ts#namedPlayerOf): "target creature an opponent controls" names that opponent, "that player" later
-      const by = (spec.kind === 'object' || spec.kind === 'spell' /* trek-21: Brazen Bluff */) && spec.max === 1 ? (spec.filter?.controller === 'opponent' ? 'ctrl' : spec.filter?.owner === 'opponent' ? 'own' : null) : null;
+      const by = (spec.kind === 'object' || spec.kind === 'spell' /* trek-21: Brazen Bluff */) && spec.max === 1 ? (spec.filter?.controller === 'opponent' || isSeatController(spec.filter?.controller) /* edh-e-62 */ ? 'ctrl' : spec.filter?.owner === 'opponent' ? 'own' : null) : null;
       // (known only, with no antecedent info: as before, it is no competitor of another player's pronoun)
       if (by !== null && !(spec.filter?.controller === 'opponent' && spec.filter?.owner === 'opponent')) mention(st, `${by}:${key}`);
       // FAST5 T59: the words of a target phrase that name another object ("other than that creature") never mean the target itself
@@ -1201,6 +1222,7 @@ export function obj(ref: ObjRef, st: RenderState, form: Form, o: { prefer?: 'all
         if (savedNot === undefined) delete st.notAntecedent;
         else st.notAntecedent = savedNot;
       }
+      if (isSeatController(spec.filter?.controller)) st.mentioned.add(`seat:${(spec.filter!.controller as { side: string }).side}`); // edh-e-62 (Barroom Brawl): the player to your left is "that player" afterwards
       return { text: poss(phrase), plural: info.plural, person: personOf(info.plural) };
     }
     case 'bound': {
@@ -1313,8 +1335,12 @@ export function obj(ref: ObjRef, st: RenderState, form: Form, o: { prefer?: 'all
       // FAST4 T28 (CR 109.2): "other" (than the object itself) is also said after the description, "each creature you control other than ~"
       const { other, ...rest } = ref.filter;
       const otherThan = other === true && form !== 'possessive' ? [`${fresh(rest, 'each')} other than ~`, `${fresh(rest, 'all')} other than ~`] : [];
+      // edh-d-107 (CR 110.1; Thelon of Havenwood): a group that names no controller, owner or other zone is every such permanent of every player, "each Fungus on the battlefield"
+      // (family each-group-on-the-battlefield)
+      const bf = other !== true && form !== 'possessive' && ref.filter.controller === undefined && ref.filter.owner === undefined && (ref.filter.zone === undefined || ref.filter.zone === 'battlefield')
+        && ref.filter.is === undefined && ref.filter.isCard === undefined ? [`${each} on the battlefield`] : [];
       st.mentioned = seen;
-      const text = o.prefer === 'each' ? alt(each, all, ...otherThan) : alt(all, each, ...otherThan);
+      const text = o.prefer === 'each' ? alt(each, all, ...otherThan, ...bf) : alt(all, each, ...otherThan, ...bf);
       return { text: poss(text), plural: true, person: 'pl' };
     }
     case 'subject':
@@ -1409,7 +1435,11 @@ export function obj(ref: ObjRef, st: RenderState, form: Form, o: { prefer?: 'all
         const t0 = obj(r, st, form === 'possessive' ? 'object' : form).text;
         // edh-c-104 (CR 400.1, 404.1; Soulquake): the battlefield part of a set that also names cards in graveyards may say its zone, "all creatures on the battlefield and all creature cards
         // in graveyards" (a union of an `each` on the battlefield and an `each` in graveyards; the zone word only beside such a graveyard part, so no other union gains a wording)
-        const bfWord = r.ref === 'each' && 'filter' in r && r.filter.zone === 'battlefield' && ref.of.some((o) => o !== r && o.ref === 'each' && 'filter' in o && o.filter.zone === 'graveyard');
+        const bfWord0 = r.ref === 'each' && 'filter' in r && r.filter.zone === 'battlefield' && ref.of.some((o) => o !== r && o.ref === 'each' && 'filter' in o && o.filter.zone === 'graveyard');
+        // edh-d-108 (CR 400.1, 115.1; Rise // Fall; same family): ... and so may a target permanent beside a target card in a graveyard, "target creature card from a graveyard and target
+        // creature on the battlefield" (an object target that names no zone is a permanent on the battlefield)
+        const zoneOf = (o: ObjRef): string | undefined => (o.ref === 'target' ? (st.specs.get(o.id)?.kind === 'object' ? (st.specs.get(o.id)?.filter?.zone as string | undefined) ?? 'battlefield' : 'none') : undefined);
+        const bfWord = bfWord0 || (r.ref === 'target' && zoneOf(r) === 'battlefield' && ref.of.some((o) => o !== r && zoneOf(o) === 'graveyard'));
         const t = bfWord ? alt(t0, `${t0} on the battlefield`) : t0;
         return form === 'subject' && r.ref === 'each' && 'filter' in r ? alt(t, K.np(r.filter, st, { det: 'none', plural: true })) : t;
       });
@@ -1429,6 +1459,22 @@ export function obj(ref: ObjRef, st: RenderState, form: Form, o: { prefer?: 'all
       if (sharing) {
         const { sharesWith: _sw, other: _o, ...rest } = (second as { filter: ObjectFilter }).filter;
         return { text: poss(alt(joinList(parts), `${parts[0]!} and each other ${K.np(rest, st, { det: 'none', plural: false })} that shares a color with it`)), plural: true, person: 'pl' };
+      }
+      // edh-e-23 (CR 303.4, 205.3m, 608.2c; family aura-and-sharing-creatures; Crown of Fury): the creature the source is attached to and every other creature that shares a creature type with it,
+      // "enchanted creature and other creatures that share a creature type with it", is also said with "all" (the plain union of the two parts)
+      const enchantedGroup = ref.of.length === 2 && ref.of[0]?.ref === 'attachedTo' && second?.ref === 'each' && 'filter' in second && second.filter.sharesWith?.quality === 'creatureType'
+        && second.filter.sharesWith.with.ref === 'attachedTo' && second.filter.sharesWith.other === true && second.filter.sharesWith.each !== true && (form === 'subject' || form === 'object');
+      if (enchantedGroup) {
+        const { sharesWith: _sw, ...rest } = (second as { filter: ObjectFilter }).filter;
+        return { text: poss(alt(joinList(parts), `${parts[0]!} and other ${K.np(rest, st, { det: 'none', plural: true })} that share a creature type with it`)), plural: true, person: 'pl' };
+      }
+      // edh-d-112 (CR 205.3m, 109.2, 608.2c; family obj-and-each-other-sharing-type; Invasion of New Capenna // Holy Frazzle-Cannon): one object that is no target and every other creature that
+      // shares a creature type with it, "that creature and each other creature you control that shares a creature type with it" (the parser's eff.edhd112.counters.objAndEachOtherSharingType)
+      const ownGroup = ref.of.length === 2 && ref.of[0]?.ref !== 'target' && ref.of[0]?.ref !== 'each' && second?.ref === 'each' && 'filter' in second && second.filter.sharesWith?.quality === 'creatureType'
+        && JSON.stringify(second.filter.sharesWith.with) === JSON.stringify(ref.of[0]) && second.filter.sharesWith.other === true && second.filter.sharesWith.each !== true && second.filter.other === undefined && form === 'object';
+      if (ownGroup) {
+        const { sharesWith: _sw, ...rest } = (second as { filter: ObjectFilter }).filter;
+        return { text: alt(joinList(parts), `${parts[0]!} and each other ${K.np(rest, st, { det: 'none', plural: false })} that shares a creature type with it`), plural: true, person: 'pl' };
       }
       // edh-c-58 (CR 109.1, 608.2c; family shared-control-pair; Rise of the Hobgoblins): two groups you control, the control phrase said once after the second, "red creatures and white creatures you control"
       const pairF = ref.of.length === 2 && ref.of.every((r) => r.ref === 'each' && 'filter' in r && r.filter.controller === 'you') ? (ref.of as { filter: ObjectFilter }[]).map((r) => r.filter) : null;
@@ -1642,7 +1688,7 @@ export function attachedOptions(st: RenderState): string[] {
   if (types?.includes('fortification')) return ['fortified land'];
   // edh-c-65 (CR 303.4, 205.3i; Awaken the Ancient "Enchanted Mountain is a 7/7 red Giant creature"): an Aura that enchants a basic land type calls it by that type
   // edh-c-70: "Enchant artifact creature" (Domineer) is one more thing an Aura calls its object
-  if (types?.includes('aura')) return [...ATTACH_NOUNS, 'plains', 'island', 'swamp', 'mountain', 'forest', 'artifact creature'].map((n) => `enchanted ${n}`);
+  if (types?.includes('aura')) return [...ATTACH_NOUNS, 'plains', 'island', 'swamp', 'mountain', 'forest', 'artifact creature', 'equipment'].map((n) => `enchanted ${n}`); // edh-e-23: "Enchant Equipment" (Carry Away)
   return [...ATTACH_NOUNS.map((n) => `enchanted ${n}`), 'equipped creature', 'fortified land'];
 }
 
@@ -1691,7 +1737,7 @@ function playerInner(ref: PlayerRef | PlayerPred, st: RenderState, form: Form): 
     const bound = key !== null ? st.info.get(key) : undefined;
     const alts = bound?.alts;
     // std-control-1 (CR 102.3, 608.2c): the controller of "target creature an opponent controls" is an opponent, "that opponent" later too (parser/holes/player.ts)
-    const opponentTarget = typeof ref !== 'string' && ref.ref === 'controllerOf' && ref.object.ref === 'target' && st.specs.get(ref.object.id)?.filter?.controller === 'opponent';
+    const opponentTarget = typeof ref !== 'string' && ref.ref === 'controllerOf' && ref.object.ref === 'target' && (st.specs.get(ref.object.id)?.filter?.controller === 'opponent' || isSeatController(st.specs.get(ref.object.id)?.filter?.controller)); // edh-e-62: or the player to your left
     const a = anaphor({ nouns: opponent || (bound?.player === true && bound.iterates === 'opponent') || opponentTarget ? ['player', 'opponent'] : ['player'], plural: false, player: true, ...(alts !== undefined ? { alts } : {}) }, form, st, key);
     return sameActor ? { ...a, text: alt('their', a.text) } : a;
   };
@@ -1806,6 +1852,8 @@ function playerInner(ref: PlayerRef | PlayerPred, st: RenderState, form: Form): 
       }
       // edhd63 (CR 607.2d, 614.12a; Sower of Discord, Bitter Feud): the two players "choose two players" chose; one of them is said by the pattern around it ("one of the chosen players")
       if (ref.link === 'chosenPlayers') return { text: poss('the chosen players'), plural: true, person: 'pl' };
+      // edh-d-109 (CR 607.2d; Triarch Stalker): the player the face's triggered or activated "choose an opponent" chose last (parser/parse.ts#linkLastChosenPlayer)
+      if (ref.link === 'lastChosenPlayer') return sg(poss('the last chosen player'));
       return sg(poss(alt('the chosen player', 'the player you chose', ...(ref.link === 'opponent' ? ['that player'] : []) /* edh-c-75: Canker Abomination, "for each creature that player controls" after "choose an opponent" */)));
     case 'active': return sg(poss(alt('the active player', 'that player', 'the attacking player', 'that attacking player', 'attacking player', 'the player whose turn it is' /* edh-d-99 (CR 102.1; family player-whose-turn-it-is; Obeka) */))); // Standard round 4, r4-trig: "the attacking player" (CR 506.2)
     case 'grantCaster': return sg(poss('the player who cast ¤')); // edh-next-146 (CR 601.2a; Hellish Rebuke): the outer spell's name inside the quote it grants
@@ -1858,7 +1906,9 @@ function playerInner(ref: PlayerRef | PlayerPred, st: RenderState, form: Form): 
         if (ref.chosen !== 'direction' || ref.inverse === true) throw new NoRenderer('a chosen direction of a link other than direction');
         return sg(poss(ref.of === undefined || ref.of.ref === 'you' ? 'the next player in the chosen direction' : `the next player in the chosen direction from ${player(ref.of, st, 'object').text}`));
       }
-      if (ref.of === undefined || ref.of.ref === 'you') return sg(poss(`the player to your ${ref.side}`));
+      // edh-e-62 (CR 101.4, 800.4; Barroom Brawl: "the opponent to your left"): with no teams the next player in turn order is an opponent, so the player to your left is also "the opponent to your left"
+      if (ref.of === undefined && form === 'subject' && st.mentioned.has(`seat:${ref.side}`)) return sg('that player'); // edh-e-62
+      if (ref.of === undefined || ref.of.ref === 'you') return sg(poss(form === 'possessive' ? `the player to your ${ref.side}` : alt(`the player to your ${ref.side}`, `the opponent to your ${ref.side}`)));
       return sg(poss(`the player to the ${ref.side} of ${player(ref.of, st, 'object').text}`));
     }
     case 'controlsMost': { // C6: "each player who controls the most creatures" (every player tied for it; CR 109.4, 101.4)
@@ -1895,6 +1945,14 @@ function playerInner(ref: PlayerRef | PlayerPred, st: RenderState, form: Form): 
       if (form === 'possessive') throw new NoRenderer('the possessive of "each player with exactly N life"');
       if (ref.op !== '==') throw new NoRenderer('ref:withLife other than "exactly"');
       return sg(`each ${ref.who === 'opponent' ? 'opponent' : 'player'} with exactly ${ref.n} life`);
+    }
+    case 'coinSide': // edh-e-62 (CR 705.2; Goblin Assassin): "each player whose coin comes up tails", said of the players of the flip (the subject of the instruction after it)
+      if (form !== 'subject') throw new NoRenderer('ref:coinSide other than as the subject of an instruction');
+      return sg(`each player whose coin comes up ${ref.side}`);
+    case 'extremePlayer': { // edh-e-62 (CR 119.1, 402.1; Wild Dogs, Sokenzan Renegade, Loxodon Peacekeeper): the one player with the most / lowest life total, with the most / fewest cards in hand
+      if (form === 'possessive') throw new NoRenderer('the possessive of "the player with the most life"');
+      if (ref.tied === true) throw new NoRenderer('ref:extremePlayer.tied outside "two or more players are tied for ..." (render/cond.ts)');
+      return sg(`the player ${extremeWords(ref)}`);
     }
     case 'mostLife': // edh-d-85 (CR 119.1; Galactus, Devourer of Worlds): one of the opponents tied for the most life
       if (form === 'possessive') throw new NoRenderer('the possessive of "an opponent with the most life among your opponents"');
@@ -2105,4 +2163,18 @@ function permanentOrSuspended(f: ObjectFilter): ObjectFilter | null {
   if (p === undefined || c === undefined || p.zone !== 'battlefield' || !isSuspendedCard(c)) return null;
   const { zone: _z, ...perm } = p;
   return perm;
+}
+
+/**
+ * edh-e-62 (CR 119.1, 402.1): the words after "the player" for an `extremePlayer`: "with the most life", "with the lowest life total", "who has the most cards in hand", "who has the fewest cards in hand".
+ * (Oracle says it so on each card that has it; no other wording is read by the parser, so the others stay manual.)
+ */
+export function extremeWords(ref: { stat: 'life' | 'hand'; fewest?: true }): string {
+  if (ref.stat === 'life') return ref.fewest === true ? 'with the lowest life total' : 'with the most life';
+  return `who has the ${ref.fewest === true ? 'fewest' : 'most'} cards in hand`;
+}
+
+/** edh-e-62 (CR 101.4; Barroom Brawl): a target's controller that is the player to the controller's left / right (`seat`), who is an opponent when the game has no teams. */
+function isSeatController(c: unknown): boolean {
+  return typeof c === 'object' && c !== null && (c as { ref?: string }).ref === 'seat' && Object.keys(c).length === 2;
 }

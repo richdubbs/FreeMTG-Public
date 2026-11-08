@@ -36,7 +36,7 @@ export const rollHookFor = (g: Game, player: PlayerId, sides: number): RollHook 
  * considered rolled: only the kept rolls emit `dieRolled` (the `ev:dieRoll` event), each with the instruction they share. Returns the kept dice, in the
  * order rolled, with the results after `modifier` and after the `hook` (edh-d-49).
  */
-export function rollDice(g: Game, player: PlayerId, sides: number, count: number, ignore = 0, modifier = 0, hook?: RollHook): RolledDie[] {
+export function rollDice(g: Game, player: PlayerId, sides: number, count: number, ignore = 0, modifier = 0, hook?: RollHook, visit = false): RolledDie[] {
   const instruction = g.events.length; // the rolls of this instruction share it (one occurrence of "whenever you roll one or more dice", CR 603.2c)
   const rolls = Array.from({ length: count + Math.max(ignore, 0) }, () => 1 + randomIndex(g, sides));
   const name = g.player(player).name;
@@ -56,7 +56,9 @@ export function rollDice(g: Game, player: PlayerId, sides: number, count: number
       }
     });
   }
-  for (const d of dice) g.emit({ type: 'dieRolled', player, sides, result: d.result, instruction, natural: d.natural }); // edh-next-43 (CR 706.2, ruling of Atomwheel Acrobats 2022-10-07): the event's result is the result after modifiers; edh-d-49: and after the roller's own "after you roll" options (rulings of Night Shift 2022-10-07)
+  const stats = g.player(player).turnStats;
+  stats.diceRolled = (stats.diceRolled ?? 0) + dice.length; // edhe34 (CR 706.2, 706.6): the dice kept, after rerolls; an ignored die was never rolled
+  for (const d of dice) g.emit({ type: 'dieRolled', player, sides, result: d.result, instruction, natural: d.natural, ...(visit ? { visit: true } : {}) }); // edh-next-43 (CR 706.2, ruling of Atomwheel Acrobats 2022-10-07): the event's result is the result after modifiers; edh-d-49: and after the roller's own "after you roll" options (rulings of Night Shift 2022-10-07)
   return dice;
 }
 

@@ -11,7 +11,7 @@
  * answer changes (useValidationSound), ui.error when the deck cannot be opened or saved.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { CardDetailResponse, CardSummary } from '@openmtg/server/api';
+import type { CardDetailResponse, CardSummary, DeckToken } from '@openmtg/server/api';
 import { useNav } from '../app/nav';
 import { sfx } from '../audio/sfx';
 import { deckSleeve } from '../branding/sleeves';
@@ -26,12 +26,15 @@ import { afterRemoval, applyFocus, type FocusRequest } from './focus';
 import { FormatSelect } from './FormatSelect';
 import { DEFAULT_FORMAT, formatOption } from './formats';
 import { deckColors, deckSize } from './look';
-import { addCard, countOf, deckNames, emptyDeck, moveCard, sectionCount, SECTION_LABEL, SECTIONS, type Deck, type DeckSection } from './model';
+import { addCard, countOf, deckNames, emptyDeck, moveCard, printingOf, sectionCount, SECTION_LABEL, SECTIONS, setPrinting, setTokenPrinting, type Deck, type DeckSection } from './model';
+import { PrintingPicker } from './PrintingPicker';
+import { DeckTokensSection, useDeckTokens } from './DeckTokens';
 import { SearchPanel } from './SearchPanel';
 import { commanderIdentity } from './searchQuery';
 import { deckStats } from './stats';
 import { DeckConflictError } from './store';
 import { useCardData } from './useCardData';
+import { useCommanderChoices } from './useCommanderChoices';
 import { shownResult, useValidation, useValidationSound } from './useValidation';
 import { problemsByCard, ValidationPanel } from './ValidationPanel';
 import { requestedView, type BuilderView } from './view';
@@ -168,6 +171,28 @@ export function DeckbuilderScreen({ deckId, now = nowIso, validateDelayMs, autoS
   );
 }
 
+/**
+ * The title bar's Build / Details switch and Export, the same three buttons in both views (owner, 2026-11-07: "when i click on these buttons they move
+ * around"): Export works in Deck Details too, so nothing appears or disappears and the switch keeps its place. decks.css keeps them one size.
+ */
+export function DeckHeaderActions({ view, onView, exporting, onExport }: { view: BuilderView; onView: (v: BuilderView) => void; exporting: boolean; onExport: () => void }) {
+  return (
+    <span className="deck-header-actions">
+      <span className="deck-segment" role="group" aria-label="View">
+        <button type="button" aria-pressed={view === 'build'} onClick={() => onView('build')}>
+          Build
+        </button>
+        <button type="button" aria-pressed={view === 'details'} onClick={() => onView('details')}>
+          Details
+        </button>
+      </span>
+      <button type="button" onClick={onExport} aria-expanded={exporting}>
+        Export
+      </button>
+    </span>
+  );
+}
+
 /** Where the floating preview goes: beside the card you point at, on the side with more room, kept inside the window. */
 export function previewPlacement(rect: { left: number; right: number; top: number }, viewport: { width: number; height: number }, size = { width: 600, height: 440 }) {
   const gap = 14;
@@ -201,6 +226,10 @@ function Builder({
   // The cover card is looked up too, so it shows when it is not in the deck (it was picked from a search) and after a reload.
   const names = useMemo(() => (deck.cover && !deckNames(deck).includes(deck.cover) ? [...deckNames(deck), deck.cover] : deckNames(deck)), [deck]);
   const data = useCardData(api, names, showScryfallImages);
+  // deck-art-1: "Commander" is offered only for a card the deck check would take there (every card the builder knows: the deck's and the search's).
+  const knownNames = useMemo(() => [...data.cards.keys()], [data.cards]);
+  const canCommand = useCommanderChoices(api, deck.format, format.commander, deck.commander, knownNames);
+  const dragging = useRef<string | null>(null);
   const validation = useValidation(api, deck, validateDelayMs);
   useValidationSound(validation);
   const shown = shownResult(validation);
@@ -217,12 +246,20 @@ function Builder({
   const [hover, setHover] = useState<{ card: CardSummary; rect: { left: number; right: number; top: number } } | null>(null);
   const [fetched, setFetched] = useState<ReadonlyMap<string, CardDetailResponse>>(new Map());
   const [exporting, setExporting] = useState(false);
+  /** deck-art-1: the card whose printing is being chosen. */
+  const [picking, setPicking] = useState<string | null>(null);
+  /** deck-art-1: the deck's tokens, and the one whose printing is being chosen. */
+  const deckCardNames = useMemo(() => deckNames(deck), [deck]);
+  const tokens = useDeckTokens(api, deckCardNames);
+  const [pickingToken, setPickingToken] = useState<DeckToken | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null);
   const listsRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLElement>(null);
 
   const pinnedCard = pinned ? data.cards.get(pinned) : undefined;
+  const pinnedPrinting = pinnedCard ? printingOf(deck, pinnedCard.name) : undefined;
+  const pickingOracleId = picking ? (SECTIONS.flatMap((s) => deck[s]).find((e) => e.name === picking && e.oracleId)?.oracleId ?? data.cards.get(picking)?.oracleId) : undefined;
   const shownName = pinnedCard?.name ?? hover?.card.name ?? null;
   // Details (the parts resolved by hand) of the card shown, when the deck's own lookups do not have them: after a short pause for the floating preview.
   useEffect(() => {
@@ -259,8 +296,8 @@ function Builder({
   const addFromSearch = (card: CardSummary, section: DeckSection) => {
     const ref = { name: card.name, oracleId: card.oracleId };
     const added = update((d) => {
-      // CR 903.3: the deck designates its commander; adding the same card again changes nothing.
-      if (section === 'commander') return countOf(d, 'commander', card.name) ? d : addCard(d, 'commander', ref, 1);
+      // CR 903.3: the deck designates its commander; adding the same card again, or a card that can't be one there, changes nothing.
+      if (section === 'commander') return countOf(d, 'commander', card.name) || !canCommand(card.name) ? d : addCard(d, 'commander', ref, 1);
       // One companion per deck (CR 702.139a): a new one replaces the old.
       if (section === 'companion') return countOf(d, 'companion', card.name) ? d : addCard({ ...d, companion: [] }, 'companion', ref, 1);
       return addCard(d, section, ref, 1);
@@ -279,11 +316,27 @@ function Builder({
       if (update((d) => addCard(d, section, { name }, delta))) sfx(delta > 0 ? 'deck.add' : 'deck.remove');
     },
     onMove: (from, to, name) => {
+      // A card dropped on the Commander section: one copy, and only a card that may be a commander there (deck-art-1).
+      if (to === 'commander') {
+        if (!canCommand(name)) return;
+        setFocusRequest({ section: to, card: name, control: 'move' });
+        setAnnouncement(`Moved ${name} to ${sectionName(to)}.`);
+        update((d) => moveCard(d, from, to, name, 1));
+        return;
+      }
       setFocusRequest({ section: to, card: name, control: 'move' });
       setAnnouncement(`Moved ${name} to ${sectionName(to)}.`);
       update((d) => moveCard(d, from, to, name));
     },
     onPreview: openPreview,
+    onPrinting: (name) => setPicking(name),
+    onDrag: (name) => {
+      dragging.current = name;
+    },
+  };
+  const acceptsCommander = (name: string | null) => {
+    const n = name ?? dragging.current;
+    return n !== null && canCommand(n);
   };
 
   const inDeck = (name: string) => SECTIONS.reduce((n, s) => n + countOf(deck, s, name), 0);
@@ -309,21 +362,7 @@ function Builder({
   return (
     <div className={`screen deckbuilder-screen deck-view-${view}`}>
       <TitleBar title={view === 'details' ? 'Deck Details' : 'Deckbuilder'}>
-        <span className="deck-header-actions">
-          <span className="deck-segment" role="group" aria-label="View">
-            <button type="button" aria-pressed={view === 'build'} onClick={() => setView('build')}>
-              Build
-            </button>
-            <button type="button" aria-pressed={view === 'details'} onClick={() => setView('details')}>
-              Details
-            </button>
-          </span>
-          {view === 'build' && (
-            <button type="button" onClick={() => setExporting((v) => !v)} aria-expanded={exporting}>
-              Export
-            </button>
-          )}
-        </span>
+        <DeckHeaderActions view={view} onView={setView} exporting={exporting} onExport={() => setExporting((v) => !v)} />
       </TitleBar>
       {problem}
       <p className="sr-only" role="status" aria-live="polite" data-testid="deck-announcer">
@@ -351,6 +390,7 @@ function Builder({
               images={showScryfallImages}
               autoSearch={autoSearch}
               inDeck={inDeck}
+              canCommand={canCommand}
               onAdd={addFromSearch}
               onPreview={(c) => openPreview(c.name)}
               onHover={(card, el) => setHover(card && el ? { card, rect: el.getBoundingClientRect() } : null)}
@@ -397,8 +437,18 @@ function Builder({
             )}
             <div className="deck-lists" ref={listsRef}>
               {sections.map((s) => (
-                <DeckSectionList key={s} section={s} entries={deck[s]} cards={data.cards} missing={data.missing} problems={problems} handlers={handlers} />
+                <DeckSectionList
+                  key={s}
+                  section={s}
+                  entries={deck[s]}
+                  cards={data.cards}
+                  missing={data.missing}
+                  problems={problems}
+                  handlers={handlers}
+                  {...(s === 'commander' ? { accepts: acceptsCommander } : {})}
+                />
               ))}
+              <DeckTokensSection deck={deck} tokens={tokens.tokens} error={tokens.error} onPrinting={setPickingToken} />
               <details className="deck-notes">
                 <summary>Notes</summary>
                 <textarea rows={3} value={deck.notes} onChange={(e) => update((d) => ({ ...d, notes: e.target.value }))} aria-label="Deck notes" />
@@ -433,12 +483,51 @@ function Builder({
             onClose={() => setPinned(null)}
             {...(cardView ? { cardView } : {})}
             sectionRef={previewRef}
+            {...(pinnedPrinting ? { printing: pinnedPrinting } : {})}
+            {...(inDeck(pinnedCard.name) > 0 ? { onPickPrinting: () => setPicking(pinnedCard.name) } : {})}
+          />
+        </Modal>
+      )}
+      {pickingToken && pickingToken.oracleId && (
+        <Modal label={`Printing of the ${pickingToken.name} token`} wide onClose={() => setPickingToken(null)}>
+          <PrintingPicker
+            api={api}
+            target={{ name: pickingToken.name, oracleId: pickingToken.oracleId, kind: 'token' }}
+            current={deck.tokens?.[pickingToken.key]?.printing}
+            images={showScryfallImages}
+            onPick={(p) => {
+              const t = pickingToken;
+              update((d) => setTokenPrinting(d, t.key, p && t.oracleId ? { oracleId: t.oracleId, name: t.name, printing: p } : null));
+              setPickingToken(null);
+            }}
+            onClose={() => setPickingToken(null)}
+          />
+        </Modal>
+      )}
+      {picking && (
+        <Modal label={`Printing of ${picking}`} wide onClose={() => setPicking(null)}>
+          <PrintingPicker
+            api={api}
+            target={{ name: picking, kind: 'card', ...(pickingOracleId ? { oracleId: pickingOracleId } : {}) }}
+            current={printingOf(deck, picking)}
+            images={showScryfallImages}
+            onPick={(p) => {
+              update((d) => setPrinting(d, picking, p));
+              setPicking(null);
+            }}
+            onClose={() => setPicking(null)}
           />
         </Modal>
       )}
       {hover && floating && !pinnedCard && (
         <div className="deck-hover-preview" style={{ left: floating.left, top: floating.top }} aria-hidden="true">
-          <CardPreview card={hover.card} detail={data.details.get(hover.card.name) ?? fetched.get(hover.card.name)} floating {...(cardView ? { cardView } : {})} />
+          <CardPreview
+            card={hover.card}
+            detail={data.details.get(hover.card.name) ?? fetched.get(hover.card.name)}
+            floating
+            {...(cardView ? { cardView } : {})}
+            {...(printingOf(deck, hover.card.name) ? { printing: printingOf(deck, hover.card.name)! } : {})}
+          />
         </div>
       )}
     </div>

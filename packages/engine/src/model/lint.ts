@@ -18,7 +18,7 @@ function lintScope(def: unknown, base: string, ctx: ValidateContext, issues: Iss
   for (const n of nested) {
     const { grantedScope: _outer, ...inner } = ctx;
     // edh-d-91 (CR 607.2a, 613.1f; Timothar): an ability a RESOLVED effect grants (layer 6 `add` inside an effect step) may read the names its granting resolution bound (lasting-fix.ts#fixOuterNames)
-    lintScope(n.value, n.path, isStatic && grantedByLayer6(n) ? { ...inner, grantedScope: true } : inner, issues, !isStatic && grantedByEffect(n) ? allNamesOf(def) : undefined);
+    lintScope(n.value, n.path, (isStatic && grantedByLayer6(n)) || grantedByToken(n) ? { ...inner, grantedScope: true } : inner, issues, !isStatic && grantedByEffect(n) ? allNamesOf(def) : undefined);
   }
 }
 
@@ -28,6 +28,14 @@ function grantedByEffect(n: WalkNode): boolean {
   for (const a of ancestors(n)) {
     if (a.value['layer'] === 6 && n.path.startsWith(`${a.path}/add/`)) layer6 = true;
     if (a.def === 'EffectStep') return layer6 && a.value['op'] === 'effect';
+  }
+  return false;
+}
+
+/** edh-e-66 (CR 111.4, 201.5a): the nested ability is one of the `abilities` of the token a `createToken` step makes (effects/handlers/tokens-create.ts#bindCreator writes the creating permanent for `grantor`). */
+function grantedByToken(n: WalkNode): boolean {
+  for (const a of ancestors(n)) {
+    if (a.def === 'EffectStep') return a.value['op'] === 'createToken' && n.path.startsWith(`${a.path}/token/abilities/`);
   }
   return false;
 }

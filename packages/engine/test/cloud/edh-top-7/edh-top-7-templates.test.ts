@@ -192,7 +192,11 @@ describe('edh-top-7 parser and renderer changes (one test each)', () => {
     const ok = creature('When ~ enters, search your library for a card, exile it face down, then shuffle. For as long as that card remains exiled, you may play it.');
     expect(fullyAutomated(ok)).toBe(true);
     expect(JSON.stringify(ok.abilities)).toContain('"action":"play","of":{"is":{"ref":"bound"');
-    expect(fullyAutomated(creature('When ~ enters, search your library for a card, exile it face down, then target player shuffles. For as long as that card remains exiled, you may play it.'))).toBe(false);
+    // combined copy (D bundle 28): the shuffle of another player's library still ends the focus, and edh-d-104's tie-break (Daredevil, Fearless Fighter; CR 305.1, 601.2a: what a play
+    // permission names is a card, never ~ on the battlefield) leaves "it" = that card, the exiled card
+    const other = creature('When ~ enters, search your library for a card, exile it face down, then target player shuffles. For as long as that card remains exiled, you may play it.');
+    expect(fullyAutomated(other)).toBe(true);
+    expect(JSON.stringify(other.abilities)).toContain('"action":"play","of":{"is":{"ref":"bound","name":"search"}}');
   });
   it('parser/holes/qty.ts#spellsYouCast: "the number of / for each instant and sorcery spell(s) you\'ve cast this turn" counts your casts of the turn of those types; any other description (a controller, a subtype, a zone) is not read', () => {
     const n = sorcery("Draw X cards, where X is the number of instant and sorcery spells you've cast this turn.");

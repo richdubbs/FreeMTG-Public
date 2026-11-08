@@ -15,7 +15,7 @@ import type { Normalize } from './api';
 import { charsOfObject, ptNumbers } from '../rules/characteristics';
 
 /** Features this module implements (`feature:history`: `GameState.history` is written by `triggers/history.ts` from these events, design 5.2). */
-export const FEATURES: readonly string[] = ['history', 'history.sinceYourLastTurn' /* edh-next-135: rules/history.ts#historyInScope, CR 500.1 */];
+export const FEATURES: readonly string[] = ['history', 'history.sinceYourLastTurn' /* edh-next-135: rules/history.ts#historyInScope, CR 500.1 */, 'history.yourLastTurn' /* edh-d-109: rules/history.ts#historyInScope, CR 500.1 */];
 
 /** FAST5X E19: the prefix of a cast event's data keys `manaFrom.<Subtype>` (triggers/context.ts collects them into `EventContext.manaFrom`). */
 export const MANA_FROM = 'manaFrom.';
@@ -110,6 +110,7 @@ export const normalize: Normalize = (g: Game, events, batch) => {
   const handle = (id: ObjectId): ObjHandle => ({ id, zone: zoneOf(id) });
   const controllerOf = (id: ObjectId): PlayerId | undefined => (s.objects[id] ?? s.lki[id]?.object)?.controller;
   /** `drew` events of one player from event `i` on: the cards drawn this turn before an event are today's total minus those. */
+  const diceFrom = (i: number, player: PlayerId): number => events.slice(i).filter((x) => x.type === 'dieRolled' && x.player === player).length; // edhe34
   const drawsFrom = (i: number, player: PlayerId): number => events.slice(i).filter((x) => x.type === 'drew' && x.player === player).length;
   /** FAST1 T4: `spellCast` events of one player from event `i` on (the same count for "the Nth spell you cast each turn"). */
   const castsFrom = (i: number, player: PlayerId): number => events.slice(i).filter((x) => x.type === 'spellCast' && x.player === player).length;
@@ -181,7 +182,7 @@ export const normalize: Normalize = (g: Game, events, batch) => {
         // edh-next-67 (CR 115.1, 602.2b; Professor Hojo): did the ability target a creature its controller controls? (the targets chosen as it was put on the stack)
         const targeted = s.objects[e.objectId]?.stack?.targets.flat().some((t) => { const to = t.kind === 'object' ? s.objects[t.id] : undefined; return to !== undefined && to.zone === 'battlefield' && to.controller === e.player && charsOfObject(s, to).types.includes('Creature'); }) === true;
         // FAST5X E20: `exhaust` (CR 702.177a) and `loyalty` (CR 606.3), the kind of ability activated (triggers/match.ts, `activate.ability`)
-        push('activate', { source: objects(handle(e.sourceId)), spell: objects({ id: e.objectId, zone: 'stack' }), player: players(e.player) }, data({ mana: false, exhaust: e.exhaust, loyalty: e.loyalty, ninjutsu: e.ninjutsu, boast: e.boast, loyaltyRemoved: e.loyaltyRemoved, lifePaid: e.lifePaid, xInCost: e.xInCost, manaSpent: e.manaSpent, ...(e.lifePaid !== undefined ? { amount: e.lifePaid } : {}) /* edh-next-74: CR 602.2b, 107.3a */, fromZone: e.fromZone, targetsOwnCreature: targeted ? true : undefined }), gone(e.sourceId)); // r3-trig; edh-zones-19: ninjutsu: loyaltyRemoved (CR 606.4); edh-next-67: targetsOwnCreature
+        push('activate', { source: objects(handle(e.sourceId)), spell: objects({ id: e.objectId, zone: 'stack' }), player: players(e.player) }, data({ mana: false, exhaust: e.exhaust, loyalty: e.loyalty, ninjutsu: e.ninjutsu, boast: e.boast, outlast: e.outlast, loyaltyRemoved: e.loyaltyRemoved, lifePaid: e.lifePaid, xInCost: e.xInCost, manaSpent: e.manaSpent, ...(e.lifePaid !== undefined ? { amount: e.lifePaid } : {}) /* edh-next-74: CR 602.2b, 107.3a */, fromZone: e.fromZone, targetsOwnCreature: targeted ? true : undefined }), gone(e.sourceId)); // r3-trig; edh-zones-19: ninjutsu: loyaltyRemoved (CR 606.4); edh-next-67: targetsOwnCreature
         break;
       }
       case 'attackersDeclared': {
@@ -215,7 +216,9 @@ export const normalize: Normalize = (g: Game, events, batch) => {
           // FAST3 T14: `object` is the OTHER combatant of the pair (the attacker it blocks; the creature blocking it), so "Whenever ~ blocks or becomes blocked by
           // a creature, destroy that creature" names one role in both patterns (model/lint-roles.ts)
           // std-rx16 (CR 509.1): `subject` is the combatant the event is about, the blocker of "blocks" and the attacker of "becomes blocked"
-          push('blocks', { ...roles, object: roles['attacker']!, subject: roles['blocker']! }, data({ count: e.blocks.length, first: !seenBlockers.has(b.blocker) }), before);
+          // edh-d-109 (CR 509.3a; Lairwatch Giant): the first pair of a blocker also carries how many attackers it was declared blocking (`blockingCount`), for "blocks two or more creatures"
+          const firstOfBlocker = !seenBlockers.has(b.blocker);
+          push('blocks', { ...roles, object: roles['attacker']!, subject: roles['blocker']! }, data({ count: e.blocks.length, first: firstOfBlocker, ...(firstOfBlocker ? { blockingCount: e.blocks.filter((x) => x.blocker === b.blocker).length } : {}) }), before);
           seenBlockers.add(b.blocker);
           // CR 509.3c: "becomes blocked" triggers once per attacker, "becomes blocked by a creature" once per blocker: the first pair of an attacker is flagged.
           // edh-c-48 (CR 509.3e): "becomes blocked by two or more creatures" reads how many creatures blocked this attacker when the blockers were declared (the first pair carries it)
@@ -434,7 +437,9 @@ export const normalize: Normalize = (g: Game, events, batch) => {
         break;
       case 'dieRolled':
         // WP15 INTERFACE CHANGE: the result is also the event's amount, so an ability triggered by the roll reads it as "the result" (q:dieResult, CR 706.2)
-        push('dieRoll', { player: players(e.player) }, data({ result: e.result, sides: e.sides, amount: e.result, instruction: e.instruction, natural: e.natural }));
+        const roller = s.players.find((x) => x.id === e.player);
+        const dieNth = roller && turnAt(g, at) === s.turn.number ? (roller.turnStats.diceRolled ?? 0) - diceFrom(i, e.player) + 1 : undefined; // edhe34 (CR 706.2): the Nth die this player rolled this turn
+        push('dieRoll', { player: players(e.player) }, data({ nth: dieNth, visit: e.visit, result: e.result, sides: e.sides, amount: e.result, instruction: e.instruction, natural: e.natural }));
         break;
       case 'coinFlipped':
         // cloud r3-mech (CR 705.2): a called flip and whether its player won it

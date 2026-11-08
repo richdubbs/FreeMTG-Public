@@ -29,14 +29,18 @@ const COMBAT_STEPS = ['beginCombat', 'declareAttackers', 'declareBlockers', 'com
  * CMD4 (CR 602.5b, 508.1): "during your turn, before attackers are declared" (parser/lower/activation.ts#BEFORE_ATTACKERS): your turn up to the beginning of combat
  * step, and your declare attackers step not begun this turn.
  */
-function beforeAttackers(c: Condition): boolean {
-  if (c.cond !== 'all' || c.of.length !== 2) return false;
+function beforeAttackers(c: Condition): 'you' | 'opponent' | 'any' | null {
+  if (c.cond !== 'all' || c.of.length !== 2) return null;
   const [t, n] = c.of;
-  const steps = t?.cond === 'turnOf' && t.whose === 'you' && Array.isArray(t.step) ? t.step : null;
-  if (steps === null || steps.join() !== 'upkeep,draw,main1,beginCombat' || n?.cond !== 'not') return false;
+  const steps = t?.cond === 'turnOf' && Array.isArray(t.step) ? t.step : null;
+  if (steps === null || steps.join() !== 'upkeep,draw,main1,beginCombat' || n?.cond !== 'not') return null;
   const h = n.of;
-  return h.cond === 'happened' && h.scope === 'turn' && h.times === undefined && h.by === undefined && h.event.ev === 'step' && h.event.step === 'declareAttackers'
-    && h.event.whose === 'you' && Object.keys(h.event).length === 3;
+  if (!(h.cond === 'happened' && h.scope === 'turn' && h.times === undefined && h.by === undefined && h.event.ev === 'step' && h.event.step === 'declareAttackers')) return null;
+  // edh-e-50 (Norritt, Nettling Imp): the turn's owner is the declaration's owner too: you, an opponent, or (no owner on the event) any player
+  const w = (t as { whose?: unknown }).whose;
+  if (w === 'you') return h.event.whose === 'you' && Object.keys(h.event).length === 3 ? 'you' : null;
+  if (w === 'opponent') return h.event.whose === 'opponent' && Object.keys(h.event).length === 3 ? 'opponent' : null;
+  return w === 'any' && h.event.whose === undefined && Object.keys(h.event).length === 2 ? 'any' : null;
 }
 
 /** "if it's your turn" or, as Oracle usually says it for a restriction, "during your turn" / "during your upkeep" / "during combat" (CR 602.5d). */
@@ -44,7 +48,8 @@ function beforeAttackers(c: Condition): boolean {
 const COMBAT_PARTS: Readonly<Record<string, string>> = { 'declareBlockers,combatDamage,endCombat': 'after blockers are declared', 'beginCombat,declareAttackers': 'before blockers are declared' };
 
 function onlyIfWords(c: Condition, st: RenderState): string {
-  if (beforeAttackers(c)) return alt(`if ${K.cond(c, st)}`, 'during your turn, before attackers are declared');
+  const before = beforeAttackers(c);
+  if (before !== null) return alt(`if ${K.cond(c, st)}`, before === 'you' ? 'during your turn, before attackers are declared' : before === 'opponent' ? "during an opponent's turn, before attackers are declared" : 'before attackers are declared');
   const text = `if ${K.cond(c, st)}`;
   // FAST5X E5 (CR 602.5b): either of two conditions is also said with "if" before each, "if ~ entered this turn or if you control a basic land" (family or-if)
   if (c.cond === 'any' && c.of.length === 2 && c.of.every((x) => x.cond !== 'all' && x.cond !== 'any')) return alt(text, `if ${K.cond(c.of[0]!, st)} or if ${K.cond(c.of[1]!, st)}`);
@@ -170,17 +175,29 @@ function withoutKeywordRestrictions(def: ActivatedAbilityDef): ActivatedAbilityD
   return out.limit === undefined && out.sorcerySpeed !== true && out.instantSpeed !== true && out.onlyIf === undefined && out.costChange === undefined && out.xMin === undefined && out.xIs === undefined && out.uncopiable === undefined && out.spendOnlyChosen === undefined && out.spendOnlyX === undefined ? null : out;
 }
 
+/**
+ * edh-d-106 (CR 107.3a, 602.2b, 700.2; Marath, Will of the Wild; family x-cant-be-0-each-mode): the least X of a modal ability is also printed after every mode, "• Put X +1/+1
+ * counters on target creature. X can't be 0. • ...": the same least X whatever mode is chosen. Only when the effect text is the modes alone (one bullet for each mode, two or more).
+ */
+function xMinEachMode(def: ActivatedAbilityDef, text0: string): string[] {
+  const n = def.effect.modes?.options.length ?? 0;
+  const parts = text0.split(' • ');
+  if (n < 2 || parts.length !== n + 1 || !/--$/.test(parts[0]!)) return [];
+  return [`${parts[0]!} ${parts.slice(1).map((p) => `• ${p} X can't be 0.`).join(' ')}`];
+}
+
 /** The activation restrictions and the ability's own cost change after "[Cost]: [Effect]" (CR 602.5b, 601.2f). */
 function withRestrictions(def: ActivatedAbilityDef, text00: string, st: RenderState): string {
   // edh-next-132 (CR 107.3c, 607.2a; Prototype Portal; family x-is-exiled-card-mana-value): "X is the mana value of that card." (or "... of the exiled card.") right after the effect: the X of the cost
   // the text defines, the one card exiled with the source
-  if (def.xIs !== undefined && (def.xIs.of.link !== 'exiled' || def.xMin !== undefined)) throw new NoRenderer('an X the text defines other than the mana value of the exiled card');
-  const text0 = def.xIs === undefined ? text00 : `${text00} ${alt('X is the mana value of that card.', 'X is the mana value of the exiled card.')}`;
+  if (def.xIs !== undefined && ((def.xIs.q === 'stat' && def.xIs.of.link !== 'exiled') || def.xMin !== undefined)) throw new NoRenderer('an X the text defines other than the mana value of the exiled card');
+  // edh-d-111 (CR 107.3c, 122.1; Voodoo Doll): or "X is the number of pin counters on ~." (the counters of one kind on the source)
+  const text0 = def.xIs === undefined ? text00 : def.xIs.q === 'counters' ? `${text00} X is the number of ${def.xIs.kind} counters on ~.` : `${text00} ${alt('X is the mana value of that card.', 'X is the mana value of the exiled card.')}`;
   // std-rx12 (CR 107.3a, 602.2b): "X can't be 0." right after the effect, before the activation restrictions (Oracle's order)
   if (def.xMin !== undefined && def.xMin !== 1) throw new NoRenderer('a least X other than 1');
   // std-copy-1 (CR 707.10): "This ability can't be copied." in the same place, one sentence with "X can't be 0" when both are said (Gogo, Master of Mimicry)
   const uncopiable = def.uncopiable === true;
-  const text1a = def.xMin === 1 ? (uncopiable ? `${text0} This ability can't be copied and X can't be 0.` : `${text0} X can't be 0.`) : uncopiable ? `${text0} This ability can't be copied.` : text0;
+  const text1a = def.xMin === 1 ? (uncopiable ? `${text0} This ability can't be copied and X can't be 0.` : alt(`${text0} X can't be 0.`, ...xMinEachMode(def, text0))) : uncopiable ? `${text0} This ability can't be copied.` : text0;
   // edh-mana-keywords-8 (CR 106.6; Throne of Eldraine): "Spend only mana of the chosen color to activate this ability." after the effect
   if (def.spendOnlyChosen !== undefined && def.spendOnlyChosen !== 'color') throw new NoRenderer('a spend-only restriction of a choice other than the chosen color');
   const text1b = def.spendOnlyChosen === undefined ? text1a : `${text1a} Spend only mana of the chosen color to activate this ability.`;
@@ -385,6 +402,8 @@ function entersAndDealsCombatDamageToPlayer(t: TriggeredAbilityDef['trigger']): 
 function castSelfAndWhenever(t: TriggeredAbilityDef['trigger']): boolean {
   const [a, ...rest] = t.on;
   if (a === undefined || rest.length === 0 || t.batch === true || t.first !== undefined || t.while !== undefined) return false;
+  // edhe28 (CR 702.29c, 603.10a; Esper Sojourners): "When you cycle ~ and when ~ dies": the cycling of this card by you, then its own death
+  if (a.ev === 'action' && a.verb === 'cycle' && a.actor === 'you' && a.object?.self === true && keys(a).length === 4 && keys(a.object).length === 1) return rest.length === 1 && selfDies(rest[0]!);
   if (a.ev !== 'cast' || a.player !== 'you' || a.spell?.self !== true || keys(a).some((k) => k !== 'ev' && k !== 'player' && k !== 'spell') || keys(a.spell).length !== 1) return false;
   return rest.every((b) => selfEnters(b) || selfDies(b) || (b.ev === 'attacks' && keys(b).every((k) => k === 'ev' || k === 'attacker') && b.attacker?.self === true));
 }
@@ -575,7 +594,8 @@ function triggered(def: TriggeredAbilityDef, st: RenderState): string {
           : andWheneverOtherKind(def.trigger) || entersAndWheneverOther(def.trigger) ? alt(lead0,
             ...(andWheneverOtherKind(def.trigger) ? [`whenever ${K.events([def.trigger.on[0]!], st, 'present', { batch: def.trigger.batch === true })} and whenever ${K.events(def.trigger.on.slice(1), st, 'present', { batch: def.trigger.batch === true && def.trigger.on[0]!.ev !== 'attacks' /* edh-d-70 (Kratos): only the attack declaration is the batch */ })}`] : []),
             // Standard round 4, r4-trig (CR 603.2, 503.1; Gathering Stone): a step is "when ~ enters and at the beginning of your upkeep"
-            ...(entersAndWheneverOther(def.trigger) ? [`when ~ enters and ${def.trigger.on[1]!.ev === 'step' ? 'at' : 'whenever'} ${K.events([def.trigger.on[1]!], st, 'present', def.trigger.batch === true ? { batch: true } : {})}`] : []),
+            // edh-d-106 (CR 201.5, 603.2; family plural-name-enters-and-whenever; The Fantastic Four): a plural name takes the plural verb, "When The Fantastic Four enter and whenever ..."
+            ...(entersAndWheneverOther(def.trigger) ? [`when ~ ${alt('enters', 'enter')} and ${def.trigger.on[1]!.ev === 'step' ? 'at' : 'whenever'} ${K.events([def.trigger.on[1]!], st, 'present', def.trigger.batch === true ? { batch: true } : {})}`] : []),
             // edh-next-30 (Ivora, Insatiable Heir): the same two events with the object named "it" the second time
             ...(entersAndDealsCombatDamageToPlayer(def.trigger) ? [`when ~ enters and whenever it ${K.events([def.trigger.on[1]!], st, 'present').replace(/^~ /, '')}`] : []))
             // Cloud std-fin: "whenever A and whenever B" for entering objects (Giott, King of the Dwarves); never the case above (every event enters the battlefield)
@@ -1005,6 +1025,9 @@ function staticAbility(def: StaticAbilityDef, st: RenderState): string {
   const before = def.condition && !hasReplace ? cloneState(st) : null;
   // M6-5 (CR 702.138c): "~ escapes with [counters] on it" is "if ~ escaped, it enters with [counters] on it": written from the state before the condition
   const escapes = def.condition !== undefined && hasReplace && isEscaped(def.condition) ? cloneState(st) : null;
+  // edh-d-112 (CR 614.12, 614.1c; Steel Exemplar): "~ enters with two +1/+1 counters on it unless two or more colors of mana were spent to cast it": the negated condition of the
+  // object's own entering replacement said after it with "unless", written from the state before the condition (as the escape reading above)
+  const unlessSt = def.condition?.cond === 'not' && hasReplace ? cloneState(st) : null;
   // the condition comes first in the text, so it is written first (it may name the object that the effects then call "it")
   // FAST5 T63 (family first-spell): "The first creature spell you cast each turn costs {2} less to cast and can be cast as though it had flash"
   const firstSpell = def.condition !== undefined && !hasReplace ? firstSpellStatic(def, cloneState(st)) : null;
@@ -1047,7 +1070,8 @@ function staticAbility(def: StaticAbilityDef, st: RenderState): string {
     const ownEntry = def.effects.every((e) => e.s === 'replace' && e.body.b === 'enters' && e.replaces.ev === 'zoneChange' && e.replaces.subject?.self === true);
     const escaped = ownEntry && escapes !== null ? [K.staticEffects(def.effects, escapes).replace(/^(~|it) enters with /, '~ escapes with ')].filter((t) => t.startsWith('~ escapes with ')) : [];
     // edh-next-70 (CR 611.3a, 614.12; family cond-static-enters-as-long-as): a condition on a group's entering counters (Vampire Socialite) is "as long as C, each ... enters with ..." as well as "if C, ..."
-    return endSentence(ownEntry ? alt(`if ${cond}, ${body}`, `${body} if ${cond}`, ...escaped) : alt(`if ${cond}, ${body}`, `as long as ${cond}, ${body}`));
+    const unless = ownEntry && unlessSt !== null && def.condition?.cond === 'not' ? [`${K.staticEffects(def.effects, unlessSt)} unless ${K.cond(def.condition.of, unlessSt)}`] : [];
+    return endSentence(ownEntry ? alt(`if ${cond}, ${body}`, `${body} if ${cond}`, ...escaped, ...unless) : alt(`if ${cond}, ${body}`, `as long as ${cond}, ${body}`));
   }
   // FAST1 T5: "During your turn, X" is Oracle's wording of "as long as it's your turn, X" (CR 611.3a, 500.1; render/equivalence.ts family during-turn)
   const c = def.condition!;
@@ -1079,6 +1103,12 @@ function staticAbility(def: StaticAbilityDef, st: RenderState): string {
   if (def.effects.length === 1 && e0?.s === 'permit' && e0.action === 'cast' && e0.from === 'graveyard' && e0.of?.self === true && Object.keys(e0.of).length === 1) {
     const at = body.indexOf('. if you do, ');
     during.push(at < 0 ? `${body} if ${cond}` : `${body.slice(0, at)} if ${cond}${body.slice(at)}`);
+  }
+  // edhe34 (CR 601.3, 614.1a, 611.3a; family during-turn; Eelectrocute): the card's own graveyard permission under a condition and its exile rider, said as Oracle does: "You may cast ~
+  // from your graveyard as long as C. If you cast it this way and it would be put into your graveyard, exile it instead." (the spell cast is the card itself)
+  if (def.effects.length === 1 && e0?.s === 'permit' && e0.action === 'cast' && e0.from === 'graveyard' && e0.of?.self === true && Object.keys(e0.of).length === 1
+    && JSON.stringify(e0.graveyardInstead) === '{"to":{"zone":"exile"},"yours":true}') {
+    during.push(`you may cast ~ from your graveyard as long as ${cond}. if you cast it this way and it would be put into your graveyard, exile it instead`);
   }
   // edh-d-97 (CR 601.3, 611.3a; family exile-cast-another-spell; Monk Class): the card's own permission to cast it from exile as long as you've cast a spell this turn is "You may cast ~ from
   // exile as long as you've cast another spell this turn": the card is not cast yet as the permission is read (CR 601.3), so any spell you cast this turn is another one

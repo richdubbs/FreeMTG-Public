@@ -35,6 +35,7 @@ import { foldEdhMisc5 } from './fold-edhmisc5';
 import { foldEdhMk8 } from './fold-edhmk8';
 import { foldStdCosts2 } from './fold-stdcosts2';
 import { foldEdhN90 } from './fold-edhn90';
+import { foldEdhE11 } from './fold-edhe11';
 import { foldStdLibrary2 } from './fold-stdlibrary2';
 import { foldEdhCast1 } from './fold-edhcast1';
 import { foldEdhCast5 } from './fold-edhcast5'; // edh-cast-5
@@ -53,6 +54,10 @@ import { foldEdhN138 } from './fold-edhn138'; // edh-next-138
 import { foldEdhN136 } from './fold-edhn136'; // edh-next-136
 import { foldEdhN137 } from './fold-edhn137'; // edh-next-137
 import { foldEdhD101 } from './fold-edhd101'; // edh-d-101
+import { foldEdhD105 } from './fold-edhd105'; // edh-d-105
+import { foldEdhD106 } from './fold-edhd106'; // edh-d-106
+import { foldEdhD108 } from './fold-edhd108'; // edh-d-108
+import { foldEdhE46 } from './fold-edhe46'; // edh-e-46
 import { foldEdhB12 } from './fold-edhb12'; // edh-b-12
 import { foldEdhN3 } from './fold-edhn3'; // edh-next-3
 import { foldEdhN19 } from './fold-edhn19'; // edh-next-19
@@ -65,6 +70,8 @@ import { foldEdhN7 } from './fold-edhn7'; // edh-next-7
 import { foldEdhV10 } from './fold-edhv10'; // edh-c-10
 import { foldEdhV26 } from './fold-edhv26'; // edh-c-26
 import { foldEdhV80 } from './fold-edhv80'; // edh-c-80
+import { foldEdhE18 } from './fold-edhe18'; // edh-e-18
+import { foldEdhE68 } from './fold-edhe68'; // edh-e-68
 import { foldEdhV97 } from './fold-edhv97'; // edh-c-97
 import { foldEdhP6 } from './fold-edhp6'; // edh-players-6
 import { foldEdhP7 } from './fold-edhp7'; // edh-players-7
@@ -76,6 +83,7 @@ import { foldEdhP9 } from './fold-edhp9'; // edh-players-9
 import { foldEdhPm12 } from './fold-edhpm12'; // edh-perms-12
 import { foldEdhD1 } from './fold-edhd1'; // edh-d-1
 import { foldEdhD28 } from './fold-edhd28'; // edh-d-28
+import { foldEdhE3 } from './fold-edhe3'; // edh-e-3
 import { foldEdhPm15 } from './fold-edhpm15'; // edh-perms-15
 import { foldEdhV27 } from './fold-edhv27'; // edh-c-27
 import { foldEdhD33 } from './fold-edhd33'; // edh-d-33
@@ -92,6 +100,7 @@ import { foldEdhD75 } from './fold-edhd75'; // edh-d-75
 import { foldEdhD88 } from './fold-edhd88'; // edh-d-88
 import { foldEdhD95 } from './fold-edhd95'; // edh-d-95
 import { foldEdhMk12 } from './fold-edhmk12';
+import { foldEdhE41 } from './fold-edhe41'; // edh-e-41
 import { foldP2Refs1 } from './fold-p2refs1';
 import { foldStdControl1 } from './fold-stdcontrol1';
 import { foldP2Damage2 } from './fold-p2damage2'; // p2-damage-2
@@ -121,6 +130,8 @@ import { foldTrek3 } from './fold-trek3'; // trek-3
 import { foldEdhC104 } from './fold-edhc104'; // edh-c-104
 import { foldTrek8 } from './fold-trek8'; // trek-8
 import { foldTrek20 } from './fold-trek20'; // trek-20
+import { foldTrek23 } from './fold-trek23'; // trek-23
+import { foldEdhE39 } from './fold-edhe39'; // edh-e-39
 import { foldTrek9 } from './fold-trek9'; // trek-9
 import { foldEdhPm4 } from './fold-edhpm4'; // edh-perms-4
 import { foldEdhN59 } from './fold-edhn59'; // edh-next-59
@@ -129,8 +140,10 @@ import { foldPcZones1 } from './fold-pczones1'; // pc-zones-1
 import { foldPcZones2 } from './fold-pczones2'; // pc-zones-2
 import { foldEdhT6 } from './fold-edht6'; // edh-top-6
 import { foldEdhN16 } from './fold-edhn16'; // edh-next-16
+import { foldEdhE47 } from './fold-edhe47'; // edh-e-47
 import { foldEdhV102 } from './fold-edhv102'; // edh-c-102
 import { foldEdhD51 } from './fold-edhd51'; // edh-d-51
+import { foldEdhE64 } from './fold-edhe64'; // edh-e-64
 import { foldEdhN8 } from './fold-edhn8'; // edh-next-8
 import { foldEdhB14 } from './fold-edhb14'; // edh-b-14
 import { foldEdhV18 } from './fold-edhv18'; // edh-c-18
@@ -164,6 +177,8 @@ import { foldEdhZones10 } from './fold-edhzones10'; // edh-zones-10
 import { foldEdhD19 } from './fold-edhd19'; // edh-d-19
 import { foldEdhD27 } from './fold-edhd27'; // edh-d-27
 import { foldEdhD36 } from './fold-edhd36'; // edh-d-36
+import { foldEdhE40 } from './fold-edhe40'; // edh-e-40
+import { foldEdhE53 } from './fold-edhe53'; // edh-e-53
 import { foldEdhN66 } from './fold-edhn66'; // edh-next-66
 import { foldEdhP13 } from './fold-edhp13'; // edh-players-13
 import { foldEdhV25 } from './fold-edhv25'; // edh-c-25
@@ -172,6 +187,7 @@ import { foldEdhP20 } from './fold-edhp20'; // edh-players-20
 import { foldEdhC8 } from './fold-edhc8'; // edh-c-8
 import { foldEdhC76 } from './fold-edhc76'; // edh-c-76
 import { foldEdhD62 } from './fold-edhd62'; // edh-d-62
+import { foldEdhE19 } from './fold-edhe19'; // edh-e-19
 import { foldEdhD85 } from './fold-edhd85'; // edh-d-85
 import { foldEdhC83 } from './fold-edhc83'; // edh-c-83
 import { foldEdhP15 } from './fold-edhp15'; // edh-players-15
@@ -196,6 +212,7 @@ import { foldEdhV22 } from './fold-edhv22'; // edh-c-22
 import { foldEdhV4 } from './fold-edhv4'; // edh-c-4
 import { foldEdhV59 } from './fold-edhv59'; // edh-c-59
 import { foldEdhV74 } from './fold-edhv74'; // edh-c-74
+import { foldEdhE24 } from './fold-edhe24'; // edh-e-24
 import { foldEdhV65 } from './fold-edhv65'; // edh-c-65
 import { foldEdhV96 } from './fold-edhv96'; // edh-c-96
 import { foldEdhV56 } from './fold-edhv56'; // edh-c-56
@@ -216,12 +233,17 @@ import { foldEdhN40 } from './fold-edhn40'; // edh-next-40
 import { foldEdhD61 } from './fold-edhd61'; // edh-d-61
 import { foldEdhN46 } from './fold-edhn46'; // edh-next-46
 import { foldEdhN96 } from './fold-edhn96'; // edh-next-96
+import { foldEdhE10 } from './fold-edhe10'; // edh-e-10
 import { foldEdhD2 } from './fold-edhd2'; // edh-d-2
 import { foldEdhD26 } from './fold-edhd26'; // edh-d-26
 import { foldEdhD9 } from './fold-edhd9'; // edh-d-9
 import { foldEdhD93 } from './fold-edhd93'; // edh-d-93
 import { foldEdhD39 } from './fold-edhd39'; // edh-d-39
 import { foldEdhD23 } from './fold-edhd23'; // edh-d-23
+import { foldEdhE9 } from './fold-edhe9'; // edh-e-9
+import { foldEdhE65 } from './fold-edhe65'; // edh-e-65
+import { foldEdhE38 } from './fold-edhe38'; // edh-e-38
+import { foldEdhE42 } from './fold-edhe42'; // edh-e-42
 import { foldEdhN126 } from './fold-edhn126'; // edh-next-126
 import { foldEdhN127 } from './fold-edhn127'; // edh-next-127
 import { foldEdhN144 } from './fold-edhn144'; // edh-next-144
@@ -231,6 +253,7 @@ import { foldEdhD52 } from './fold-edhd52'; // edh-d-52
 import { foldEdhB9 } from './fold-edhb9'; // edh-b-9
 import { foldEdhD46 } from './fold-edhd46'; // edh-d-46
 import { foldEdhD94 } from './fold-edhd94'; // edh-d-94
+import { foldEdhD110 } from './fold-edhd110'; // edh-d-110
 import { foldEdhC50 } from './fold-edhc50'; // edh-c-50
 import { foldEdhD49 } from './fold-edhd49'; // edh-d-49
 import { movedInfo } from './moved';
@@ -245,9 +268,14 @@ import { foldEdhN122 } from './fold-edhn122'; // edh-next-122
 import { foldEdhD63 } from './fold-edhd63'; // edh-d-63
 import { foldEdhN110 } from './fold-edhn110'; // edh-next-110
 import { foldEdhN120 } from './fold-edhn120'; // edh-next-120
+import { foldEdhE35 } from './fold-edhe35'; // edh-e-35
 import { foldEdhN131 } from './fold-edhn131'; // edh-next-131
 import { foldEdhN128 } from './fold-edhn128'; // edh-next-128
 import { foldEdhD99 } from './fold-edhd99'; // edh-d-99
+import { foldEdhD103 } from './fold-edhd103'; // edh-d-103
+import { foldEdhE6 } from './fold-edhe6'; // edh-e-6
+import { foldEdhE58 } from './fold-edhe58'; // edh-e-58
+import { foldEdhE4 } from './fold-edhe4'; // edh-e-4
 import { foldEdhN129 } from './fold-edhn129'; // edh-next-129
 import { foldEdhN139 } from './fold-edhn139'; // edh-next-139
 import { foldEdhN132 } from './fold-edhn132'; // edh-next-132
@@ -255,7 +283,14 @@ import { foldEdhD97 } from './fold-edhd97'; // edh-d-97
 import { foldEdhD74 } from './fold-edhd74'; // edh-d-74
 import { foldEdhD87 } from './fold-edhd87'; // edh-d-87
 import { foldEdhD91 } from './fold-edhd91'; // edh-d-91
+import { foldEdhE37 } from './fold-edhe37'; // edh-e-37
+import { foldEdhE32 } from './fold-edhe32'; // edh-e-32
 import { foldEdhD100 } from './fold-edhd100'; // edh-d-100
+import { foldEdhD111 } from './fold-edhd111'; // edh-d-111
+import { foldEdhE13 } from './fold-edhe13'; // edh-e-13
+import { foldEdhD112 } from './fold-edhd112'; // edh-d-112
+import { foldEdhE61 } from './fold-edhe61'; // edh-e-61
+import { foldEdhE30 } from './fold-edhe30'; // edh-e-30
 
 export interface Folded {
   clauses: Clause[];
@@ -455,6 +490,8 @@ function chooseThenMove(list: EffectStep[], i: number, st: RenderState): Folded 
   if (b.as !== undefined && dest.zone === 'exile') bind(st, b.as, { nouns: [...new Set(['card', ...nouns])], plural, zone: 'exile', sameAs: identityOf(st, `b:${a.as}`), thisWay: 'exiled this way', ...(a.max === 'any' ? { alts: ['the exiled cards'] } : {}) });
   // edh-zones-14 (CR 608.2c, 608.2h; Scroll Rack): the move also reports how many it exiled, "Put that many cards from the top of your library into your hand" (render/moved.ts)
   if (b.as !== undefined && dest.zone === 'exile' && a.max === 'any') st.info.set(`r:${b.as}`, movedInfo('exiled', ['card']));
+  // edh-e-26 (CR 400.3, 608.2c; Barrel Down Sokenzan): and the several permanents it returned to their owners' hands, "for each Mountain returned this way" (render/moved.ts)
+  if (b.as !== undefined && dest.zone === 'hand' && a.max === 'any') st.info.set(`r:${b.as}`, movedInfo('hand', nouns));
   // edh-zones-15 (CR 608.2c; Abdel Adrian): and the count of what the delayed exile moved, "for each permanent exiled this way" (render/moved.ts#kindOf)
   if (b.as !== undefined && untilExile) st.info.set(`r:${b.as}`, { ...(st.info.get(`r:${b.as}`) ?? movedInfo('exiled', nouns)), moved: 'exiled' });
   // edh-next-136 (CR 608.2d, 110.2a, 122.6; family put-from-hand-or-graveyard-after; Nissa of Shadowed Boughs): your choice of up to one card of a description from your hand or graveyard put onto the
@@ -2180,15 +2217,21 @@ function tapThenFreeze(list: EffectStep[], i: number, st: RenderState): Folded |
     UNFOLDING.add(a); // the unfolded alternative renders the same two steps: not through this fold again
     try { return K.steps([a, b], v); } finally { UNFOLDING.delete(a); }
   };
-  const [folded, unfolded] = withVariants(st, [
+  const [folded, unfolded, thatCreature] = withVariants<string | null>(st, [
     (v) => {
       const o = K.obj(a.what, v, 'object');
       const tail = o.plural ? `they don't untap during ${alt("their controllers' next untap steps", "their controller's next untap step")}` : "it doesn't untap during its controller's next untap step";
       return `tap ${o.text} and ${tail}`;
     },
     unfold,
+    // edh-e-67 (CR 608.2c, 701.26a; Winterthorn Blessing): "Tap up to one target creature you don't control, and that creature doesn't untap during its controller's next untap step":
+    // the same two steps with the creature named again ("that creature") after the comma, for one target creature only
+    (v) => {
+      const o = K.obj(a.what, v, 'object');
+      return !o.plural && /^(up to one )?target creature\b/.test(o.text) && !/ or /.test(o.text.split(" you ")[0]!.split(" an opponent ")[0]!) ? `tap ${o.text}, and that creature doesn't untap during its controller's next untap step` : null;
+    },
   ]);
-  return { clauses: [plain(alt(folded!, unfolded!))], consumed: 2 };
+  return { clauses: [plain(alt(...[folded!, unfolded!, ...(thatCreature === null ? [] : [thatCreature!])]))], consumed: 2 };
 }
 
 /**
@@ -2694,6 +2737,25 @@ function gainsThenNoUntap(list: EffectStep[], i: number, st: RenderState): Folde
   return { clauses: [plain(alt(one!, apart!))], consumed: 2 };
 }
 
+/**
+ * edh-e-25 (CR 120.3, 502.3, 611.2a; family damage-and-no-untap; Reveka, Wizard Savant): "~ deals 2 damage to any target and doesn't untap during your next untap step": ~'s damage and
+ * the restriction "doesn't untap during your next untap step" on ~ itself (`throughNextUntap` of you), one sentence or two. Only ~ itself, as gainsThenNoUntap.
+ */
+function damageThenNoUntap(list: EffectStep[], i: number, st: RenderState): Folded | null {
+  const a = list[i];
+  const b = list[i + 1];
+  if (a?.op !== 'damage' || b?.op !== 'effect' || a.guard !== undefined || b.guard !== undefined || a.as !== undefined || b.as !== undefined || b.effects.length !== 1) return null;
+  if (a.source.ref !== 'self') return null;
+  const eb = b.effects[0]!;
+  if (eb.s !== 'restrict' || eb.mode !== 'cant' || eb.action !== 'untapDuringUntapStep' || eb.subject?.ref !== 'self' || Object.keys(eb.subject).length !== 1) return null;
+  if (b.duration.d !== 'throughNextUntap' || b.duration.whose !== 'you') return null;
+  const [one, apart] = withVariants(st, [
+    (v) => `${fragment(K.clause(a, v))} and doesn't untap during your next untap step`,
+    (v) => `${fragment(K.clause(a, v))}${alt('. ', ' and ')}${fragment(K.clause(b, v))}`,
+  ]);
+  return { clauses: [plain(alt(one!, apart!))], consumed: 2 };
+}
+
 /** Is nothing after the fold's steps reading these names (a later step would see a binding the text no longer shows)? */
 const unread = (list: EffectStep[], from: number, ...names: (string | undefined)[]): boolean =>
   !list.slice(from).some((x) => names.some((n) => n !== undefined && JSON.stringify(x).includes(`"name":"${n}"`)));
@@ -2721,7 +2783,7 @@ function putOfThemAndRest(list: EffectStep[], i: number, st: RenderState): Folde
   // std-blb (CR 107.3, 608.2h): or a computed number, "put X cards from among them into your hand and the rest into your graveyard" (Stargaze)
   const computed = typeof a.min === 'object' && JSON.stringify(a.max) === JSON.stringify(a.min);
   // edh-next-36 (CR 701.20e, 608.2c-d; The Mana Rig): "Put up to two of them into your hand and the rest on the bottom of your library in a random order": the choice may be empty
-  const upTo = a.min === 0 && typeof a.max === 'number' && a.max >= 1 && b.to.zone === 'hand' && Object.keys(b.to).length === 1 && c.to.zone === 'library' && c.to.position === 'bottom' && c.to.order === 'random' && c.to.owner === undefined;
+  const upTo = a.min === 0 && typeof a.max === 'number' && a.max >= 1 && b.to.zone === 'hand' && Object.keys(b.to).length === 1 && ((c.to.zone === 'library' && c.to.position === 'bottom' && c.to.order === 'random' && c.to.owner === undefined) || (c.to.zone === 'graveyard' && Object.keys(c.to).length === 1 /* edh-e-8 (Shadow Prophecy): the rest into your graveyard */));
   if (a.who.ref !== 'you' || !(computed || upTo || (typeof a.min === 'number' && a.min >= 1 && a.max === a.min)) || !isBound(b.what, a.as)) return null;
   const pool = groupPool(a.from);
   if (pool === null || c.what.ref !== 'each') return null;
@@ -2751,7 +2813,10 @@ function putOfThemAndRest(list: EffectStep[], i: number, st: RenderState): Folde
   const ofThem = `${n} of ${them.text}`;
   // std-blb: Oracle also says "put three cards from among them into your hand" (CR 608.2c: the same choice among the cards looked at)
   const fromAmong = `${n} ${a.min === 1 ? 'card' : 'cards'} from among ${them.text}`;
-  const which = upTo ? ofThem : oneOfDesc !== null ? `${K.np({ ...oneOfDesc, zone: 'library' }, st, { det: 'a', plural: false, noZone: true })} from among ${them.text}`
+  // edh-d-107 (CR 701.20a, 608.2c; Glint Raker): the top cards a reveal revealed are also "<a card> revealed this way" (family revealed-this-way-one)
+  const oneOf = oneOfDesc !== null ? K.np({ ...oneOfDesc, zone: 'library' }, st, { det: 'a', plural: false, noZone: true }) : '';
+  const revealedTop = oneOfDesc !== null && st.info.get(`b:${(pool.group as { name: string }).name}`)?.revealedTop === true;
+  const which = upTo ? ofThem : oneOfDesc !== null ? (revealedTop ? alt(`${oneOf} from among ${them.text}`, `${oneOf} revealed this way`) : `${oneOf} from among ${them.text}`)
     : a.min === 1 ? alt(ofThem, 'one', fromAmong) : alt(ofThem, fromAmong);
   // r4-dig (CR 701.13a, 406.3, 401.4): "exile two of them face down, then put the rest on the bottom of their library in a random order" (Black Cat, Cunning Thief):
   // the chosen cards exiled (face down or not), the rest of the group to the bottom of the library they are in (the library's owner is "their" when another
@@ -2771,6 +2836,13 @@ function putOfThemAndRest(list: EffectStep[], i: number, st: RenderState): Folde
     // names them ("You may play the exiled cards for as long as they remain exiled", Black Cat, Cunning Thief), face down or not
     if (!unread(list, i + 3, a.as)) bind(st, a.as, { nouns: ['card'], plural: a.min !== 1, zone: 'exile', alts: [a.min === 1 ? 'the exiled card' : 'the exiled cards'] });
     return { clauses: [acting('you', text, `you ${text}`)], consumed: 3 };
+  }
+  // edh-e-41 (CR 701.20e, 406.1, 608.2c; Plunge into Darkness, template eff.edhe41.dig.putHand.rest.exile): "Put one of those cards into your hand and exile the rest.": the rest of the group
+  // moved to exile (no face-down, no other key), the chosen cards into your hand
+  if (c.to.zone === 'exile' && Object.keys(c.to).length === 1) {
+    if (JSON.stringify(b.to) !== '{"zone":"hand"}' || upTo) return null;
+    const exileText = `put ${which} ${destPhrase(b.to, st, a.min !== 1, true)} and exile ${restText}`;
+    return { clauses: [acting('you', exileText, `you ${exileText}`)], consumed: 3 };
   }
   const text = `put ${which} ${destPhrase(b.to, st, upTo ? a.max !== 1 : a.min !== 1, true)} and ${restText} ${destPhrase(c.to, st, true, true)}`;
   return { clauses: [acting('you', text, `you ${text}`)], consumed: 3 };
@@ -3168,8 +3240,14 @@ function putAllFromGroupAndRest(list: EffectStep[], i: number, st: RenderState):
     st.mentioned.delete(`b:${fa.is.name}`);
   }
   // std-ro: the top cards a reveal revealed are also "<cards> revealed this way" (family revealed-this-way-group)
-  const which = revealed ? alt(`${kind} from among ${them.text}`, `${kind} revealed this way`) : `${kind} from among ${them.text}`;
-  const text = `put all ${which} ${toBf ? 'onto the battlefield tapped' : toBfUntapped ? 'onto the battlefield' : 'into your hand'} and the rest ${rest}`;
+  // edh-d-110 (CR 205.3m, 608.2c; family subtypes-and-union; Depala, Pilot Exemplar): two subtypes of one plural "all" description are also "Dwarf and Vehicle cards" (every card that is either)
+  const sub = fa.anyOf?.[0]?.subtypes;
+  const andKind = !bareChosen && mv === undefined && chosenKind === undefined && keys(fa.anyOf![0]!) === 'subtypes' && sub?.length === 2 ? `${sub[0]} and ${sub[1]} cards` : undefined;
+  const kinds = andKind !== undefined ? alt(kind, andKind) : kind;
+  const which = revealed ? alt(`${kinds} from among ${them.text}`, `${kinds} revealed this way`) : `${kinds} from among ${them.text}`;
+  const into = toBf ? 'onto the battlefield tapped' : toBfUntapped ? 'onto the battlefield' : 'into your hand';
+  // edh-d-110 (CR 608.2c; family then-put-the-rest): "put all ... into your hand, then put the rest on the bottom of your library in a random order" (Depala): the same two moves, the second one its own clause
+  const text = !toBf && !toBfUntapped ? alt(`put all ${which} ${into} and the rest ${rest}`, `put all ${which} ${into}, then put the rest ${rest}`) : `put all ${which} ${into} and the rest ${rest}`;
   return { clauses: [acting('you', text, `you ${text}`)], consumed: 2 };
 }
 
@@ -3506,8 +3584,12 @@ function revealOneFromHand(list: EffectStep[], i: number, st: RenderState): Fold
   if (f === null || f.zone !== 'hand' || f.owner !== 'you' || f.controller !== undefined) return null;
   const { zone: _zone, owner: _owner, isCard: _isCard, ...desc } = f;
   if (Object.keys(desc).length === 0) return null; // "a card from your hand": revealCardsFromHand's
-  bind(st, a.as, { nouns: K.nounsOf(desc), plural: false, hand: true });
-  const text = `reveal ${K.np({ ...desc, zone: 'hand' }, st, { det: 'a', noZone: true })} from your hand`;
+  // edh-d-111 (CR 701.20a, 402.3, 608.2c; family reveal-in-your-hand, Assembly Hall): the card is also "in your hand" ("Reveal a creature card in your hand."), and "that card" afterwards
+  // ("Search your library for a card with the same name as that card")
+  const nouns = K.nounsOf(desc);
+  bind(st, a.as, { nouns, plural: false, hand: true, ...(nouns.includes('card') ? {} : { nouns: [...nouns, 'card'] }) });
+  const np = K.np({ ...desc, zone: 'hand' }, st, { det: 'a', noZone: true });
+  const text = alt(`reveal ${np} from your hand`, `reveal ${np} in your hand`);
   return { clauses: [acting('you', text, `you ${text}`)], consumed: 2 };
 }
 
@@ -4593,12 +4675,34 @@ function keptManaThenLife(list: EffectStep[], i: number, st: RenderState): Folde
 }
 
 function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | null {
+  const edhE9 = foldEdhE9(list, i, st); // edh-e-9: shapes only its own templates build
+  if (edhE9 !== null) return edhE9;
+  const edhE65 = foldEdhE65(list, i, st); // edh-e-65: shapes only its own templates build
+  if (edhE65 !== null) return edhE65;
+  const edhE39 = foldEdhE39(list, i, st); // edh-e-39: "If A, X. If B, Y. Otherwise, Z." (first: it consumes three steps the folds below would take apart)
+  if (edhE39 !== null) return edhE39;
+  const edhE42 = foldEdhE42(list, i, st); // edh-e-42: shapes only its own templates build (first: it consumes a choice and a move the folds below would take apart)
+  if (edhE42 !== null) return edhE42;
+  const edhE6 = foldEdhE6(list, i, st); // edh-e-6: shapes only its own templates build
+  if (edhE6 !== null) return edhE6;
+  const edhE58 = foldEdhE58(list, i, st); // edh-e-58: shapes only its own templates build (first: it consumes a choice and a move the folds below would take apart)
+  if (edhE58 !== null) return edhE58;
+  const edhE4 = foldEdhE4(list, i, st); // edh-e-4: shapes only its own templates build
+  if (edhE4 !== null) return edhE4;
   const edhD99 = foldEdhD99(list, i, st); // edh-d-99: shapes only its own templates build (first: it consumes a search and two moves the folds below would take apart)
   if (edhD99 !== null) return edhD99;
   const edhN143 = foldEdhN143(list, i, st); // edh-next-143: shapes only its own templates build (first: it consumes four steps the folds below would take apart)
   if (edhN143 !== null) return edhN143;
   const edhD101 = foldEdhD101(list, i, st); // edh-d-101: shapes only its own templates build
   if (edhD101 !== null) return edhD101;
+  const edhD105 = foldEdhD105(list, i, st); // edh-d-105: shapes only its own templates build (a choice of two answers and its two guarded effects)
+  if (edhD105 !== null) return edhD105;
+  const edhD106 = foldEdhD106(list, i, st); // edh-d-106: shapes only its own templates build
+  if (edhD106 !== null) return edhD106;
+  const edhD108 = foldEdhD108(list, i, st); // edh-d-108: shapes only its own templates build
+  if (edhD108 !== null) return edhD108;
+  const edhE46 = foldEdhE46(list, i, st); // edh-e-46: shapes only its own templates build
+  if (edhE46 !== null) return edhE46;
   const edhN123 = foldEdhN123(list, i, st); // edh-next-123: shapes only its own templates build (first: it consumes four steps the two-step folds below would take apart)
   if (edhN123 !== null) return edhN123;
   const edhN138 = foldEdhN138(list, i, st); // edh-next-138: shapes only its own templates build ("You may reveal it if ... Create ... if you revealed it this way.")
@@ -4615,6 +4719,8 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (edhD46 !== null) return edhD46;
   const edhD94 = foldEdhD94(list, i, st); // edh-d-94: shapes only its own templates build (Oversimplify: an exile and a forEach of players)
   if (edhD94 !== null) return edhD94;
+  const edhD110 = foldEdhD110(list, i, st); // edh-d-110: shapes only its own templates build (Goblin Charbelcher: a reveal until, an if of two damages, the move of every card revealed)
+  if (edhD110 !== null) return edhD110;
   const edhN89 = foldEdhN89(list, i, st); // edh-next-89: "Then if ~ has N or more X counters on it, remove them and transform ~"
   if (edhN89 !== null) return edhN89;
   const edhn27 = foldEdhNext27(list, i, st); // edh-next-27: shapes only its own templates build (first: it consumes four steps the two-step folds below would take apart)
@@ -4627,6 +4733,8 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (edhn46 !== null) return edhn46;
   const edhn96 = foldEdhN96(list, i, st); // edh-next-96: the move of all cards another player's reveal revealed, into their graveyard
   if (edhn96 !== null) return edhn96;
+  const edhe10 = foldEdhE10(list, i, st); // edh-e-10: your move of all cards your reveal revealed, to the bottom
+  if (edhe10 !== null) return edhe10;
   const edhd87 = foldEdhD87(list, i, st); // edh-d-87: shapes only its own templates build (Sphinx Ambassador)
   if (edhd87 !== null) return edhd87;
   const edhd90 = keptManaThenLife(list, i, st); // edh-d-90: "add {W}{W}{W} and you gain 3 life. Until end of turn, you don't lose this mana ..."
@@ -4653,12 +4761,16 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (pcCombat1 !== null) return pcCombat1;
   const costs2 = foldStdCosts2(list, i, st); // std-costs-2: shapes only its own templates build
   if (costs2 !== null) return costs2;
+  const edhE11 = foldEdhE11(list, i, st); // edh-e-11: shapes only its own templates build
+  if (edhE11 !== null) return edhE11;
   const edhN90 = foldEdhN90(list, i, st); // edh-next-90: shapes only its own templates build
   if (edhN90 !== null) return edhN90;
   const lib2 = foldStdLibrary2(list, i, st); // std-library-2: shapes only its own templates and lowering build
   if (lib2 !== null) return lib2;
   const copy6 = foldStdCopy6(list, i, st); // std-copy-6: shapes only its own templates build
   if (copy6 !== null) return copy6;
+  const edhE41 = foldEdhE41(list, i, st); // edh-e-41: shapes only its own template builds (before edh-mana-keywords-12: the reveal named `revealedX` is its own)
+  if (edhE41 !== null) return edhE41;
   const edhMk12 = foldEdhMk12(list, i, st); // edh-mana-keywords-12: shapes only its own template builds
   if (edhMk12 !== null) return edhMk12;
   const edhD54 = foldEdhD54(list, i, st); // edh-d-54: shapes only its own templates build
@@ -4711,6 +4823,12 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (edhV26 !== null) return edhV26;
   const edhV80 = foldEdhV80(list, i, st); // edh-c-80: shapes only its own templates build
   if (edhV80 !== null) return edhV80;
+  const edhE18 = foldEdhE18(list, i, st); // edh-e-18: shapes only its own templates build
+  if (edhE18 !== null) return edhE18;
+  const edhD103 = foldEdhD103(list, i, st); // edh-d-103: shapes only its own templates build
+  if (edhD103 !== null) return edhD103;
+  const edhE68 = foldEdhE68(list, i, st); // edh-e-68: shapes only its own templates build
+  if (edhE68 !== null) return edhE68;
   const edhV97 = foldEdhV97(list, i, st); // edh-c-97: shapes only its own templates build
   if (edhV97 !== null) return edhV97;
   const edhP5 = foldEdhP5(list, i, st); // edh-players-5: shapes only its own templates build
@@ -4763,6 +4881,8 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (trek8 !== null) return trek8;
   const trek20 = foldTrek20(list, i, st); // trek-20: the shape only its own template builds
   if (trek20 !== null) return trek20;
+  const trek23 = foldTrek23(list, i, st); // trek-23: the shape only its own templates build (a move with `by`)
+  if (trek23 !== null) return trek23;
   const trek9 = foldTrek9(list, i, st); // trek-9: shapes only its own templates build
   if (trek9 !== null) return trek9;
   const edhPm4 = foldEdhPm4(list, i, st); // edh-perms-4: shapes only its own templates build
@@ -4775,6 +4895,8 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (edhT6 !== null) return edhT6;
   const edhV102 = foldEdhV102(list, i, st); // edh-c-102: shapes only its own templates build
   if (edhV102 !== null) return edhV102;
+  const edhE47 = foldEdhE47(list, i, st); // edh-e-47: shapes only its own templates build
+  if (edhE47 !== null) return edhE47;
   const edhN16 = foldEdhN16(list, i, st); // edh-next-16: shapes only its own templates build
   if (edhN16 !== null) return edhN16;
   const edhD89 = foldEdhD89(list, i, st); // edh-d-89: shapes only its own templates build
@@ -4833,6 +4955,9 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (edhD27 !== null) return edhD27;
   const edhD36 = foldEdhD36(list, i, st); // edh-d-36: shapes only its own templates build
   if (edhD36 !== null) return edhD36;
+  const edhE40 = foldEdhE40(list, i, st); // edh-e-40: shapes only its own templates build
+  if (edhE40 !== null) return edhE40;
+  if (list[i]?.op === 'chooseObjects') { const edhE53 = foldEdhE53(list, i, st); if (edhE53 !== null) return edhE53; } // edh-e-53: shapes only its own templates build
   const edhN66 = foldEdhN66(list, i, st); // edh-next-66: shapes only its own templates build
   if (edhN66 !== null) return edhN66;
   const edhV92 = foldEdhV92(list, i, st); // edh-c-92: shapes only its own templates build
@@ -4851,6 +4976,8 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (edhD1 !== null) return edhD1;
   const edhD28 = foldEdhD28(list, i, st); // edh-d-28: shapes only its own templates build
   if (edhD28 !== null) return edhD28;
+  const edhE3 = foldEdhE3(list, i, st); // edh-e-3: shapes only its own templates build
+  if (edhE3 !== null) return edhE3;
   const edhZones12 = foldEdhZones12(list, i, st); // edh-zones-12: shapes only its own templates build
   if (edhZones12 !== null) return edhZones12;
   const edhMk8 = foldEdhMk8(list, i, st); // edh-mana-keywords-8: shapes only its own templates build
@@ -4903,6 +5030,8 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (edhC76 !== null) return edhC76;
   const edhD62 = foldEdhD62(list, i, st); // edh-d-62: shapes only its own templates build
   if (edhD62 !== null) return edhD62;
+  const edhE19 = foldEdhE19(list, i, st); // edh-e-19: shapes only its own templates build
+  if (edhE19 !== null) return edhE19;
   const edhC83 = foldEdhC83(list, i, st); // edh-c-83: shapes only its own templates build
   if (edhC83 !== null) return edhC83;
   const edhV30 = foldEdhV30(list, i, st); // edh-c-30: shapes only its own templates build
@@ -4927,6 +5056,8 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (edhV59 !== null) return edhV59;
   const edhV74 = foldEdhV74(list, i, st); // edh-c-74: shapes only its own templates build
   if (edhV74 !== null) return edhV74;
+  const edhE24 = foldEdhE24(list, i, st); // edh-e-24: shapes only its own templates build
+  if (edhE24 !== null) return edhE24;
   const edhV65 = foldEdhV65(list, i, st); // edh-c-65: shapes only its own templates build
   if (edhV65 !== null) return edhV65;
   const edhV96 = foldEdhV96(list, i, st); // edh-c-96: shapes only its own templates build
@@ -4975,6 +5106,8 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (edhN140 !== null) return edhN140;
   const edhD23 = foldEdhD23(list, i, st); // edh-d-23: shapes only its own templates build
   if (edhD23 !== null) return edhD23;
+  const edhE38 = foldEdhE38(list, i, st); // edh-e-38: shapes only its own templates build
+  if (edhE38 !== null) return edhE38;
   const edhD37 = foldEdhD37(list, i, st); // edh-d-37: shapes only its own templates build
   if (edhD37 !== null) return edhD37;
   const edhD52 = foldEdhD52(list, i, st); // edh-d-52: shapes only its own templates build
@@ -4995,6 +5128,8 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (edhD17 !== null) return edhD17;
   const edhD51 = foldEdhD51(list, i, st); // edh-d-51: shapes only its own templates build
   if (edhD51 !== null) return edhD51;
+  const edhE64 = foldEdhE64(list, i, st); // edh-e-64: shapes only its own templates build
+  if (edhE64 !== null) return edhE64;
   const edhN80 = foldEdhN80(list, i, st); // edh-next-80: shapes only its own templates build
   if (edhN80 !== null) return edhN80;
   const edhD49 = foldEdhD49(list, i, st); // edh-d-49: shapes only its own templates build
@@ -5013,6 +5148,8 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (edhN122 !== null) return edhN122;
   const edhN120 = foldEdhN120(list, i, st); // edh-next-120: shapes only its own templates build
   if (edhN120 !== null) return edhN120;
+  const edhE35 = foldEdhE35(list, i, st); // edh-e-35: shapes only its own templates build
+  if (edhE35 !== null) return edhE35;
   const edhN121 = foldEdhN121(list, i, st); // edh-next-121: shapes only its own templates build
   if (edhN121 !== null) return edhN121;
   const edhN131 = foldEdhN131(list, i, st); // edh-next-131: shapes only its own templates build
@@ -5045,10 +5182,24 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
   if (edhD85 !== null) return edhD85;
   const edhD91 = foldEdhD91(list, i, st); // edh-d-91: shapes only its own templates build
   if (edhD91 !== null) return edhD91;
+  const edhE37 = foldEdhE37(list, i, st); // edh-e-37: shapes only its own templates build
+  if (edhE37 !== null) return edhE37;
   const edhN146 = foldEdhN146(list, i, st); // edh-next-146: shapes only its own templates build
   if (edhN146 !== null) return edhN146;
   const edhD100 = foldEdhD100(list, i, st); // edh-d-100: shapes only its own templates build
   if (edhD100 !== null) return edhD100;
+  const edhE13 = foldEdhE13(list, i, st); // edh-e-13: shapes only its own templates build
+  if (edhE13 !== null) return edhE13;
+  const edhD112 = foldEdhD112(list, i, st); // edh-d-112: shapes only its own templates build
+  if (edhD112 !== null) return edhD112;
+  const edhE61 = foldEdhE61(list, i, st); // edh-e-61: shapes only its own templates build
+  if (edhE61 !== null) return edhE61;
+  const edhE30 = foldEdhE30(list, i, st); // edh-e-30: shapes only its own templates build
+  if (edhE30 !== null) return edhE30;
+  const edhE32 = foldEdhE32(list, i, st); // edh-e-32: shapes only its own templates build
+  if (edhE32 !== null) return edhE32;
+  const edhD111 = foldEdhD111(list, i, st); // edh-d-111: shapes only its own templates build
+  if (edhD111 !== null) return edhD111;
   return handBottomExileOfGroup(list, i, st) /* edh-zones-2 */ ?? putUpToTopRestBottom(list, i, st) /* edh-zones-2 */ ?? shuffleThenExileTop(list, i, st) /* edh-zones-2 */ ?? putCardFromGroupToHand(list, i, st) /* edh-zones-2 */ ?? chooseThenCastFree(list, i) ?? castFromHandFreeMv(list, i, st) /* r4-cost */ ?? castFromGroupFree(list, i, st) ?? castFromLinkedExile(list, i, st) /* std-re */ ?? exileUpToOneFromGraveyard(list, i, st) /* std-exile-play-2-3 */ ?? castFromOwnedExileWithCounters(list, i) /* std-exile-play-2-2 */ ?? exileOneOfEachColorFromRevealed(list, i, st) /* std-exile-play-2-4 */ ?? castFromEachOpponentGraveyard(list, i) /* std-rx27 */ ?? castFromOwnZone(list, i, st) /* std-rw7 */ ?? exileTopXThenCastAnyFree(list, i, st) ?? castAnyFromExiledFree(list, i, st) /* r3-cost */ ?? revealCardsFromHand(list, i, st) ?? lookCloakRest(list, i, st) ?? cloakFromHand(list, i) ?? exilePileCloak(list, i, st)
     ?? dreadBinnedToHand(list, i, st) ?? putOfThemAndRest(list, i, st) ?? eachCardTypeFromGroup(list, i, st) /* std-library-3 */ ?? restOfExiledToHand(list, i, st) /* std-library-3 */ ?? putAnyFromGroupAndRest(list, i, st) ?? putThatAndRest(list, i, st) ?? exileRandomFromGraveyard(list, i, st) ?? returnRandomFromGraveyard(list, i, st) /* p2-coinflip-1 */ ?? revealRandomFromHand(list, i, st) /* p2-coinflip-1 */ ?? lookAtRandomInHand(list, i, st) /* edh-mana-keywords-10 */ ?? putUpToTotalFromGroupAndRest(list, i, st) ?? putOfThem(list, i, st) /* r4-repl */ ?? putAnyFromGroup(list, i, st) /* r4-fxz, r4-repl */ ?? revealTopAndPut(list, i, st) /* r4-dig */ ?? playerLooksThenExilesFaceDown(list, i, st) /* r4-dig */ ?? putEitherFromGroup(list, i, st) ?? revealThreeAndOrFromGroup(list, i, st) /* edh-b-1 */ ?? revealTwoAndOrFromGroup(list, i, st) /* edh-c-76 */ ?? putEitherFromHand(list, i, st) /* r4-fxz */ ?? putAllFromGroupAndRest(list, i, st) /* r4-fxz */ ?? putAllRevealedSplit(list, i, st) /* std-rx1 */ ?? chooseUpToFromGroup(list, i, st) /* r4-dig */ ?? chooseUpToFromGroupThenReveal(list, i, st) /* r5-dig */ ?? otherChoosesThenChosenAndRest(list, i, st) /* r5-dig */ ?? forEachOwnerMayPlay(list, i, st) /* r5-dig */ ?? playerRevealsUntilToGraveyard(list, i, st) /* r5-dig */ ?? revealOneFromHand(list, i, st) /* r4-dig */ ?? putAnyOfHitsAndRestOfRevealed(list, i, st) /* r4-dig */ ?? chooseFromGroup(list, i, st)
     ?? chooseRandomFromGroup(list, i, st) ?? chooseRandomLinkedThenBattlefield(list, i, st) ?? sourceOfChoiceShield(list, i, st) ?? textChange(list, i, st) ?? textChangeFixed(list, i, st) /* edh-misc-6 */ ?? tapThenCounters(list, i, st) ?? tapThenFreeze(list, i, st) ?? gainControlThenUntap(list, i, st) /* r4-trig */ ?? chooseThenUntap(list, i, st)
@@ -5058,7 +5209,7 @@ function foldAtPlain(list: EffectStep[], i: number, st: RenderState): Folded | n
     ?? choicePump(list, i, st) ?? choiceToken(list, i) ?? ownerTopOrBottom(list, i, st) ?? ownerSecondOrBottom(list, i, st) /* r3-refs */ ?? exileSacrificeReturn(list, i, st) ?? drainWhereX(list, i, st) ?? damageGainWhereX(list, i, st)
     ?? drawLoseWhereX(list, i, st) ?? letLifeDrawWhereX(list, i, st) ?? eachOpponentDrawsThenYou(list, i) ?? chooseThenDiscard(list, i, st) ?? sacrificeAnyThenDraw(list, i, st) ?? sacrificeAnyList(list, i, st) /* r4-fxz */ ?? drawTwoToTheX(list, i, st)
     ?? youAndPlayerDraw(list, i, st) ?? youAndPlayerEachDraw(list, i, st) ?? youAndPlayerEachCreate(list, i, st) /* std-rx18 */ ?? millThenPutFromAmong(list, i, st) ?? millThenPutAll(list, i, st) ?? fivePuts(list, i, st) ?? threePuts(list, i, st) ?? twoPuts(list, i, st)
-    ?? pumpThenSelfDamage(list, i, st) ?? chooseThenTapAny(list, i, st) ?? gainsThenNoUntap(list, i, st) ?? chooseThenRemoveFromEach(list, i, st) ?? lookPutBackUpToRest(list, i, st) ?? chooseThenTurnFaceUp(list, i, st)
+    ?? pumpThenSelfDamage(list, i, st) ?? chooseThenTapAny(list, i, st) ?? gainsThenNoUntap(list, i, st) ?? damageThenNoUntap(list, i, st) ?? chooseThenRemoveFromEach(list, i, st) ?? lookPutBackUpToRest(list, i, st) ?? chooseThenTurnFaceUp(list, i, st)
     ?? chooseOneThenSuspect(list, i, st) ?? chooseOneThenCounter(list, i, st) ?? chooseOneThenCopyToken(list, i, st) /* std-rj */ ?? twoExtraCombats(list, i) ?? chooseThenRemoveAnyCounter(list, i, st) ?? countersAndLifeWhereX(list, i, st) /* r4-fxb */ ?? foldStdDsk(list, i, st) ?? chooseThenDestroy(list, i, st) ?? chooseThenAttach(list, i, st) ?? chooseThenUnattachFrom(list, i, st) ?? millThenPutEachMilled(list, i, st)
     ?? sacrificeAnyThenWhereX(list, i, st) /* std-rx29 */ ?? chooseThenSacrificeAny(list, i, st) /* Cloud C7 */ ?? tokenAndToken(list, i, st) /* CMD5 */ ?? flashThenGrantEveryCast(list, i, st) /* edh-d-50 */ ?? chooseThenCounters(list, i, st) /* r3-refs */ ?? chooseAnyThenRemoveCounter(list, i, st) /* std-rx14 */ ?? flickerObjAndUpToOne(list, i, st) /* std-rx14 */ ?? foldR4Refs(list, i, st) /* r4-refs */ ?? whereXThenIfX(list, i, st) /* r4-fxz */ ?? foldR5Refs(list, i, st) /* r5-refs */ ?? foldR5Fxz(list, i, st) /* r5-fxz */ ?? foldStdRs(list, i, st) /* std-rs */ ?? sharedWhereX(list, i, st) ?? saddledOrCreatureByType(list, i, st) /* std-rw6 */ ?? foldStdCombat2(list, i, st) /* std-combat-2 */ ?? foldStdExile3(list, i, st) /* std-exile-play-1-3 */ ?? foldPcEp3(list, i, st) /* pc-exile-play-3 */ ?? foldTrek13(list, i, st) /* trek-13 */ ?? foldPcEp4(list, i, st) /* pc-exile-play-4 */ ?? foldEdhPm8(list, i, st) /* edh-perms-8 */ ?? foldEdhT5(list, i, st) /* edh-top-5 */; // the folds of every slice; cloud std-spm's sharedWhereX last, after every specific fold
 }

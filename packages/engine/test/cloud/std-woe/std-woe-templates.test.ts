@@ -32,6 +32,7 @@ const WHOLE_CORPUS: Readonly<Record<string, { cards: readonly string[]; line: Re
   'sta.stdwoe.aslong.self.is.subtype.basept.abilities': { cards: ['Goddric, Cloaked Reveler'], line: /As long as [^,]+, [^.]* is an? [A-Z][a-z]+ with base power and toughness \d+\/\d+, / },
   'eff.stdwoe.cm.spells.thisTurn.colors.less.whereX': { cards: ['Rowan, Scion of War', 'Will, Scion of Peace'], line: /you cast this turn that are [a-z]+ and\/or [a-z]+ cost \{X\} less to cast, where X is/ },
   'eff.stdwoe.look.putBackUpTo.restGraveyard': { cards: ["Rowan's Grim Search"], line: /put up to \w+ of them back on top of your library in any order and the rest into your graveyard/ },
+  'eff.stdwoe.choose.player': { cards: ['Stadium Vendors'], line: /[Cc]hoose a player\. That player adds two mana of any one color they choose\./ }, // edh-e-21: made stable on this card (design 6.9 deviation)
   'eff.stdwoe.choose.anotherPlayer': { cards: ['Discerning Financier'], line: /Choose another player\./ },
 };
 

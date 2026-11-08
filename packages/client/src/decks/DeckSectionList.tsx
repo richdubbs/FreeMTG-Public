@@ -6,7 +6,7 @@ import { useState, type DragEvent } from 'react';
 import type { CardSummary, DeckProblem } from '@openmtg/server/api';
 import { AutomationBadge, ManaCost } from '../cards';
 import { toneOf } from './look';
-import { SECTION_LABEL, type DeckEntry, type DeckSection } from './model';
+import { printingLabel, SECTION_LABEL, type DeckEntry, type DeckSection } from './model';
 
 const DRAG_TYPE = 'application/x-openmtg-deck-card';
 
@@ -14,6 +14,10 @@ export interface SectionHandlers {
   onChange: (section: DeckSection, name: string, delta: number) => void;
   onMove: (from: DeckSection, to: DeckSection, name: string) => void;
   onPreview: (name: string) => void;
+  /** deck-art-1: open the printing picker for a card. */
+  onPrinting?: (name: string) => void;
+  /** deck-art-1: a card of this deck is being dragged (its name), or the drag ended (null). */
+  onDrag?: (name: string | null) => void;
 }
 
 export function DeckSectionList({
@@ -23,6 +27,7 @@ export function DeckSectionList({
   missing,
   problems,
   handlers,
+  accepts,
 }: {
   section: DeckSection;
   entries: readonly DeckEntry[];
@@ -31,6 +36,11 @@ export function DeckSectionList({
   /** Problems by card name. */
   problems: ReadonlyMap<string, DeckProblem[]>;
   handlers: SectionHandlers;
+  /**
+   * deck-art-1: may the card being dragged (`null`: not known) be dropped here? The Commander section takes only a card that may be a commander now
+   * (useCommanderChoices); absent: every card.
+   */
+  accepts?: (name: string | null) => boolean;
 }) {
   const [over, setOver] = useState(false);
   const total = entries.reduce((n, e) => n + e.count, 0);
@@ -43,7 +53,7 @@ export function DeckSectionList({
     const raw = e.dataTransfer.getData(DRAG_TYPE);
     if (!raw) return;
     const { from, name } = JSON.parse(raw) as { from: DeckSection; name: string };
-    if (from !== section) handlers.onMove(from, section, name);
+    if (from !== section && (!accepts || accepts(name))) handlers.onMove(from, section, name);
   };
 
   return (
@@ -52,7 +62,8 @@ export function DeckSectionList({
       aria-labelledby={headingId}
       data-section={section}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes(DRAG_TYPE)) {
+        // The dragged card's name is not readable during the drag (only on drop): `accepts` reads the name the deckbuilder was told at drag start.
+        if (e.dataTransfer.types.includes(DRAG_TYPE) && (!accepts || accepts(null))) {
           e.preventDefault();
           setOver(true);
         }
@@ -81,7 +92,9 @@ export function DeckSectionList({
                 onDragStart={(ev) => {
                   ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ from: section, name: e.name }));
                   ev.dataTransfer.effectAllowed = 'move';
+                  handlers.onDrag?.(e.name);
                 }}
+                onDragEnd={() => handlers.onDrag?.(null)}
               >
                 <div className="deck-card-line">
                   <span className="deck-card-count">{e.count}x</span>
@@ -90,11 +103,28 @@ export function DeckSectionList({
                   </button>
                   {missing.get(e.name) === 'unknown' && <span className="deck-flag deck-error">Unknown card</span>}
                   {missing.get(e.name) === 'unavailable' && <span className="deck-flag">Card data unavailable</span>}
+                  {e.printing && (
+                    <span className="deck-card-printing" title={`Printing ${printingLabel(e.printing)}`}>
+                      {printingLabel(e.printing)}
+                    </span>
+                  )}
                   <span className="deck-card-meta">
                     {card && <ManaCost cost={card.faces[0]?.manaCost ?? null} />}
                     {card && <AutomationBadge level={card.automation} />}
                   </span>
                   <span className="deck-card-actions">
+                    {handlers.onPrinting && (
+                      <button
+                        type="button"
+                        className="icon-button"
+                        data-control="printing"
+                        onClick={() => handlers.onPrinting!(e.name)}
+                        aria-label={`Choose the printing of ${e.name}`}
+                        title="Choose printing (art)"
+                      >
+                        Art
+                      </button>
+                    )}
                     <button type="button" className="icon-button" data-control="remove" onClick={() => handlers.onChange(section, e.name, -1)} aria-label={`Remove one ${e.name}`} title="Remove one">
                       −
                     </button>

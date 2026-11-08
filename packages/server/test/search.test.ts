@@ -6,7 +6,7 @@ import type { CardDetailResponse, SearchResponse } from '../src/api';
 import { cardStore, closeCardStores, compareCardNames, coverageCounts, sortByCardName } from '../src/cache';
 import { versionDir } from '../src/compiled';
 import { cardDetail, searchCards } from '../src/search';
-import { colorTest, numberTest, relevance, terms, type SearchRow } from '../src/search-query';
+import { colorTest, colorsOutside, numberTest, relevance, terms, type SearchRow } from '../src/search-query';
 import { costColors } from '../src/summary';
 import { makeFixtureCache, MELD_RESULT, req, SHARED_FACE, TEST_ARTIST, TEST_IMAGE, type FixtureCache } from './fixture-cache';
 
@@ -80,6 +80,20 @@ describe('GET /api/cards/search', () => {
     expect(names(await search({ name: 'bears', pow: '2', tou: '=2' }))).toEqual(['Grizzly Bears']);
     const twelve = names(await search({ pow: '>=11' }));
     expect(twelve).toContain('Darksteel Colossus');
+  });
+
+  it('with colors chosen, lists the cards of just those colors before those that also use more colors', async () => {
+    const all: SearchResponse['cards'] = [];
+    for (let page = 1; page <= 40; page++) {
+      const r = await search({ colors: 'R', types: 'creature', pageSize: '200', page: String(page) });
+      all.push(...r.cards);
+      if (all.length >= r.total) break;
+    }
+    const outside = all.map((c) => c.colors.filter((x) => x !== 'R').length);
+    expect(outside.some((n) => n > 0)).toBe(true); // the fixtures have red cards of more colors
+    expect(outside).toEqual([...outside].sort((a, b) => a - b));
+    expect(colorsOutside('BR')!(4 | 8 | 16)).toBe(1); // black, red and green: one color outside
+    expect(colorsOutside('C')).toBeNull();
   });
 
   it('filters by colors (at least, exactly, within, colorless) and color identity (CR 903.4)', async () => {

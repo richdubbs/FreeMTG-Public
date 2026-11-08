@@ -18,7 +18,7 @@ import type { Game } from '../core/game';
 import type { ObjectId, PlayerId } from '../types/ids';
 import { removeFromCombat } from './combat-state';
 import { charsOfObject, hasKeyword, readingStable } from './characteristics';
-import { phaseInDenied } from '../statics/hooks';
+import { phaseInDenied, phaseOutDenied } from '../statics/hooks';
 
 /** The permanents attached to `host` (Auras, Equipment, Fortifications), in battlefield order. */
 const attachmentsOf = (g: Game, host: ObjectId): ObjectId[] => g.s.zones.battlefield.filter((id) => g.s.objects[id]?.attachedTo === host);
@@ -32,12 +32,19 @@ export function phaseOutPermanent(g: Game, id: ObjectId): ObjectId[] {
   const visit = (x: ObjectId): void => {
     const o = g.s.objects[x];
     if (!o || o.zone !== 'battlefield' || o.phasedOut || out.includes(x)) return;
+    // edh-e-25 (CR 702.26g, 702.26b; Spatial Binding ruling 2012-07-01): an attachment that "can't phase out" stays, even when its host phases out
+    if (x !== id && phaseOutDenied(g.s, x)) return;
     o.phasedOut = true;
     removeFromCombat(g.s, x);
     out.push(x);
     g.emit({ type: 'phasedOut', objectId: x });
     for (const a of attachmentsOf(g, x)) visit(a); // CR 702.26g: indirectly, together with the permanent
   };
+  const barred = phaseOutDenied(g.s, id); // edh-e-25 (CR 702.26b, 101.2): "can't phase out" keeps the permanent in (an attachment is asked too, CR 702.26g: Spatial Binding ruling 2012-07-01)
+  if (barred) {
+    g.log(`${g.nameOf(id)} can't phase out. ${barred.message}`, { rules: barred.rules, level: 'info' });
+    return out;
+  }
   visit(id);
   return out;
 }

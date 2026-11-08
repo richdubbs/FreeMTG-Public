@@ -58,7 +58,9 @@ export function applyBody(g: Game, e: Proposed, c: Candidate, shares?: ReadonlyM
       // edhd67 review (CR 615.8, 510.2, 614.5; Impulsive Maneuvers, Desperate Gambit): "the next time that source would deal damage ... it deals double that damage instead" is used up by ONE time: all the
       // damage the source deals at the same moment (trample, two blockers, "each opponent") is that time, so the shield changes all of it (as effects/bodies/m5.ts#applyPrevent does for prevention)
       const rp = rec.effect.s === 'replace' ? (rec.effect.replaces as { ev?: string; source?: { is?: unknown } }) : undefined;
-      if (b.b === 'modify' && rp?.ev === 'damage' && rp.source?.is !== undefined) {
+      // edh-e-68 (CR 614.9, 615.7, 614.5; Glarecaster, ruling 2004-10-04): "the next time damage would be dealt to this creature and/or you this turn, that damage is dealt to any target instead" is used up by ONE time
+      // too: damage dealt to both at the same moment (a sweeper) is all redirected, so a redirect without a budget keeps applying to the rest of its batch
+      if (rp?.ev === 'damage' && ((b.b === 'modify' && rp.source?.is !== undefined) || (b.b === 'redirect' && b.amount === undefined))) {
         if (!shieldUsedInBatch(g, rec.id, left <= 0, `own:${rec.id}`)) {
           if (left > 0 || !shieldHeldInBatch(g, rec.id)) setShieldLeft(g, rec.id, left);
         }

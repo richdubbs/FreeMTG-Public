@@ -6,6 +6,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { useCardImages } from '../images/context';
 import { holdPicture } from '../images/pictures';
+import { printedKey } from '../images/printings';
 import { pickScryfallUrl, type FaceUris } from '../images/scryfall';
 import { useShowScryfallImages } from '../images/settings';
 import { imageUrisOfFace, isTwoSided, shownFace, slotOfFace, type CardModel } from './model';
@@ -37,7 +38,8 @@ export function useUploadedImage(key: string | undefined): { url: string | null;
 function useLookedUpUris(card: CardModel | null, enabled: boolean): { uris: FaceUris | null; pending: boolean } {
   const { scryfall } = useCardImages();
   const has = card ? card.faces.some((f) => f.imageUris) : true;
-  const name = card && !has && enabled ? card.name : null;
+  // deck-art-1: a card in a chosen printing is looked up by name + printing (its model carries no URLs of its own: withPrinting).
+  const name = card && !has && enabled ? printedKey(card.name, card.printing, card.printingOracleId) : null;
   const found = useSyncExternalStore(scryfall.subscribe, () => (name ? scryfall.peek(name) : null));
   useEffect(() => {
     if (name) void scryfall.get(name);

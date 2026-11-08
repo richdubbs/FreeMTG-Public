@@ -91,11 +91,18 @@ export const QUOTED_LINK = '$quotedLink';
 /** std-mana-12: the marker "that color" of template eff.stdmana12.becomesManaColor writes until lower/links.ts#resolveManaColor names the mana it means. */
 export const MANA_COLOR_MARKER = '@manaColor';
 
+/**
+ * edh-d-103 (CR 607.2d, 614.12a; Story Circle): the `chosen` link a TEMPLATE writes for "of the chosen color" (a build string cannot start with `$`): read exactly as the hole grammars'
+ * `'$link'` placeholder by lower/links.ts (the one earlier choice of the ability, else the face's one "As ~ enters, choose a color."); left over, it makes the sentence manual.
+ */
+export const CHOSEN_LINK_MARKER = '@chosenLink';
+
 export function leftoverMarker(value: unknown): string | null {
   let found: string | null = null;
   const walk = (v: unknown): void => {
     if (found !== null) return;
     if (v === '$link') { found = '$link'; return; }
+    if (v === CHOSEN_LINK_MARKER) { found = CHOSEN_LINK_MARKER; return; } // edh-d-103: a template's "of the chosen color" with no choice to name
     // std-rx9: "the chosen ..." inside a quoted ability, left for the ability that creates the emblem (lower/links.ts#resolveEmblemChoices)
     if (v === QUOTED_LINK) { found = QUOTED_LINK; return; }
     if (v === MANA_COLOR_MARKER) { found = MANA_COLOR_MARKER; return; } // std-mana-12: "that color" with no mana before it (lower/links.ts#resolveManaColor)

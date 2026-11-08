@@ -57,6 +57,8 @@ const W_DID_PHRASES: readonly [readonly string[], 'opponent' | 'player', 'did' |
 /** M12-3 (m12 design D6; CR 101.4, 103.1): "the player to your left / right", the next / previous player in turn order still in the game (`seat`). */
 const W_TO_YOUR_LEFT = P('the player to your left');
 const W_TO_YOUR_RIGHT = P('the player to your right');
+const W_OPP_TO_YOUR_LEFT = P('the opponent to your left'); // edh-e-62 (Barroom Brawl): the same player as "the player to your left" (the engine has no teams: the next player in turn order is an opponent)
+const W_OPP_TO_YOUR_RIGHT = P('the opponent to your right');
 /** M12F (CR 701.38a): the opponents of a finished vote by their ballots (`voters`; render/refs.ts accepts it only after "whenever players finish voting"). */
 const W_VOTERS_AGREE = P('each opponent who voted for a choice you voted for');
 const W_VOTERS_DISAGREE = P("each opponent who voted for a choice you didn't vote for");
@@ -145,6 +147,8 @@ function simplePlayers(ctx: HoleCtx, pos: number): Alt[] {
   }
   add(W_TO_YOUR_LEFT, { ref: 'seat', side: 'left' }); // M12-3 (D6)
   add(W_TO_YOUR_RIGHT, { ref: 'seat', side: 'right' });
+  add(W_OPP_TO_YOUR_LEFT, { ref: 'seat', side: 'left' }); // edh-e-62
+  add(W_OPP_TO_YOUR_RIGHT, { ref: 'seat', side: 'right' });
   add(W_VOTERS_AGREE, { ref: 'voters', agree: true }); // M12F
   add(W_VOTERS_DISAGREE, { ref: 'voters', agree: false });
   // std-rr (CR 303.4, 702.5a): "enchanted player", the player the source Aura ("Enchant player", a Curse) is attached to
@@ -235,9 +239,13 @@ function ofObjects(ctx: HoleCtx, pos: number): Alt[] {
   const thatPlayerOr = phraseAt(ctx, pos, P('that player or'));
   if (thatPlayerOr >= 0) for (const o of ctx.call('Obj', thatPlayerOr)) {
     // only "that permanent's" (an "any target" reading): "that player or that planeswalker's controller" keeps the older readings of edh-v-22 and the damage rounds (G10)
-    if (ctx.toks[o.end]?.norm !== "'s" || (o.value as { $anaphor?: { head?: string } }).$anaphor?.head !== 'permanent') continue;
+    const head = (o.value as { $anaphor?: { head?: string } }).$anaphor?.head;
+    if (ctx.toks[o.end]?.norm !== "'s" || (head !== 'permanent' && head !== 'planeswalker')) continue;
     const e = phraseAt(ctx, o.end + 1, P('controller'));
-    if (e >= 0) out.push({ end: e, value: { ref: 'controllerOf', object: o.value, orPlayer: true }, ...(o.flags ? { flags: o.flags } : {}) });
+    // edh-d-104 (CR 115.1, 109.4, 608.2c; Pulse of the Forge: "Then if that player or that planeswalker's controller has more life than you"): ... and "that planeswalker's", after "target player or
+    // planeswalker", as a weak reading (design 6.3 rule 2): the older templates that spell out the words (the damage rounds' "... discards a card", the filter's "... controls") keep their sentences
+    // (review: only before "has", the subject of a life comparison: before "controls" or "discards" the older readings of the filter and the damage rounds read the words, G5)
+    if (e >= 0 && (head !== 'planeswalker' || ctx.toks[e]?.norm === 'has')) out.push({ end: e, value: { ref: 'controllerOf', object: o.value, orPlayer: true }, ...(o.flags ? { flags: o.flags } : {}), ...(head === 'planeswalker' ? { weak: 1 } : {}) });
   }
   const the = phraseAt(ctx, pos, W_THE);
   if (the >= 0) for (const [w, ref] of both) {
@@ -256,7 +264,48 @@ function ofObjects(ctx: HoleCtx, pos: number): Alt[] {
  */
 export const objPlayer: HoleFn = (ctx, pos) => dedupe(ofObjects(ctx, pos));
 
-export const player: HoleFn = (ctx, pos) => dedupe([...simplePlayers(ctx, pos), ...targetPlayers(ctx, pos), ...ofObjects(ctx, pos), ...controlsMost(ctx, pos), ...controlsAny(ctx, pos), ...otherThan(ctx, pos), ...eachOfControllersOpponents(ctx, pos), ...dealtDamageBy(ctx, pos)]);
+export const player: HoleFn = (ctx, pos) => dedupe([...simplePlayers(ctx, pos), ...extremePlayers(ctx, pos), ...coinSidePlayers(ctx, pos), ...targetPlayers(ctx, pos), ...ofObjects(ctx, pos), ...controlsMost(ctx, pos), ...controlsAny(ctx, pos), ...otherThan(ctx, pos), ...eachOfControllersOpponents(ctx, pos), ...dealtDamageBy(ctx, pos)]);
+
+
+const EXTREME_PLAYERS: readonly (readonly [string[], { ref: 'extremePlayer'; stat: 'life' | 'hand'; fewest?: true }])[] = [
+  [P('the player with the most life'), { ref: 'extremePlayer', stat: 'life' }],
+  [P('the player with the lowest life total'), { ref: 'extremePlayer', stat: 'life', fewest: true }],
+  [P('the player who has the most cards in hand'), { ref: 'extremePlayer', stat: 'hand' }],
+  [P('the player who has the fewest cards in hand'), { ref: 'extremePlayer', stat: 'hand', fewest: true }],
+];
+
+/**
+ * edh-e-62 (CR 119.1, 402.1; Wild Dogs, Sokenzan Renegade, Loxodon Peacekeeper): "the player with the most life" / "the player with the lowest life total" / "the player who has the most (fewest) cards in
+ * hand": the ONE player whose number no other player matches or beats (`extremePlayer`; nobody when two or more are tied: the card says what happens then). Exactly the wordings printed on those
+ * cards (the render says the same words, render/refs.ts#extremeWords); "or tied for most life" is the older templates' (Dethrone), never this reading.
+ */
+function extremePlayers(ctx: HoleCtx, pos: number): Alt[] {
+  const out: Alt[] = [];
+  for (const [words, v] of EXTREME_PLAYERS) {
+    const e = phraseAt(ctx, pos, words);
+    if (e >= 0 && ctx.toks[e]?.norm !== 'or') out.push({ end: e, value: v });
+  }
+  return out;
+}
+
+/** The placeholder step name of `coinSide`: lower/coin-flip.ts#bindCoinSides names the flip right before the sentence and puts its name here (no flip before: the sentence is manual). */
+export const PREV_FLIP = '$prevFlip';
+const COIN_SIDES: readonly (readonly [string[], 'heads' | 'tails'])[] = [
+  [P('each player whose coin comes up tails'), 'tails'],
+  [P('each player whose coin comes up heads'), 'heads'],
+];
+/**
+ * edh-e-62 (CR 705.1, 705.2, 608.2c; Goblin Assassin): "each player whose coin comes up tails" (heads): the players of the flip made right before this sentence ("Each player flips a coin.")
+ * whose coin came up that way (`coinSide`).
+ */
+function coinSidePlayers(ctx: HoleCtx, pos: number): Alt[] {
+  const out: Alt[] = [];
+  for (const [words, side] of COIN_SIDES) {
+    const e = phraseAt(ctx, pos, words);
+    if (e >= 0) out.push({ end: e, value: { ref: 'coinSide', step: PREV_FLIP, side } });
+  }
+  return out;
+}
 
 const W_WHO_CONTROLS = P('each player who controls');
 const W_OPP_WHO_DOESNT_CONTROL = P("each opponent who doesn't control"); // edh-d-4 (Thornbow Archer)

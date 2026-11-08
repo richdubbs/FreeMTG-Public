@@ -120,6 +120,9 @@ function retargetCandidates(cx: ExecCtx, st: Copy, original: GameObject, who: Pl
   // every place holds the one object (the spell "targets only" it, Zada): a spell whose places hold different objects is copied by hand
   if (new Set(current.flat().map((t) => `${t.kind}:${t.id}`)).size > 1) return { reason: 'a copy per object of a spell whose targets are different objects is not automated (CR 707.10c)' };
   const sourceId = original.stack?.sourceId ?? original.id;
+  // edhe32 (CR 115.1, 707.10c; Ink-Treader Nephilim ruling: "the ability cares about who cast the original spell when determining which other creatures that spell could target"): what the spell could
+  // target is judged for the spell's own controller, whoever puts the copies on the stack (`who`)
+  const caster = original.controller;
   const out: { kind: 'object' | 'player'; id: string }[] = [];
   // edh-next-74 (CR 707.10c, 115.1, 601.2c; Radiate, Radiant Performer; Scryfall rulings 2018-03-16 of Radiate): "for each other permanent or player the spell could target": every permanent and every player,
   // other than the object or player the original targets, that is a legal target in every place the original has a target, in the order of the game's objects and then the players
@@ -128,11 +131,11 @@ function retargetCandidates(cx: ExecCtx, st: Copy, original: GameObject, who: Pl
     for (const id of Object.keys(g.s.objects)) {
       const o = g.s.objects[id]!;
       if (o.zone !== 'battlefield' || (only.kind === 'object' && only.id === id)) continue;
-      if (current.every((list, i) => list.length === 0 || targetOptions(g.s, specs[i]!, who, sourceId).objects.includes(id))) out.push({ kind: 'object', id });
+      if (current.every((list, i) => list.length === 0 || targetOptions(g.s, specs[i]!, caster, sourceId).objects.includes(id))) out.push({ kind: 'object', id });
     }
     for (const id of g.s.players.map((p) => p.id)) {
       if (only.kind === 'player' && only.id === id) continue;
-      if (current.every((list, i) => list.length === 0 || targetOptions(g.s, specs[i]!, who, sourceId).players.includes(id))) out.push({ kind: 'player', id });
+      if (current.every((list, i) => list.length === 0 || targetOptions(g.s, specs[i]!, caster, sourceId).players.includes(id))) out.push({ kind: 'player', id });
     }
     return out;
   }
@@ -144,7 +147,7 @@ function retargetCandidates(cx: ExecCtx, st: Copy, original: GameObject, who: Pl
     const sole: { kind: 'object' | 'player'; id: string }[] = [];
     for (const h of resolveObjs(cx, st.targetsObject)) {
       if (h.zone !== 'battlefield' || !g.s.objects[h.id]) continue;
-      if (current.every((list, i) => list.length === 0 || targetOptions(g.s, specs[i]!, who, sourceId).objects.includes(h.id)) && !sole.some((x) => x.id === h.id)) sole.push({ kind: 'object', id: h.id });
+      if (current.every((list, i) => list.length === 0 || targetOptions(g.s, specs[i]!, caster, sourceId).objects.includes(h.id)) && !sole.some((x) => x.id === h.id)) sole.push({ kind: 'object', id: h.id });
     }
     // edh-next-133 (CR 115.1, 608.2b; Ivy, Gleeful Spellthief ruling 2022-09-09: "If Ivy isn't a legal target for the spell, no copy can be created"): no legal object, no copy
     if (sole.length === 0) g.log(`No copy of ${g.nameOf(original.id)} is created: the object the copy must target is not a legal target of it.`, { rules: ['CR 707.10e', 'CR 115.1'], level: 'action' });
@@ -157,7 +160,7 @@ function retargetCandidates(cx: ExecCtx, st: Copy, original: GameObject, who: Pl
   for (const h of resolveObjs(cx, group)) {
     if (h.zone !== 'battlefield' || !g.s.objects[h.id]) continue;
     if (targeted.has(`object:${h.id}`)) continue;
-    const ok = current.every((list, i) => list.length === 0 || targetOptions(g.s, specs[i]!, who, sourceId).objects.includes(h.id));
+    const ok = current.every((list, i) => list.length === 0 || targetOptions(g.s, specs[i]!, caster, sourceId).objects.includes(h.id));
     if (ok && !out.some((x) => x.id === h.id)) out.push({ kind: 'object', id: h.id });
   }
   return out;

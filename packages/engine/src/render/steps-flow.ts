@@ -12,6 +12,7 @@ import { countParts } from './qty';
 import { notSelfReplacement } from './self-replacement';
 import { cloneState, objKey, playerKey, withVariants, type RenderState } from './state';
 import { ALT_CLOSE, ALT_OPEN, ALT_SEP, alt, firstAlt, joinList, NoRenderer, numWord, parseMarked, pluralize, type MarkedNode, type Person } from './text';
+import { cardNameKindWords } from '../types/card';
 
 /** "creature exiled this way", "permanent put into a graveyard this way": the group an earlier instruction moved, by each noun it recorded. */
 function nounsThisWay(info: { nouns: readonly string[]; thisWay?: string }, also: readonly string[] = []): string {
@@ -75,7 +76,8 @@ function didText(key: string | null, who: Parameters<typeof K.player>[0], st: Re
 function didntDiscardEach(s: StepOf<'forEach'>, st: RenderState): Clause | null {
   const over = s.over;
   const [only] = s.do;
-  if (!(over.ref === 'each' && 'who' in over && over.who === 'opponent') || s.do.length !== 1 || only?.op !== 'if' || only.else !== undefined || only.guard !== undefined) return null;
+  // edh-e-24 (CR 701.9a; Strongarm Tactics): also "each player who didn't discard a creature card this way"
+  if (!(over.ref === 'each' && 'who' in over && (over.who === 'opponent' || over.who === 'player')) || s.do.length !== 1 || only?.op !== 'if' || only.else !== undefined || only.guard !== undefined) return null;
   const c = only.cond;
   if (c.cond !== 'compare' || c.op !== '<' || typeof c.right !== 'number' || typeof c.left !== 'object' || c.left.q !== 'resultCount' || c.left.which === undefined) return null;
   const { anyOf, owner, ...rest } = c.left.which;
@@ -85,10 +87,10 @@ function didntDiscardEach(s: StepOf<'forEach'>, st: RenderState): Clause | null 
   const one = c.right === 1;
   const np = K.np({ ...anyOf[0]!, zone: 'hand' }, st, { det: one ? 'a' : 'none', plural: !one, noZone: true });
   const count = one ? '' : `${numWord(c.right)} `;
-  bind(st, s.as, { nouns: ['player', 'opponent'], plural: false, player: true, iterates: 'opponent' });
+  bind(st, s.as, { nouns: over.who === 'opponent' ? ['player', 'opponent'] : ['player'], plural: false, player: true, iterates: over.who });
   const lose = only.then.length === 1 && only.then[0]!.op === 'loseLife' && JSON.stringify(only.then[0]!.who) === JSON.stringify({ ref: 'bound', name: s.as }) ? (only.then[0] as StepOf<'loseLife'>) : null;
-  const form = `for each opponent who didn't discard ${count}${np} this way, ${K.steps(only.then, st)}`;
-  return plain(lose !== null ? alt(form, `each opponent who didn't discard ${count}${np} this way loses ${K.qty(lose.amount, st)} life`) : form, { standalone: true, ...(lose !== null ? { commaThenWho: true } : {}) });
+  const form = `for each ${over.who} who didn't discard ${count}${np} this way, ${K.steps(only.then, st)}`;
+  return plain(lose !== null ? alt(form, `each ${over.who} who didn't discard ${count}${np} this way loses ${K.qty(lose.amount, st)} life`) : form, { standalone: true, ...(lose !== null ? { commaThenWho: true } : {}) });
 }
 
 /**
@@ -472,6 +474,23 @@ function unlessTargetHasDamage(s: StepOf<'may'>, st: RenderState): Clause | null
 }
 
 /**
+ * edh-d-108 (CR 118.12a, 120.3, 701.9b; Skullscorch): "Target player discards two cards at random unless that player has ~ deal 4 damage to them" is "that player may have ~ deal 4
+ * damage to them; if they don't, they discard two cards at random": a `may` by a target player (the damage goes to that player), and that player's random discard of a literal count
+ * otherwise. Null for any other `may`.
+ */
+function unlessPlayerHasDamageDiscard(s: StepOf<'may'>, st: RenderState): Clause | null {
+  const [d] = s.do;
+  const [o] = s.otherwise ?? [];
+  if (s.do.length !== 1 || s.otherwise?.length !== 1 || s.as !== undefined || s.guard !== undefined || s.who.ref !== 'target' || d?.op !== 'damage' || o?.op !== 'discard') return null;
+  if (d.source.ref !== 'self' || d.also !== undefined || d.divided !== undefined || d.perSource !== undefined || d.as !== undefined || d.unpreventable === true || d.guard !== undefined) return null;
+  if (JSON.stringify(d.to) !== JSON.stringify(s.who) || typeof d.amount !== 'number' || d.amount < 1) return null;
+  if (JSON.stringify(o.who) !== JSON.stringify(s.who) || o.mode !== 'random' || typeof o.count !== 'number' || o.count < 1 || o.as !== undefined || o.guard !== undefined) return null;
+  if (Object.keys(o).some((k) => !['op', 'who', 'count', 'mode'].includes(k))) return null;
+  const first = K.clause(o, st);
+  return plain(`${first.sub} unless that player has ~ deal ${d.amount} damage to them`, { standalone: true, closesScope: true });
+}
+
+/**
  * edh-c-89 (CR 118.12a, 701.6a, 404.1, 406.2; Grip of Amnesia): "Counter target spell unless its controller exiles all cards from their graveyard" is "that spell's controller may exile all
  * cards from their graveyard; if they don't, counter it": a `may` by the controller of a target whose instruction moves every card of that player's graveyard to exile, and a counter of the
  * target otherwise. Null for any other `may`.
@@ -569,7 +588,7 @@ const mayClause = (s: StepOf<'may'>, st: RenderState): Clause => {
     const text = `${who.text} faces a villainous choice -- ${villainousOptions(s, st)}`;
     return acting(playerKey(s.who) ?? 'x', text, text, { standalone: true, closesScope: true });
   }
-  const folded = tapOrUntap(s, st) ?? unlessHas(s, st) ?? eachMayShuffleThenDraw(s, st) ?? unlessHasPower(s, st) ?? unlessHasDamage(s, st) ?? unlessTargetHasDamage(s, st) ?? unlessExilesGraveyard(s, st) ?? mayImpulse(s, st) ?? mayCopyThoseSpellsGain(s, st);
+  const folded = tapOrUntap(s, st) ?? unlessHas(s, st) ?? eachMayShuffleThenDraw(s, st) ?? unlessHasPower(s, st) ?? unlessHasDamage(s, st) ?? unlessTargetHasDamage(s, st) ?? unlessPlayerHasDamageDiscard(s, st) ?? unlessExilesGraveyard(s, st) ?? mayImpulse(s, st) ?? mayCopyThoseSpellsGain(s, st);
   if (folded) return folded;
   const key = playerKey(s.who);
   // std-rq (CR 608.2d, 101.4): one player of a group at most does it, "any opponent may sacrifice a creature of their choice" (effects/handlers/control.ts#anyOneMay)
@@ -781,10 +800,10 @@ const payClause = (s: StepOf<'pay'>, st: RenderState): Clause => {
     // edhn81 (CR 118.12, 608.2d; the Adversary cycle): "you may pay {1}{W} any number of times": a cost of mana alone that is not one colored symbol is paid once for each (`anyAmount`), its count "that many"
     const timesWording = !lifeOnly && !energyOnly && (s.cost.other ?? []).length === 0 && Object.keys(s.cost).length === 1 && s.cost.mana !== undefined && s.cost.mana.length > 0 && !(s.cost.mana.length === 1 && s.cost.mana[0]!.kind === 'colored');
     if (key !== 'you' || s.mandatory === true || s.times !== undefined || s.upTo !== undefined || s.else !== undefined || (!lifeOnly && !energyOnly && !timesWording && ((s.cost.other ?? []).length > 0 || s.cost.mana === undefined || s.cost.mana.length !== 1 || s.cost.mana[0]!.kind !== 'colored'))) throw new NoRenderer('a payment of any amount other than "you may pay any amount of {R}" (one mana symbol: "that much" counts the payments)');
-    bind(st, s.as, { nouns: [], plural: false, actor: key, optional: true, paidUpTo: true, paidAny: true, ...(energyOnly ? { paidEnergy: true as const } : {}), ...(timesWording ? { paidTimes: true as const } : {}) });
+    bind(st, s.as, { nouns: [], plural: false, actor: key, optional: true, paidUpTo: true, paidAny: true, ...(lifeOnly ? { paidLife: true as const } : {}), ...(energyOnly ? { paidEnergy: true as const } : {}), ...(timesWording ? { paidTimes: true as const } : {}) });
     // edh-next-136 (CR 118.12, 106.1, 608.2d; family pay-any-amount-of-mana; Karn, Living Legacy): {1} paid any number of times is also "pay any amount of mana" (paying none is allowed: no "may" needed)
     const anyMana = timesWording && JSON.stringify(s.cost) === '{"mana":[{"kind":"generic","amount":1}]}' && s.then === undefined;
-    const text = anyMana ? alt(`you may pay ${K.costVerbs(s.cost, st, 'you').replace(/^pay /, '')} any number of times`, 'pay any amount of mana') : timesWording ? `you may pay ${K.costVerbs(s.cost, st, 'you').replace(/^pay /, '')} any number of times` : lifeOnly ? 'you may pay any amount of life' : energyOnly ? alt('you may pay one or more {E}', 'you may pay any amount of {E}') /* edh-next-48 (Galvanic Discharge, Aether Spike): energy is paid one for each, so "any amount of" and "one or more" are one payment */ : `you may pay any amount of ${K.costVerbs(s.cost, st, 'you').replace(/^pay /, '')}`;
+    const text = anyMana ? alt(`you may pay ${K.costVerbs(s.cost, st, 'you').replace(/^pay /, '')} any number of times`, 'pay any amount of mana') : timesWording ? `you may pay ${K.costVerbs(s.cost, st, 'you').replace(/^pay /, '')} any number of times` : lifeOnly ? alt('you may pay any amount of life', ...(s.then === undefined ? ['pay any amount of life'] : [])) /* edh-e-41 (Plunge into Darkness): paying none is allowed, so no "may" is needed (family pay-any-amount-of-life) */ : energyOnly ? alt('you may pay one or more {E}', 'you may pay any amount of {E}') /* edh-next-48 (Galvanic Discharge, Aether Spike): energy is paid one for each, so "any amount of" and "one or more" are one payment */ : `you may pay any amount of ${K.costVerbs(s.cost, st, 'you').replace(/^pay /, '')}`;
     // edh-players-16 (CR 608.2c, 118.12; Necrodominance): "... If you do, draw that many cards": the branch that runs after a payment of one or more (`then`), which reads the count
     if (s.then !== undefined) {
       const both = `${text}. If ${didText(key, s.who, st, false)}, ${K.steps(s.then, st, { actor: undefined })}`;
@@ -872,6 +891,14 @@ const payClause = (s: StepOf<'pay'>, st: RenderState): Clause => {
     const text = `${subj.text} may ${verbs(st, 'you')}`;
     return acting(key ?? 'x', text, text);
   }
+  // edh-e-21 (CR 118.12a, 202.1; Pendrell Flux, Essence Leak): "sacrifice ~ unless you pay its mana cost": the payment of the mana cost of the very object the else branch sacrifices (the only shape of `manaCostOf` said)
+  if (s.manaCostOf !== undefined) {
+    const only = s.else?.length === 1 ? s.else[0]! : null;
+    if (key !== 'you' || hasThen || only === null || only.op !== 'sacrifice' || JSON.stringify(only.what) !== JSON.stringify(s.manaCostOf) || JSON.stringify(s.cost) !== '{}' || s.times !== undefined || s.guard !== undefined || s.as !== undefined) {
+      throw new NoRenderer('a payment of an object\'s mana cost other than "sacrifice it unless you pay its mana cost"');
+    }
+    return plain(`${K.steps(s.else!, st, { actor: undefined })} unless you pay its mana cost`, { standalone: true });
+  }
   // edh-perms-6 (CR 118.12, 608.2c; render/steps.ts#clause): a guarded payment of yours says its condition right after the cost, before the branches
   const guarded = s.guard !== undefined && payGuardInside(s);
   const forms = withVariants(st, [
@@ -881,6 +908,12 @@ const payClause = (s: StepOf<'pay'>, st: RenderState): Clause => {
       if (!hasElse || hasThen || s.who.ref !== 'target' || s.as !== undefined || s.times !== undefined || s.guard !== undefined) return null;
       const subj = K.player(s.who, v, 'subject');
       return `unless ${subj.text} ${verbs(v, subj.person)}, ${K.steps(s.else!, v, { actor: undefined })}`;
+    },
+    // edh-e-24 (CR 118.12, 608.2c, 101.4; Rhystic Scrying, template eff.edhe24.then.ifAnyPlayerPays): "Then if any player pays {2}, discard three cards.": the payment offered to each player until one
+    // pays, then the instructions once (no `everyPlayer`): the payer is "any player"
+    (v): string | null => {
+      if (hasElse || !hasThen || !anyPlayerPays || guarded || s.as !== undefined || s.times !== undefined || s.mandatory === true) return null;
+      return `if any player ${verbs(v, 'sg')}, ${K.steps(s.then!, v, { actor: undefined })}`;
     },
     // "[else] unless [who] pays [cost]"
     (v): string | null => {
@@ -911,7 +944,9 @@ const payClause = (s: StepOf<'pay'>, st: RenderState): Clause => {
       if (s.who.ref === 'controllerOf' && only !== null && only.what !== undefined && JSON.stringify(only.what) === JSON.stringify(s.who.object)) {
         return `${alt(`${other} unless ${subj.text} ${verbs(v, subj.person)}`, `${other} unless its controller ${verbs(v, 'sg')}`, `${other} unless they ${verbs(v, 'pl')}`)}${tail}`; // edh-next-5 (Hope-Ender Coatl): the controller of what is countered is also "they" (Oracle, template eff.edhn5.counter.unlessTheyPay)
       }
-      if (subj.they === true && s.else!.length === 1 && JSON.stringify((s.else![0] as { who?: unknown }).who) === JSON.stringify(s.who)) return alt(`${other} unless ${subj.text} ${verbs(v, subj.person)}`, `${other} unless they ${theirChoice(v, 'pl')}`);
+      // edh-e-24 (CR 118.12a, 608.2d; Blood Clock): the player's own choice of a permanent to return (a choose and its move) is one instruction of that player: "that player returns a permanent they control to its owner's hand unless they pay 2 life"
+      const choosesOwn = s.else!.length === 2 && s.else![0]!.op === 'chooseObjects' && s.else![1]!.op === 'move' && JSON.stringify((s.else![0] as { who?: unknown }).who) === JSON.stringify(s.who);
+      if (subj.they === true && (choosesOwn || (s.else!.length === 1 && JSON.stringify((s.else![0] as { who?: unknown }).who) === JSON.stringify(s.who)))) return alt(`${other} unless ${subj.text} ${verbs(v, subj.person)}`, `${other} unless they ${theirChoice(v, 'pl')}`);
       // FAST4 T34 (CR 118.12a): "~ deals 2 damage to that player unless they sacrifice a creature of their choice": the payer is the player the damage is dealt to
       // edh-next-48 (Demanding Dragon): and the payer named again as "that player" says the same "of their choice" ("deals 5 damage to target opponent unless that player sacrifices a creature of their choice")
       if (subj.they === true && s.else!.length === 1 && s.else![0]!.op === 'damage' && JSON.stringify(s.else![0]!.to) === JSON.stringify(s.who)) return alt(`${other} unless ${subj.text} ${theirChoice(v, subj.person)}`, `${other} unless they ${theirChoice(v, 'pl')}`);
@@ -952,7 +987,10 @@ const payClause = (s: StepOf<'pay'>, st: RenderState): Clause => {
       const step = inner.else![0] as { who?: unknown; to?: unknown };
       if (subj.they !== true || JSON.stringify(step.who ?? step.to) !== JSON.stringify(s.who)) return null;
       // edh-c-106 (CR 118.12a, 608.2c; Forbidden Ritual; template eff.edhv106.loseLife.unlessThatPlayerSacrificeOrDiscard): the player named before is also "that player" (family unless-they-that-player)
-      return alt(`${other} unless they ${theirChoice(v, 'pl')} or ${K.costVerbs(inner.cost, v, 'pl')}`, `${other} unless ${subj.text} ${theirChoice(v, subj.person)} or ${K.costVerbs(inner.cost, v, subj.person)}`);
+      // edh-e-24 (CR 118.12a, 701.21a; Remorseless Punishment): the second cost, a sacrifice, is also said "of their choice" ("unless that player discards two cards or sacrifices a creature or planeswalker of their choice")
+      const innerSac = inner.cost.mana === undefined && inner.cost.tap !== true && inner.cost.untap !== true && inner.cost.loyalty === undefined && inner.cost.other?.length === 1 && inner.cost.other[0]!.kind === 'sacrifice' && inner.cost.other[0]!.self !== true && inner.cost.other[0]!.count === 1;
+      const second = (person: Person): string => { const w = K.costVerbs(inner.cost, v, person); return innerSac ? alt(w, `${w} of their choice`) : w; };
+      return alt(`${other} unless they ${theirChoice(v, 'pl')} or ${second('pl')}`, `${other} unless ${subj.text} ${theirChoice(v, subj.person)} or ${second(subj.person)}`);
     },
     // edh-c-75 (CR 118.12a, 119.4; Erosion): "destroy that land unless that player pays {1} or 1 life": the payer may pay either cost, stored as the first payment whose only `else` is the
     // payment of life by the same player (the same three outcomes: the mana, the life, or the instruction); a payment of mana, then of life, only
@@ -1438,12 +1476,14 @@ export const CLAUSES_FLOW = {
       // M6-5 (CR 608.2c, 702.138b): "sacrifice it unless it escaped" is "if it didn't escape, sacrifice it": the instruction, then "unless" and the condition
       // it does not happen under. Only for a cast-history condition, the one family the parser builds this way (eff.m6.sacrifice.unlessEscaped)
       const negated = s.cond.of;
-      const [usual, unless] = withVariants(st, [
+      const [usual, unless, trailing] = withVariants(st, [
         (v): string => { const c = K.cond(s.cond, v); const then = K.steps(s.then, v); return afterTrigger ? `${then} if ${c}` : `if ${c}, ${then}`; },
         (v): string => { const then = K.steps(s.then, v); return `${then} unless ${K.cond(negated, v)}`; },
+        // edh-e-21 (CR 608.2c, 120.3; Tomb of Urami): the condition may also follow a damage the source deals to you, "~ deals 1 damage to you if you don't control an Ogre" (a mana ability's second sentence)
+        (v): string | null => { if (afterTrigger || !existsCond || s.then.length !== 1 || s.then[0]!.op !== 'damage') return null; const then = K.steps(s.then, v); return `${then} if ${K.cond(s.cond, v)}`; },
       ]);
       // edh-c-66 (CR 608.2c; Katara, Seeking Revenge): and after a plain instruction ", then discard a card unless ..." (Clause.commaThen), as the sentence after a break says it
-      return plain(alt(usual!, unless!), { standalone: true, ...(afterTrigger ? {} : { leadThen: true, commaThen: true }) });
+      return plain(alt(usual!, unless!, ...(trailing === null || trailing === undefined ? [] : [trailing])), { standalone: true, ...(afterTrigger ? {} : { leadThen: true, commaThen: true }) });
     }
     // edh-cast-9 (CR 701.6a, 202.3, 701.20a, 608.2c; Counterbalance, the parser's template eff.edhc9.counter.ifSameManaValueAsRevealed): "Counter that spell if it has the same
     // mana value as the revealed card.": the condition after the instruction, on the object the instruction counters, compared with the one card a reveal just showed
@@ -1695,7 +1735,7 @@ export const CLAUSES_FLOW = {
       ...(destroyLimitInstead(s.then, s.else!) !== null ? [(v: RenderState): string => {
         const other = K.steps(s.else!, v);
         const lim = destroyLimitInstead(s.then, s.else!)!;
-        return `${other}. If ${K.cond(s.cond, v)}, destroy ${K.obj(lim.what, v, 'object').text} if its mana value is ${lim.then} or less instead`;
+        return `${other}. If ${K.cond(s.cond, v)}, ${lim.verb} ${K.obj(lim.what, v, 'object').text} if its mana value is ${lim.then} or less instead`;
       }] : []),
       // r4-repl (CR 614.15, 613.4b): "If C, it has base power and toughness 1/1 until end of turn instead." (rid.r4repl.instead.basePT.only)
       ...(wide && basePtOnly(s.then, s.else!) !== null ? [(v: RenderState): string => `${K.steps(s.else!, v)}. If ${K.cond(s.cond, v)}, it has base power and toughness ${basePtOnly(s.then, s.else!)!} until end of turn instead`] : []),
@@ -1960,11 +2000,13 @@ export const CLAUSES_FLOW = {
     const from = s.from;
     // FAST5 T46 (CR 701.20a, 701.20e, 608.2d): "You choose a nonland card from it", out of a hand an earlier step revealed or looked at
     // edh-c-104 (CR 701.20a, 701.20e, 608.2d; Agonizing Memories): "choose two cards from it", exactly two of a hand an earlier step looked at or revealed
-    const two = from.ref === 'each' && s.min === 2 && s.max === 2 && s.random !== true && s.guard === undefined && from.filter.is?.ref === 'bound' && from.filter.zone === 'any'
+    // edh-e-26 (CR 107.3, 701.20e; Mind Warp): and exactly X of it, "choose X cards from it" (min and max both X)
+    const xCount = typeof s.min === 'object' && s.min.q === 'X' && typeof s.max === 'object' && s.max.q === 'X';
+    const two = from.ref === 'each' && ((s.min === 2 && s.max === 2) || xCount) && s.random !== true && s.guard === undefined && from.filter.is?.ref === 'bound' && from.filter.zone === 'any'
       && st.info.get(`b:${from.filter.is.name}`)?.hand === true && Object.keys(from.filter).every((k) => k === 'is' || k === 'zone' || k === 'anyOf') && (from.filter.anyOf === undefined || from.filter.anyOf.length === 1);
     if (two && from.ref === 'each') {
       const handOwner = st.info.get(`b:${from.filter.is!.ref === 'bound' ? from.filter.is!.name : ''}`)?.handOwner;
-      const desc = K.np({ ...(from.filter.anyOf?.[0] ?? {}), zone: 'hand' }, st, { det: 'none', plural: true, count: 'two', noZone: true });
+      const desc = K.np({ ...(from.filter.anyOf?.[0] ?? {}), zone: 'hand' }, st, { det: 'none', plural: true, count: xCount ? 'X' : 'two', noZone: true });
       bind(st, s.as, { nouns: ['card'], plural: true, optional: false, ...(handOwner !== undefined ? { handOwner } : {}) });
       return byPlayer(s.who, st, 'choose', `${desc} from it`);
     }
@@ -2029,6 +2071,12 @@ export const CLAUSES_FLOW = {
       bind(st, s.as, { nouns: [...new Set([...K.nounsOf(one), 'permanent'])], plural: true, thisWay: 'chosen this way' });
       return plain(`starting with you, each player chooses up to ${numWord(max)} ${K.np(one, st, { det: 'none', plural: max !== 1 })} from among permanents your opponents control`);
     }
+    // edh-e-36 (CR 607.2a, 608.2c; eff.edhe36.choose.cardExiledWithSelf; Muse Vessel): "Choose a card exiled with ~": exactly one of the cards the linked ability exiled, chosen by you; it is "that card" later
+    if (from.ref === 'each' && s.who.ref === 'you' && min === 1 && max === 1 && s.random !== true && s.groupLimit === undefined && s.guard === undefined && s.distinct === undefined && s.perPlayer === undefined
+      && s.startingWith === undefined && JSON.stringify(from.filter) === '{"is":{"ref":"linked","link":"exiled"},"zone":"exile"}') {
+      bind(st, s.as, { nouns: ['card'], plural: false, optional: false });
+      return byPlayer(s.who, st, 'choose', 'a card exiled with ~');
+    }
     // std-cardcopy-5 (CR 608.2c, 608.2d; eff.stdcardcopy5.mayChoose.fromAmong): "you may choose a creature card from among them": up to one object of a description
     // among a group a reference names (the objects of a "one or more" trigger event), in any zone; what was chosen is "it" later
     const amongKeys = from.ref === 'each' ? Object.keys(from.filter).filter((k) => (from.filter as Record<string, unknown>)[k] !== undefined).sort().join() : '';
@@ -2084,6 +2132,18 @@ export const CLAUSES_FLOW = {
         return byPlayer(s.who, st, 'choose', s.who.ref === 'you' ? alt(`one of ${f.text}`, 'one') : `one of ${f.text}`);
       }
     }
+    // edh-d-110 (CR 608.2c, 608.2d; Noggin Whack): "You choose two of them": exactly that many of a group an earlier step named, nothing else said about them (a group: "those cards")
+    if (seenGroup !== undefined && typeof min === 'number' && min === max && min > 1 && s.random !== true) {
+      const f = K.obj(seenGroup, cloneState(st), 'object');
+      if (f.plural) {
+        const g = K.obj(seenGroup, st, 'object');
+        bind(st, s.as, { nouns: st.info.get(`b:${(seenGroup as { name: string }).name}`)?.nouns ?? ['card'], plural: true, optional: false });
+        // (the chosen cards are now "those cards"; the group they were chosen from, under any of its names (the cards a player picked and then revealed), is no antecedent any
+        // more, as after the moves of render/fold.ts#putAllFromGroupAndRest)
+        for (const k of [...st.mentioned]) if (k.startsWith('b:') && k !== `b:${s.as}` && st.info.get(k)?.plural === true && (st.info.get(k)?.nouns ?? []).includes('card')) st.mentioned.delete(k);
+        return byPlayer(s.who, st, 'choose', `${numWord(min)} of ${g.text}`);
+      }
+    }
     // CLOUD std-ecl: a choice among the objects of a named group, written as the group itself or as "each object that is one of them", is "one of them"
     const isRef = from.ref === 'each' && Object.keys(from.filter).length === 1 ? from.filter.is : undefined;
     const group = isRef !== undefined && isRef.ref === 'bound' ? isRef : null;
@@ -2131,6 +2191,8 @@ export const CLAUSES_FLOW = {
     if (s.random === true && from.ref === 'each' && from.filter.attackedThisTurn === true && what.endsWith(' that attacked this turn')) {
       return byPlayer(s.who, st, 'choose', alt(`${what} at random`, `${what.slice(0, -' that attacked this turn'.length)} at random that attacked this turn`));
     }
+    // edh-e-1 (CR 608.2d, 110.1; Cytoshape, template eff.edhe1.choose.aFilter.onBattlefield): "Choose a nonlegendary creature on the battlefield" is also the choice of that description (the battlefield is where its permanents are)
+    if (!plural && s.random !== true && from.ref === 'each' && from.filter.zone === 'battlefield' && s.distinct === undefined) return byPlayer(s.who, st, 'choose', alt(what, `${what} on the battlefield`));
     return byPlayer(s.who, st, 'choose', `${what}${s.random ? ' at random' : ''}`);
   },
 
@@ -2193,7 +2255,7 @@ export const CLAUSES_FLOW = {
       thing = `an opponent at random that ${K.obj({ ref: 'self' }, st, 'subject').text} didn't attack during your last combat`;
       st.info.set(`r:${s.as}`, { nouns: ['opponent'], plural: false, ...(st.info.get(`r:${s.as}`) ?? {}), thisWay: 'opponent chosen this way' }); // read by render/cond.ts: "if you can't choose an opponent this way"
     }
-    if (s.cardKind !== undefined) thing = `a ${s.cardKind} card name`; // std-rx28 (CR 201.3): "choose a land card name" (Petrified Hamlet)
+    if (s.cardKind !== undefined) thing = cardNameKindWords(s.cardKind); // std-rx28 (CR 201.3): "choose a land card name" (Petrified Hamlet)
     // edh-next-9 (CR 205.3m, 608.2d; Unnatural Selection, Imagecrafter): "choose a creature type other than Wall" (a fixed creature type is never offered)
     if (s.what === 'creatureType' && s.exclude !== undefined) {
       if (s.exclude.length !== 1 || typeof s.exclude[0] !== 'string' || s.options !== undefined || s.secret === true) throw new NoRenderer('a creature type choice that excludes more than one fixed type, or lists options');
@@ -2213,6 +2275,8 @@ export const CLAUSES_FLOW = {
       if (s.what !== 'opponent' || s.who.ref !== 'you' || s.exclude !== undefined || s.mostLife === true || s.random === true) throw new NoRenderer('a choice with a land-count condition other than of an opponent by you');
       thing = `an opponent who controls more ${K.np(s.controlsMore, cloneState(st), { det: 'none', plural: true })} than you`;
     }
+    // edh-e-62 (CR 608.2d; Loxodon Peacekeeper): "you choose one of them" is said by render/fold-edhe62.ts with the condition before it, never as a choice of its own
+    if (s.among !== undefined) throw new NoRenderer('a choice among players outside "If two or more players are tied for ..., you choose one of them"');
     // edh-players-8 (CR 119.1, 608.2d; The Black Gate): "choose a player with the most life or tied for most life"
     if (s.mostLife === true) {
       if (s.what !== 'player' || s.exclude !== undefined) throw new NoRenderer('a choice with the most life other than of a player');
@@ -2280,15 +2344,25 @@ function testedTarget(cond: Condition): string | undefined {
 }
 
 /** edh-c-28: two lists of one destroy of one object each, guarded by "its mana value is N or less" with a bigger N in the first: the object and that N. */
-function destroyLimitInstead(thenSteps: readonly EffectStep[], elseSteps: readonly EffectStep[]): { what: ObjRef; then: number } | null {
+function destroyLimitInstead(thenSteps: readonly EffectStep[], elseSteps: readonly EffectStep[]): { what: ObjRef; then: number; verb: 'destroy' | 'counter' } | null {
   const [a, b] = [thenSteps[0], elseSteps[0]];
+  // edh-d-112 (CR 701.6a, 614.15, 702.33d; Prohibit, rid.edhd112.counter.thatSpell.ifMv.instead): also the same counter of the same spell under a larger limit ("Counter target spell if its
+  // mana value is 2 or less. If this spell was kicked, counter that spell if its mana value is 4 or less instead.")
+  if (thenSteps.length === 1 && elseSteps.length === 1 && a?.op === 'counter' && b?.op === 'counter' && JSON.stringify(a.what) === JSON.stringify(b.what) && Object.keys(a).every((k) => k === 'op' || k === 'what' || k === 'guard') && Object.keys(b).every((k) => k === 'op' || k === 'what' || k === 'guard')) {
+    const lim = (g: unknown): number | null => {
+      const c = g as { cond?: string; left?: { q?: string; stat?: string; of?: unknown }; op?: string; right?: unknown } | undefined;
+      return c?.cond === 'compare' && c.left?.q === 'stat' && c.left.stat === 'manaValue' && JSON.stringify(c.left.of) === JSON.stringify(a.what) && c.op === '<=' && typeof c.right === 'number' ? c.right : null;
+    };
+    const [x, y] = [lim(a.guard), lim(b.guard)];
+    return x !== null && y !== null && x > y ? { what: a.what as ObjRef, then: x, verb: 'counter' } : null;
+  }
   if (thenSteps.length !== 1 || elseSteps.length !== 1 || a?.op !== 'destroy' || b?.op !== 'destroy' || JSON.stringify(a.what) !== JSON.stringify(b.what) || a.regeneration !== undefined || b.regeneration !== undefined) return null;
   const limit = (g: unknown): number | null => {
     const c = g as { cond?: string; left?: { q?: string; stat?: string; of?: unknown }; op?: string; right?: unknown } | undefined;
     return c?.cond === 'compare' && c.left?.q === 'stat' && c.left.stat === 'manaValue' && JSON.stringify(c.left.of) === JSON.stringify(a.what) && c.op === '<=' && typeof c.right === 'number' ? c.right : null;
   };
   const [x, y] = [limit(a.guard), limit(b.guard)];
-  return x !== null && y !== null && x > y ? { what: a.what as ObjRef, then: x } : null;
+  return x !== null && y !== null && x > y ? { what: a.what as ObjRef, then: x, verb: 'destroy' } : null;
 }
 /** edh-c-57: a payment with a `then` and nothing else beside it (no `else`, no count, no "up to"). */
 const hasThenOnly = (s: StepOf<'pay'>): boolean => (s.then?.length ?? 0) > 0 && s.else === undefined && s.upTo === undefined && s.anyAmount !== true && s.startingWith === undefined && s.xMax === undefined;

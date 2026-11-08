@@ -1,0 +1,525 @@
+[
+{
+"card": "Devouring Hellion",
+"faces": [
+{
+"abilities": [
+{
+"kind": "static",
+"zone": [
+"stack",
+"battlefield"
+],
+"effects": [
+{
+"s": "replace",
+"replaces": {
+"ev": "zoneChange",
+"subject": {
+"self": true
+},
+"to": "battlefield"
+},
+"body": {
+"b": "enters",
+"devour": {
+"filter": {
+"types": [
+"Creature",
+"Planeswalker"
+]
+},
+"times": 2,
+"kind": "+1/+1",
+"link": "devoured"
+}
+}
+}
+]
+}
+]
+}
+],
+"expect": "full",
+"verified": "edh-e-13 review (group counters 1/3, EDHREC rank 25484, held-out, opened by the owner (more cards 2026-11-06)), by hand against the Oracle text, the Scryfall rulings and the Comprehensive Rules (text 2026-09-25; rule numbers checked against the fetched text): (rep.edhe13.enters.sacrificeAnyNumber.twiceThatMany: as it enters its controller chooses any number of creatures and/or planeswalkers they control (not itself) and sacrifices them, all at once; it enters with twice that many +1/+1 counters, 0 for none, CR 614.12a, 701.21a, 122.6). Played in edh-e-13-scenarios."
+},
+{
+"card": "Shimatsu the Bloodcloaked",
+"faces": [
+{
+"abilities": [
+{
+"kind": "static",
+"zone": [
+"stack",
+"battlefield"
+],
+"effects": [
+{
+"s": "replace",
+"replaces": {
+"ev": "zoneChange",
+"subject": {
+"self": true
+},
+"to": "battlefield"
+},
+"body": {
+"b": "enters",
+"devour": {
+"filter": {},
+"times": 1,
+"kind": "+1/+1",
+"link": "devoured"
+}
+}
+}
+]
+}
+]
+}
+],
+"expect": "full",
+"verified": "edh-e-13 review (group counters 1/3, EDHREC rank 26650, held-out, opened by the owner (more cards 2026-11-06)), by hand against the Oracle text, the Scryfall rulings and the Comprehensive Rules (text 2026-09-25; rule numbers checked against the fetched text): (rep.edhe13.enters.sacrificeAnyNumber.thatMany: as it enters its controller sacrifices any number of permanents they control (0 allowed), and it enters with that many +1/+1 counters, CR 614.12a, 701.21a, 122.6). Played in edh-e-13-scenarios."
+},
+{
+"card": "Plague Boiler",
+"faces": [
+{
+"abilities": [
+{
+"kind": "triggered",
+"trigger": {
+"on": [
+{
+"ev": "step",
+"step": "upkeep",
+"whose": "you"
+}
+]
+},
+"effect": {
+"targets": [],
+"steps": [
+{
+"op": "putCounters",
+"on": {
+"ref": "self"
+},
+"kind": "plague",
+"count": 1
+}
+]
+}
+},
+{
+"kind": "activated",
+"cost": {
+"mana": [
+{
+"kind": "generic",
+"amount": 1
+},
+{
+"kind": "colored",
+"color": "B"
+},
+{
+"kind": "colored",
+"color": "G"
+}
+]
+},
+"effect": {
+"targets": [],
+"steps": [
+{
+"op": "chooseValue",
+"who": {
+"ref": "you"
+},
+"what": "option",
+"as": "counterMode",
+"link": "counterMode",
+"options": [
+"put",
+"remove"
+]
+},
+{
+"op": "if",
+"cond": {
+"cond": "chosen",
+"link": "counterMode",
+"equals": "put"
+},
+"then": [
+{
+"op": "putCounters",
+"on": {
+"ref": "self"
+},
+"kind": "plague",
+"count": 1
+}
+]
+},
+{
+"op": "if",
+"cond": {
+"cond": "chosen",
+"link": "counterMode",
+"equals": "remove"
+},
+"then": [
+{
+"op": "removeCounters",
+"from": {
+"ref": "self"
+},
+"kind": "plague",
+"count": 1
+}
+]
+}
+]
+}
+},
+{
+"kind": "triggered",
+"trigger": {
+"on": [
+{
+"ev": "state",
+"cond": {
+"cond": "matches",
+"object": {
+"ref": "self"
+},
+"filter": {
+"counters": {
+"kind": "plague",
+"cmp": {
+"op": ">=",
+"value": 3
+}
+}
+}
+}
+}
+]
+},
+"effect": {
+"targets": [],
+"steps": [
+{
+"op": "sacrifice",
+"what": {
+"ref": "self"
+},
+"as": "did"
+},
+{
+"op": "if",
+"cond": {
+"cond": "did",
+"step": "did"
+},
+"then": [
+{
+"op": "destroy",
+"what": {
+"ref": "each",
+"filter": {
+"notTypes": [
+"Land"
+]
+}
+}
+}
+]
+}
+]
+}
+}
+]
+}
+],
+"expect": "full",
+"verified": "edh-e-13 review (group counters 1/3, EDHREC rank 22746, held-out, opened by the owner (more cards 2026-11-06)), by hand against the Oracle text, the Scryfall rulings and the Comprehensive Rules (text 2026-09-25; rule numbers checked against the fetched text): (eff.edhe13.counters.putOrRemoveNamedKind: its controller chooses put or remove as the ability resolves; put adds one plague counter to it, remove takes one off if it has one, CR 122.1, 608.2d). Played in edh-e-13-scenarios."
+},
+{
+"card": "Pursuit of Knowledge",
+"faces": [
+{
+"abilities": [
+{
+"kind": "static",
+"effects": [
+{
+"s": "replace",
+"replaces": {
+"ev": "draw",
+"player": "you"
+},
+"optional": true,
+"body": {
+"b": "instead",
+"do": [
+{
+"op": "putCounters",
+"on": {
+"ref": "self"
+},
+"kind": "study",
+"count": 1
+}
+]
+}
+}
+]
+},
+{
+"kind": "activated",
+"cost": {
+"other": [
+{
+"kind": "removeCounters",
+"counter": "study",
+"count": 3,
+"self": true
+},
+{
+"kind": "sacrifice",
+"filter": {
+"self": true
+},
+"count": 1,
+"self": true
+}
+]
+},
+"effect": {
+"targets": [],
+"steps": [
+{
+"op": "draw",
+"who": {
+"ref": "you"
+},
+"count": 7
+}
+]
+}
+}
+]
+}
+],
+"expect": "full",
+"verified": "edh-e-13 review (group counters 1/3, EDHREC rank 20832), by hand against the Oracle text, the Scryfall rulings and the Comprehensive Rules (text 2026-09-25; rule numbers checked against the fetched text): (rep.edhe13.youDraw.mayPutCounterOnSelfInstead: a replacement of each draw of its controller, optional: if applied the draw does not happen and one study counter goes on it, CR 614.1a, 614.6, 121.1). Played in edh-e-13-scenarios."
+},
+{
+"card": "Force Bubble",
+"faces": [
+{
+"abilities": [
+{
+"kind": "static",
+"effects": [
+{
+"s": "replace",
+"replaces": {
+"ev": "damage",
+"recipient": {
+"player": "you"
+}
+},
+"body": {
+"b": "instead",
+"do": [
+{
+"op": "putCounters",
+"on": {
+"ref": "self"
+},
+"kind": "depletion",
+"count": {
+"q": "eventAmount"
+}
+}
+]
+}
+}
+]
+},
+{
+"kind": "triggered",
+"trigger": {
+"on": [
+{
+"ev": "state",
+"cond": {
+"cond": "compare",
+"left": {
+"q": "counters",
+"on": {
+"ref": "self"
+},
+"kind": "depletion"
+},
+"op": ">=",
+"right": 4
+}
+}
+]
+},
+"effect": {
+"targets": [],
+"steps": [
+{
+"op": "sacrifice",
+"what": {
+"ref": "self"
+}
+}
+]
+}
+},
+{
+"kind": "triggered",
+"trigger": {
+"on": [
+{
+"ev": "step",
+"step": "end"
+}
+]
+},
+"effect": {
+"targets": [],
+"steps": [
+{
+"op": "removeCounters",
+"from": {
+"ref": "self"
+},
+"kind": "depletion",
+"count": "all"
+}
+]
+}
+}
+]
+}
+],
+"expect": "full",
+"verified": "edh-e-13 review (group counters 1/3, EDHREC rank 25093, held-out, opened by the owner (more cards 2026-11-06)), by hand against the Oracle text, the Scryfall rulings and the Comprehensive Rules (text 2026-09-25; rule numbers checked against the fetched text): (sta.edhe13.damageToYou.thatManyCountersOnSelfInstead: damage that would be dealt to its controller (only) becomes that many depletion counters on it, CR 614.1a, 614.6, 120.3). Played in edh-e-13-scenarios."
+},
+{
+"card": "Eye of Doom",
+"faces": [
+{
+"abilities": [
+{
+"kind": "triggered",
+"trigger": {
+"on": [
+{
+"ev": "zoneChange",
+"subject": {
+"self": true
+},
+"to": "battlefield"
+}
+]
+},
+"effect": {
+"targets": [],
+"steps": [
+{
+"op": "forEach",
+"over": {
+"ref": "each",
+"who": "player"
+},
+"as": "chooser",
+"do": [
+{
+"op": "chooseObjects",
+"who": {
+"ref": "iterating"
+},
+"from": {
+"ref": "each",
+"filter": {
+"notTypes": [
+"Land"
+]
+}
+},
+"min": 1,
+"max": 1,
+"as": "chosen"
+},
+{
+"op": "putCounters",
+"on": {
+"ref": "bound",
+"name": "chosen"
+},
+"kind": "doom",
+"count": 1,
+"by": {
+"ref": "iterating"
+}
+}
+]
+}
+]
+}
+},
+{
+"kind": "activated",
+"cost": {
+"mana": [
+{
+"kind": "generic",
+"amount": 2
+}
+],
+"tap": true,
+"other": [
+{
+"kind": "sacrifice",
+"filter": {
+"self": true
+},
+"count": 1,
+"self": true
+}
+]
+},
+"effect": {
+"targets": [],
+"steps": [
+{
+"op": "destroy",
+"what": {
+"ref": "each",
+"filter": {
+"counters": {
+"kind": "doom"
+}
+}
+}
+}
+]
+}
+}
+]
+}
+],
+"expect": "full",
+"verified": "edh-e-13 review (group counters 1/3, EDHREC rank 22981), by hand against the Oracle text, the Scryfall rulings and the Comprehensive Rules (text 2026-09-25; rule numbers checked against the fetched text): (eff.edhe13.eachPlayer.choosesPermanent.putsCounter: each player in turn order chooses one nonland permanent (any player's) and puts a doom counter on it themselves, CR 101.4, 122.1, 122.6). Played in edh-e-13-scenarios."
+}
+]

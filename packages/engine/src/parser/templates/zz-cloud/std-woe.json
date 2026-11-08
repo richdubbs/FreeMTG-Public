@@ -660,7 +660,7 @@
       "Choose a color.",
       "Choose target player."
     ],
-    "status": "experimental",
+    "status": "stable",
     "since": 8
   },
   {

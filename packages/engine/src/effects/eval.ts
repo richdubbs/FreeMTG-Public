@@ -25,6 +25,7 @@ import type { BeheldSnapshot, CastOrigin, CostsPaid, GameObject, LastKnown, ObjH
 import { charsOfObject, controllerOf, hasKeyword, ptNumbers, type Chars } from '../rules/characteristics';
 import { spellTargetTotal } from '../rules/target-total';
 import { hasSharedTypeLine, unlockedHalves } from '../rules/base-parts/room';
+import { graveyardPosHolds } from '../rules/gy-pos';
 import { creatureTypesOf, landTypesOf, matchesFilter, planeswalkerTypesOf } from '../rules/filter';
 import { baseManaValue, faceIndexOf, sourceChars } from '../rules/base-chars';
 import { attacksThisTurn, opponentsAttackedCount, countHistory, resolvedFromSpell, putOntoBattlefieldBy, distinctHistory, firstTimeThisTurn, happenedCountOf, happenedPlayersOf, HISTORY_WRITTEN, type FactsEnv } from '../rules/history';
@@ -700,6 +701,7 @@ const QTY: QtyTable = {
   casterControlledCount: () => undefined, // edh-c-73 (CR 601.2f; Hum of the Radix): only a cost modifier asks it, with the caster (actions/cast.ts#modifiedPlan); anywhere else it is undetermined
   permanentsToGraveyardThisTurn: (cx) => cx.g.s.players.reduce((n, p) => n + (p.turnStats.permanentsToGraveyard ?? 0), 0), // edh-d-3 (CR 702.69a): gravestorm
   descendedThisTurn: (cx) => cx.g.player(cx.controller).turnStats.descended ?? 0, // FAST5X E22 (CR 700.11)
+  graveyardUsesThisTurn: (cx) => { const ts = cx.g.player(cx.controller).turnStats; return (ts.castFromCount?.['graveyard'] ?? 0) + (ts.activatedFromGraveyard ?? 0); }, // edh-d-108 (CR 601.2, 602.2, 404.1)
   attacksThisTurn: (cx, q) => { // edh-combat-5 (CR 508.1): the times the one object `of` names was declared as an attacker this turn; with none (or several) it is undetermined
     const hs = resolveObjs(cx, q.of);
     return hs.length === 1 ? attacksThisTurn(cx.g.s, hs[0]!.id) : undefined;
@@ -853,10 +855,11 @@ const colorsAmong = (spent: readonly { type: string }[], among?: readonly string
 function stackCastRecord(o: GameObject): ReturnType<typeof castRecord> {
   if (o.zone !== 'stack' || !o.stack || o.kind === 'ability') return undefined;
   const st = o.stack;
-  return { costsPaid: st.costsPaid, ...(st.x !== undefined ? { x: st.x } : {}), ...(st.castFrom !== undefined ? { from: st.castFrom } : {}), ...(st.costsPaid.alternative !== undefined ? { via: st.costsPaid.alternative } : {}), ...(st.caster !== undefined ? { by: st.caster } : {}) };
+  return { costsPaid: st.costsPaid, ...(st.x !== undefined ? { x: st.x } : {}), ...(st.castFrom !== undefined ? { from: st.castFrom } : {}), ...(st.costsPaid.alternative !== undefined ? { via: st.costsPaid.alternative } : {}), ...(st.caster !== undefined ? { by: st.caster } : {}),
+    ...(st.castOrdinal !== undefined ? { nth: st.castOrdinal.turn } : {}) }; // edh-d-111 (CR 601.2i): a spell on the stack was cast this turn
 }
 
-function castRecord(cx: ExecCtx): { costsPaid: CostsPaid; x?: number; from?: CastOrigin; via?: string; by?: PlayerId } | undefined {
+function castRecord(cx: ExecCtx): { costsPaid: CostsPaid; x?: number; from?: CastOrigin; via?: string; by?: PlayerId; nth?: number; turn?: number } | undefined {
   const src = sourceObject(cx);
   if (!src) return undefined;
   const onStack = stackCastRecord(src);
@@ -864,7 +867,7 @@ function castRecord(cx: ExecCtx): { costsPaid: CostsPaid; x?: number; from?: Cas
   if (!src.cast) return undefined;
   const { costsPaid, x, from, by } = src.cast;
   const via = src.cast.via ?? costsPaid.alternative;
-  return { costsPaid, ...(x !== undefined ? { x } : {}), from, ...(via !== undefined ? { via } : {}), ...(by !== undefined ? { by } : {}) };
+  return { costsPaid, ...(x !== undefined ? { x } : {}), from, ...(via !== undefined ? { via } : {}), ...(by !== undefined ? { by } : {}), ...(src.cast.nth !== undefined ? { nth: src.cast.nth, turn: src.cast.turn } : {}) }; // edh-d-111
 }
 
 /**
@@ -880,7 +883,7 @@ function castRecordOf(cx: ExecCtx, ref: ObjRef): ReturnType<typeof castRecord> {
   if (o?.cast === undefined) return undefined;
   const { costsPaid, x, from, by } = o.cast;
   const via = o.cast.via ?? costsPaid.alternative;
-  return { costsPaid, ...(x !== undefined ? { x } : {}), from, ...(via !== undefined ? { via } : {}), ...(by !== undefined ? { by } : {}) };
+  return { costsPaid, ...(x !== undefined ? { x } : {}), from, ...(via !== undefined ? { via } : {}), ...(by !== undefined ? { by } : {}), ...(o.cast.nth !== undefined ? { nth: o.cast.nth, turn: o.cast.turn } : {}) }; // edh-d-111
 }
 
 /**
@@ -943,6 +946,11 @@ const COND: CondTable = {
   prime: (cx, c) => {
     const n = evalQty(cx, c.of);
     return n !== undefined && isPrime(n);
+  },
+  // edhe7 (CR 404.2, 113.6m; effects/../rules/gy-pos.ts): where the ability's source sits in its owner's graveyard now
+  graveyardPos: (cx, c) => {
+    const ctx = filterCtxOf(cx);
+    return graveyardPosHolds(cx.g.s, cx.source.id, c, (o) => matchesFilter(cx.g.s, o, c.filter, ctx));
   },
   exists: (cx, c) => {
     const need = c.atLeast === undefined ? 1 : evalQty(cx, c.atLeast);
@@ -1039,6 +1047,7 @@ const COND: CondTable = {
     if (c.xAtLeast !== undefined && (r.x ?? 0) < c.xAtLeast) return false;
     if (c.by === 'you' && r.by !== cx.controller) return false; // FAST4 T27 (CR 601.2a): "if you cast it"
     if (c.spent !== undefined && !spentAtLeast(r.costsPaid.manaSpent, c.spent)) return false; // FAST5 T37 (CR 601.2h): adamant
+    if (c.nth !== undefined && (r.nth !== c.nth || (r.turn !== undefined && r.turn !== cx.g.s.turn.number))) return false; // edh-d-111 (CR 601.2i): "if it was the second spell you cast this turn"
     // edh-c-6 (CR 707.10, 601.2h; Torrent of Souls ruling 2016-06-08): a copy of a spell was not cast, so no mana was spent on it, whatever was spent on the original
     if (c.spent !== undefined && c.object === undefined) { const so = sourceObject(cx); if (so !== undefined && (so.kind === 'spellCopy' || so.stack?.isCopy === true)) return false; }
     return true;
@@ -1123,7 +1132,13 @@ const COND: CondTable = {
     }
   },
   // edh-players-18, CR 102.3: "if the player is your opponent": every named player is (not) the controller; no player named is false
-  playerIs: (cx, c) => { const ps = resolvePlayers(cx, c.who); return ps.length > 0 && ps.every((p) => (c.is === 'you') === (p === cx.controller)); },
+  // edh-e-62, CR 603.4 (Wild Dogs): "if a player has more life than each other player": the reference names at least one player (extremePlayer: exactly the one such player; with `tied`: two or more tied)
+  hasPlayer: (cx, c) => resolvePlayers(cx, c.who).length > 0,
+  playerIs: (cx, c) => {
+    const ps = resolvePlayers(cx, c.who);
+    const among = c.among === undefined ? undefined : resolvePlayers(cx, c.among); // edh-e-4 (CR 608.2d): "If you are one of those players"
+    return ps.length > 0 && ps.every((p) => (among === undefined || among.includes(p)) && (c.is === 'you') === (p === cx.controller));
+  },
   // edh-next-53, CR 506.2, 508.1b (Suppressor Skyguard): the players in the game besides the attacking player and the controller; one of them has no attacker aimed at them (a planeswalker they control being attacked does not count)
   otherOpponentNotAttacked: (cx, c) => {
     const who = resolvePlayers(cx, c.of);
@@ -1194,6 +1209,7 @@ export function evalCond(cx: ExecCtx, c: Condition): boolean {
 export const DUR_EVALUATORS: Readonly<Record<string, true>> = {
   endOfTurn: true, endOfCombat: true, permanent: true, whileSource: true, until: true, untilNextTurn: true, untilNextStep: true,
   throughNextUntap: true, // MX5: ends as that untap step ends (core/durations.ts#expireAfterUntapStep, CR 502.3)
+  endOfCombatNextTurn: true, // edh-d-104: armed as that player's next turn begins, ends at the end of its first combat phase or its cleanup step (core/durations.ts, CR 611.2a, 500.5a)
   endOfNextTurn: true, // FAST5X E29: becomes endOfTurn as that player's next turn begins (core/durations.ts#expireAtTurnStart, CR 611.2a, 514.2)
   untilExiledWith: true, // r5-dig: until the source exiles another card (core/durations.ts#endDurations, CR 611.2a, 607.2a)
   whileObject: true, // std-rx32: judged live from the named object's state (statics/while-object.ts, core/durations.ts#endDurations, CR 611.2b)

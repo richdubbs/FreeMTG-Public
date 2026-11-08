@@ -1,0 +1,161 @@
+[
+  {
+    "id": "eff.edhe30.getTickets1",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "subject": "none",
+    "cr": [
+      "CR 107.17",
+      "CR 122.1"
+    ],
+    "pattern": "you get {tk}",
+    "build": {
+      "op": "putCounters",
+      "on": {
+        "ref": "you"
+      },
+      "kind": "ticket",
+      "count": 1
+    },
+    "examples": [
+      {
+        "text": "When ~ enters, you get {TK}. Draw a card."
+      },
+      {
+        "text": "Whenever you attack, you get {TK}."
+      }
+    ],
+    "counterExamples": [
+      "You get {TK}{TK}{TK}{TK}{TK}.",
+      "You get {E}."
+    ]
+  },
+  {
+    "id": "eff.edhe30.becomesColorAddition.dur",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "subject": "object",
+    "cr": [
+      "CR 105.3",
+      "CR 613.1e",
+      "CR 611.2a"
+    ],
+    "pattern": "{o:Obj} becomes {c:Color} in addition to its other colors {d:Dur}",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "continuous",
+          "affects": "$o",
+          "mods": [
+            {
+              "layer": 5,
+              "colors": {
+                "add": [
+                  "$c"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "examples": [
+      {
+        "text": "{R}: Target creature becomes green in addition to its other colors until end of turn. Draw a card."
+      },
+      {
+        "text": "Target artifact becomes red in addition to its other colors until end of turn."
+      }
+    ],
+    "counterExamples": [
+      "Target creature becomes red in addition to its other colors.",
+      "Target creature becomes red and green in addition to its other colors until end of turn.",
+      "Target creature becomes red until end of turn."
+    ],
+    "consumes": [
+      "in addition",
+      "other"
+    ]
+  },
+  {
+    "id": "eff.edhe30.allCreaturesColorAllLandsSubtype.dur",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "subject": "none",
+    "cr": [
+      "CR 105.3",
+      "CR 305.7",
+      "CR 613.1d",
+      "CR 613.1e",
+      "CR 611.2a"
+    ],
+    "pattern": "{d:Dur} , all creatures become {c:Color} and all lands become {st:PluralSubtype}",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "continuous",
+          "affects": {
+            "ref": "each",
+            "filter": {
+              "types": [
+                "Creature"
+              ]
+            }
+          },
+          "mods": [
+            {
+              "layer": 5,
+              "colors": {
+                "set": [
+                  "$c"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "s": "continuous",
+          "affects": {
+            "ref": "each",
+            "filter": {
+              "types": [
+                "Land"
+              ]
+            }
+          },
+          "mods": [
+            {
+              "layer": 4,
+              "subtypes": {
+                "set": "$st"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "examples": [
+      {
+        "text": "Until end of turn, all creatures become white and all lands become Islands. Draw a card."
+      },
+      {
+        "text": "Until end of turn, all creatures become red and all lands become Forests."
+      }
+    ],
+    "counterExamples": [
+      "All creatures become black and all lands become Swamps.",
+      "Until end of turn, all creatures become black and all lands become Swamps in addition to their other types.",
+      "Until end of turn, all creatures you control become black and all lands become Swamps."
+    ],
+    "consumes": [
+      "all"
+    ]
+  }
+]

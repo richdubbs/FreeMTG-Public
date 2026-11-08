@@ -88,6 +88,7 @@ function layer4(c: Chars, m: Extract<Modification, { layer: 4 }>, cx: EvalCx): C
   const unlistedCreature = (types.includes('Creature') || types.includes('Kindred')) && !types.includes('Planeswalker');
   const classOf = (t: string): SubtypeClass | undefined => subtypeClass(t) ?? (unlistedCreature ? 'creature' : undefined);
   if (st) {
+    if (st.set !== undefined && st.setAll === true) subtypes = []; // edh-d-105 (CR 707.9b, 205.1a; The Eleventh Hour ruling 2023-10-13): every other subtype goes
     if (st.set !== undefined) {
       const classes = new Set(st.set.map(classOf).filter((k) => k !== undefined));
       subtypes = subtypes.filter((t) => {
@@ -152,6 +153,11 @@ function removalNames(a: CharAbility, names: readonly string[]): boolean {
   return d.kind === 'activated' && d.isMana === true && names.includes('mana');
 }
 
+/** edh-e-48: an ability without the display fields (text, sentence, span, key, src, prov), so a printed ability and the same words quoted in a grant compare equal. */
+function abilityIdentity(d: AbilityDef): string {
+  return JSON.stringify(d, (k, v: unknown) => (k === 'text' || k === 'sentence' || k === 'span' || k === 'key' || k === 'src' || k === 'prov' ? undefined : v !== null && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => (x < y ? -1 : 1))) : v));
+}
+
 /** edh-perms-4: the same enchant restriction (the filters as the model states them, key order aside). */
 const canon = (v: unknown): string => JSON.stringify(v, (_k, x: unknown) => (x !== null && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
 const sameFilter = (a: unknown, b: unknown): boolean => canon(a ?? {}) === canon(b ?? {});
@@ -174,6 +180,11 @@ function layer6(c: Chars, m: Extract<Modification, { layer: 6 }>, fx: ModContext
   let cantHave = c.cantHave;
   if (m.removeAll) abilities = m.exceptMana === true ? abilities.filter((a) => a.def.kind === 'activated' && a.def.isMana === true) : []; // edh-d-46 (CR 613.1f, 605.1a): "except mana abilities"
   if (m.remove && m.remove.length > 0) abilities = dropOrphans(abilities.filter((a) => !removalNames(a, m.remove!)));
+  // edh-e-48 (CR 613.1f, 113.10; Glittering Lynx): "loses 'Prevent all damage that would be dealt to this creature.'": each ability that is the same as a quoted one goes (display text aside)
+  if (m.removeAbilities && m.removeAbilities.length > 0) {
+    const gone = new Set(m.removeAbilities.map(abilityIdentity));
+    abilities = dropOrphans(abilities.filter((a) => !gone.has(abilityIdentity(a.def))));
+  }
   if (m.removeEnchant !== undefined) abilities = dropOrphans(abilities.filter((a) => !(a.def.kind === 'keyword' && a.def.keyword === 'enchant' && sameFilter(a.def.filter, m.removeEnchant!)))); // edh-perms-4 (CR 702.5a, 613.1f)
   if (m.cantHave && m.cantHave.length > 0) {
     cantHave = withAll(cantHave, m.cantHave);
@@ -186,6 +197,15 @@ function layer6(c: Chars, m: Extract<Modification, { layer: 6 }>, fx: ModContext
     const word: Record<string, string> = { W: 'white', U: 'blue', B: 'black', R: 'red', G: 'green' };
     const own: AbilityDef[] = c.colors.map((k) => ({ kind: 'keyword', keyword: 'protection', quality: `color:${k}`, text: `protection from ${word[k] ?? k}` }) as AbilityDef);
     abilities = [...abilities, ...grantedAbilities(`${fx.id}~pc`, fx.timestamp, own, c, cantHave)];
+  }
+  // edh-e-61 (CR 702.16a, 105.1, 613.1f; Empty-Shrine Kannushi): "protection from each color among permanents you control": one protection for each color the listed objects have as layer 6 begins
+  // (settled by layer 5), in the order white, blue, black, red, green; a colorless object has none
+  if (m.protectionFromColorsAmong !== undefined) {
+    const word: Record<string, string> = { W: 'white', U: 'blue', B: 'black', R: 'red', G: 'green' };
+    const among = new Set<string>();
+    for (const id of objectsOf(cx, m.protectionFromColorsAmong)) for (const k of cx.all.get(id)?.colors ?? []) among.add(k);
+    const own: AbilityDef[] = ['W', 'U', 'B', 'R', 'G'].filter((k) => among.has(k)).map((k) => ({ kind: 'keyword', keyword: 'protection', quality: `color:${k}`, text: `protection from ${word[k]}` }) as AbilityDef);
+    if (own.length > 0) abilities = [...abilities, ...grantedAbilities(`${fx.id}~pa`, fx.timestamp, own, c, cantHave)];
   }
   // edhd63 (CR 702.1, 607.2d, 613.1f; Greymond): "Humans you control have each of the chosen abilities": one simple keyword for each value the source's link holds; any other value gives nothing
   if (m.addChosen !== undefined) {

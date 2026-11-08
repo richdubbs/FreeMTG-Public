@@ -176,7 +176,7 @@ function fillText(template: string, kw: KeywordAbilityDef, data: KeywordDefData)
 }
 
 /** r5-cost: the keywords whose "cost is equal to its mana cost" keyword expansion substitutes (CR 702.180a, 702.128a; trek-7: beam me up, "The beam me up cost is equal to that spell's mana cost"). */
-const COST_IS_MANA_COST_EXPANDED: ReadonlySet<string> = new Set(['harmonize', 'embalm', 'beam me up' /* trek-7: Scotty, Miracle Worker */, 'escape' /* edh-zones-5 */, 'offering' /* edh-combat-7: the cost is the card's own mana cost (CR 702.48a) plus the sacrifice */, 'scavenge' /* edh-next-59: Young Deathclaws (CR 702.97a) */, 'replicate' /* edh-next-65 (CR 702.56a, 118.9): Djinn Illuminatus */, 'blitz' /* edh-next-144 (CR 702.152a, 118.9): Henzie "Toolbox" Torre */, 'emerge' /* edh-d-97 (CR 702.119a, 118.9): Herigast, Erupting Nullkite */]);
+const COST_IS_MANA_COST_EXPANDED: ReadonlySet<string> = new Set(['harmonize', 'embalm', 'beam me up' /* trek-7: Scotty, Miracle Worker */, 'escape' /* edh-zones-5 */, 'offering' /* edh-combat-7: the cost is the card's own mana cost (CR 702.48a) plus the sacrifice */, 'scavenge' /* edh-next-59: Young Deathclaws (CR 702.97a) */, 'encore' /* edh-e-39: Wire Surgeons (CR 702.141a) */, 'replicate' /* edh-next-65 (CR 702.56a, 118.9): Djinn Illuminatus */, 'blitz' /* edh-next-144 (CR 702.152a, 118.9): Henzie "Toolbox" Torre */, 'emerge' /* edh-d-97 (CR 702.119a, 118.9): Herigast, Erupting Nullkite */]);
 
 /**
  * trek-7 (CR 118.9, 601.2b; Scotty, Miracle Worker): the keywords of COST_IS_MANA_COST_EXPANDED whose cost is the mana cost of the FACE being cast, so a granted instance is

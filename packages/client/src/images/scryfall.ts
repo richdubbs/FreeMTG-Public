@@ -5,6 +5,7 @@
  */
 import type { ImageUris } from '@openmtg/server/api';
 import { apiGet } from '../api/http';
+import { findPrinting, pagePrintings, parsePrintedKey } from './printings';
 
 /** Only https links to Scryfall's image host are shown (the CSP's `img-src` allows `*.scryfall.io` only). */
 export function safeScryfallUrl(url: string | undefined): string | null {
@@ -26,8 +27,31 @@ export function pickScryfallUrl(uris: ImageUris | undefined, size: 'normal' | 'l
 export type FaceUris = (ImageUris | undefined)[];
 export type UrlLookup = (name: string) => Promise<FaceUris | null>;
 
-/** Per-face image URLs of a card by Oracle name, from the server. */
-export const fetchScryfallUris: UrlLookup = async (name) => {
+/**
+ * Per-face image URLs of a card by Oracle name, from the server; for a key with a chosen printing (images/printings.ts printedKey), that printing's,
+ * else (the printing is not in the list, or the list cannot be had) the default printing's.
+ */
+export const fetchScryfallUris: UrlLookup = async (key) => {
+  const { name, printing, oracleId } = parsePrintedKey(key);
+  if (printing) {
+    try {
+      const list = await pagePrintings.get({ ...(oracleId ? { oracleId } : { name }), images: true });
+      const found = findPrinting(list.printings, printing);
+      if (found && found.faces.some((f) => f.normal || f.large)) return found.faces.map((f) => (f.normal || f.large ? f : undefined));
+    } catch {
+      // the default picture below
+    }
+  }
+  // A token's default picture: the printing list's default (GET /api/cards/:name knows game cards, not tokens).
+  if (oracleId) {
+    try {
+      const list = await pagePrintings.get({ oracleId, images: true });
+      const def = list.printings.find((p) => p.id === list.defaultId) ?? list.printings[list.printings.length - 1];
+      if (def) return def.faces.map((f) => (f.normal || f.large ? f : undefined));
+    } catch {
+      // the name look-up below
+    }
+  }
   const res = await apiGet('GET /api/cards/:name', { params: { name }, query: { images: 1 } });
   return res.card.faces.map((f) => f.imageUris);
 };

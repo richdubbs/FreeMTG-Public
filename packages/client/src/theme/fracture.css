@@ -799,6 +799,11 @@
   font-weight: 700;
 }
 
+/* The deckbuilder's Build / Details switch keeps the weight of its neighbors: the chosen view shows by its face only (deck-art-1). */
+:root[data-ui='fracture'] .deck-header-actions .deck-segment button[aria-pressed='true'] {
+  font-weight: 600;
+}
+
 /* The main action's shape: a gem cut to a point at each end, its label in tracked capitals a size larger than a slab's. */
 :root[data-ui='fracture'] :is(button, .button).button-primary {
   padding-inline: 28px;
@@ -3506,7 +3511,7 @@
     animation: rf-chosen 520ms var(--rf-ease);
   }
 
-  :root[data-ui='fracture'] :is(.hold-toggle.is-on, .log-toggle.is-open, .table-chip[aria-pressed='true'], .deck-segment button[aria-pressed='true']) {
+  :root[data-ui='fracture'] :is(.hold-toggle.is-on, .log-toggle.is-open, .table-chip[aria-pressed='true']) {
     animation: rf-chosen 520ms var(--rf-ease);
   }
 

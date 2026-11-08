@@ -211,9 +211,9 @@ function putEnteringCounters(g: Game, used: () => ReadonlySet<string> | undefine
 function applyEnterFacts(g: Game, id: ObjectId, d: DestinationFacts, used?: ReadonlySet<string>): void {
   const o = g.obj(id);
   const name = g.nameOf(id);
-  for (const ch of d.chosen ?? []) setLink(o, ch.link, { ...(ch.values ? { values: ch.values } : {}), ...(ch.players ? { players: ch.players } : {}), ...(ch.objects ? { objects: ch.objects } : {}) });
-  if (d.chosen && d.chosen.some((c) => c.objects === undefined)) {
-    const what = d.chosen.filter((c) => c.objects === undefined).map((c) => (c.values ?? c.players?.map((p) => g.player(p).name) ?? []).join(', ')).join('; ');
+  for (const ch of d.chosen ?? []) setLink(o, ch.link, { ...(ch.values ? { values: ch.values } : {}), ...(ch.players ? { players: ch.players } : {}), ...(ch.secret ? { secret: ch.secret } : {}), ...(ch.objects ? { objects: ch.objects } : {}) });
+  if (d.chosen && d.chosen.some((c) => c.objects === undefined && c.secret === undefined)) { // edhe35: a secret choice is not named (CR 608.2d)
+    const what = d.chosen.filter((c) => c.objects === undefined && c.secret === undefined).map((c) => (c.values ?? c.players?.map((p) => g.player(p).name) ?? []).join(', ')).join('; ');
     g.log(`${name} enters with ${what} chosen.`, { rules: ['CR 614.12a', 'CR 607.2d'], level: 'info' });
   }
   // edh-next-137 (CR 614.12, 114.2, 607.2a; Tibalt, Cosmic Impostor): the emblems it gives as it enters, whose abilities read this permanent's links (GameObject.linksFrom)

@@ -43,7 +43,7 @@ const stepMoves = (v: unknown): boolean => {
 
 /** A cost part that moves a card to or from a library, also inside a choice between costs (`oneOf`, any option may be the one paid). */
 export const costMovesLibraryCards = (cost: CostDef): boolean =>
-  (cost.other ?? []).some((p) => p.kind === 'putIntoLibrary' || (p.kind === 'moveCards' && p.to === 'libraryTop') /* edh-d-54 */ || p.kind === 'mill' || (p.kind === 'exileFrom' && p.zone === 'library') || (p.kind === 'oneOf' && p.options.some(costMovesLibraryCards)));
+  (cost.other ?? []).some((p) => p.kind === 'putIntoLibrary' || (p.kind === 'moveCards' && (p.to === 'libraryTop' || p.to === 'libraryBottom')) /* edh-d-54, edh-e-37 */ || p.kind === 'mill' || (p.kind === 'exileFrom' && p.zone === 'library') || (p.kind === 'oneOf' && p.options.some(costMovesLibraryCards)));
 
 /** Reveal, look or choose among library cards (naming them) and then move or cast the cards so named. */
 const readsThenMoves = (program: EffectProgram): boolean => {

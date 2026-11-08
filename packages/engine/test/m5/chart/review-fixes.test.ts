@@ -416,8 +416,9 @@ describe('review: quantities the evaluator cannot compute are no parse (model 4 
 });
 
 describe('review: costs keep the owner of the zone they exile from (CR 118, 400.3)', () => {
-  it('"from a graveyard" cannot be said by the cost part, "from your graveyard" can', () => {
-    expect(rejects('Cost', 'exile a creature card from a graveyard')).toBe(true);
+  // edh-d-107 (CR 118.3, 404.1; Thelon of Havenwood): the cost part now has `anyGraveyard`, so "from a graveyard" is said as any player's graveyard (never as yours)
+  it('"from a graveyard" is said by the cost part as any graveyard (edh-d-107), "from your graveyard" as yours', () => {
+    expect(one('Cost', 'exile a creature card from a graveyard')).toEqual({ other: [{ kind: 'exileFrom', zone: 'graveyard', count: 1, filter: creature, anyGraveyard: true }] });
     expect(one('Cost', 'exile a creature card from your graveyard')).toEqual({ other: [{ kind: 'exileFrom', zone: 'graveyard', count: 1, filter: creature }] });
   });
 });

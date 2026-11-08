@@ -11,6 +11,7 @@
  */
 import type { Draft, Rec, Unit } from './types';
 import { freshName, isRec, setManual, visit } from './util';
+import { PREV_FLIP } from '../holes/player';
 
 const hasFlipMarker = (u: Unit): boolean => {
   let found = false;
@@ -33,6 +34,10 @@ const isBareFlipByYou = (s: Rec | undefined): boolean =>
 function flipOf(s: Rec | undefined): Rec | undefined {
   if (s === undefined) return undefined;
   if (s['op'] === 'flipCoin') return s;
+  // edh-e-2 (CR 705.2, 603.7; Fickle Efreet): "Flip a coin at end of combat. If you lose the flip, ...": the flip is the one instruction of a delayed trigger of this ability, and the
+  // result sentence is its branch, read when the delayed trigger does flip (the sentence is part of the delayed effect, not of the ability that created it)
+  const delayed = s['do'];
+  if (s['op'] === 'delay' && Array.isArray(delayed) && delayed.length === 1 && isRec(delayed[0]) && delayed[0]['op'] === 'flipCoin') return delayed[0];
   // edh-d-20 (CR 705.2, 608.2f; Fighting Chance, Mutalith Vortex Beast): "For each blocking creature, flip a coin. If you win the flip, ..." / "Flip a coin for each opponent you have. For each flip you win, ...":
   // the flip is the one instruction of the iteration (`forEach` over the group, one flip each); the result sentences are branches of that flip, read once for each iteration
   const iter = s['do'];
@@ -68,7 +73,34 @@ function mostChosen(before: Unit[], times: unknown): number | undefined {
   return most;
 }
 
+/**
+ * edh-e-62 (CR 705.1, 705.2, 608.2c; Goblin Assassin): "Each player flips a coin. Each player whose coin comes up tails sacrifices a creature of their choice.": the sentence that names the players
+ * of a flip by their coins (`{ref:'coinSide', step: PREV_FLIP}`, parser/holes/player.ts) reads the flip RIGHT BEFORE it: the last top-level step of the previous understood sentence, a flip of one
+ * coin by each player with no instructions of its own. That step is named (`as`) and the name is put in the reference. Anything else (no flip right before, a sentence not understood before it, a
+ * flip with branches or several coins, a flip by one player) leaves the sentence manual (design 6.4: no search further back).
+ */
+function bindCoinSides(seq: Unit[], d?: Draft): void {
+  seq.forEach((u, i) => {
+    if (u.manual) return;
+    const refs: Rec[] = [];
+    visit(u.steps, (n) => { if (n['ref'] === 'coinSide' && n['step'] === PREV_FLIP) refs.push(n); });
+    if (refs.length === 0) return;
+    const prev = seq.slice(0, i).reverse().find((p) => p.manual !== undefined || p.steps.length > 0);
+    const flip = prev !== undefined && !prev.manual ? prev.steps[prev.steps.length - 1] : undefined;
+    const who = flip?.['who'];
+    const plain = flip !== undefined && flip['op'] === 'flipCoin' && isRec(who) && who['ref'] === 'each' && who['who'] === 'player' && flip['count'] === undefined && flip['times'] === undefined
+      && flip['onWin'] === undefined && flip['onLose'] === undefined && flip['onTails'] === undefined && flip['untilLose'] === undefined && flip['called'] === undefined && flip['stakes'] === undefined && flip['guard'] === undefined;
+    if (d === undefined || !plain) {
+      setManual(u, { code: 'unbound-reference', reason: '"each player whose coin comes up tails" with no flip of one coin by each player right before it (CR 705.2, 608.2c)', unresolved: true });
+      return;
+    }
+    if (typeof flip['as'] !== 'string') flip['as'] = freshName(d, 'flip');
+    for (const r of refs) r['step'] = String(flip['as']);
+  });
+}
+
 export function foldFlips(seq: Unit[], d?: Draft): void {
+  bindCoinSides(seq, d);
   // edh-next-128: the unit and the flip the last "For each flip you win / lose" sentence read, so the next one reads the same flip
   let severalRead: { unit: Unit; flip: Rec } | undefined;
   // edh-next-128 (CR 705.1, 608.2c): "Flip that many coins" (template eff.r4mech.flipCoins.n with a quantity that is not a literal number): the number of coins is read as the flip

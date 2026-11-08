@@ -40,7 +40,7 @@ export type PlanPart =
   | (Chosen & { kind: 'unattach'; filter: ObjectFilter; count: number; self?: boolean })
   | (Chosen & { kind: 'discard'; filter?: ObjectFilter; count: number; random?: boolean; self?: boolean; hand?: boolean; sameName?: true; distinctNames?: true }) // edh-next-90: all with different names; edh-c-111: all with the same name (cost-pick.ts)
   /** FAST5X E13: 'battlefield' (self, or a permanent you control), `orGraveyard` (craft materials, CR 702.167a-b), `atLeast` ("N or more", CR 601.2b). */
-  | (Chosen & { kind: 'exileFrom'; zone: 'graveyard' | 'hand' | 'battlefield' | 'stack'; filter?: ObjectFilter; count: number; self?: boolean; orGraveyard?: true; atLeast?: number; link?: string; total?: number; symbolTotal?: { color: Color; atLeast: number }; /** edh-d-100: a total mana value of at least this (CR 202.3) */ mvTotal?: { atLeast: number }; /** edh-d-100: at least this many card types among them (CR 205.2a) */ typesAmong?: { atLeast: number } }) // `link`: FAST5 T59 (CR 607.2q); `total`: std-costs-1, the exact total mana value of the objects (rules/cost-pick.ts)
+  | (Chosen & { kind: 'exileFrom'; zone: 'graveyard' | 'hand' | 'battlefield' | 'stack'; filter?: ObjectFilter; count: number; self?: boolean; orGraveyard?: true; atLeast?: number; link?: string; total?: number; symbolTotal?: { color: Color; atLeast: number }; /** edh-d-100: a total mana value of at least this (CR 202.3) */ mvTotal?: { atLeast: number }; /** edh-d-100: at least this many card types among them (CR 205.2a) */ typesAmong?: { atLeast: number }; /** edhe7: the top card of the filter in your graveyard (CR 404.2); edh-d-107: the top `count` cards */ top?: true; /** edh-d-107: from any player's graveyard (CR 118.3) */ anyGraveyard?: true; /** edh-d-107: all from one graveyard */ singleGraveyard?: true }) // `link`: FAST5 T59 (CR 607.2q); `total`: std-costs-1, the exact total mana value of the objects (rules/cost-pick.ts)
   /** `waterbend`: FAST5X E10, the artifacts and creatures tapped to pay generic mana of a waterbend cost (CR 701.67a; not a "tapped creature" of the cost). */
   | (Chosen & { kind: 'tapUntapped'; filter: ObjectFilter; count: number; other?: boolean; waterbend?: true })
   | (Chosen & { kind: 'tapPower'; filter: ObjectFilter; power: number; other?: boolean; as?: 'crew' | 'saddle' }) // `as`: FAST5X E3 (CR 702.122a, 702.171a)
@@ -54,7 +54,7 @@ export type PlanPart =
   | (Chosen & { kind: 'putIntoLibrary'; zone: 'graveyard' | 'battlefield'; self: true; position: 'top' | 'bottom' })
   | (Chosen & { kind: 'reveal'; filter?: ObjectFilter; count: number; self?: boolean; hand?: true }) // edh-next-117: `hand`, "reveal your hand" (every card, none chosen)
   /** edh-d-54 (CR 118.3, 400.3, 401.4): cards of the filter from exile (any owner the filter names) or your hand go to their owner's graveyard or the top of their owner's library. */
-  | (Chosen & { kind: 'moveCards'; from: 'exile' | 'hand'; filter?: ObjectFilter; count: number; to: 'graveyard' | 'libraryTop' })
+  | (Chosen & { kind: 'moveCards'; from: 'exile' | 'hand' | 'graveyard'; filter?: ObjectFilter; count: number; to: 'graveyard' | 'libraryTop' | 'libraryBottom' })
   | { kind: 'mill'; count: number }
   | { kind: 'draw'; count: number } // edh-c-48 (CR 702.24a, 121.2): drawing cards is the cost
   | { kind: 'payEnergy'; amount: number }
@@ -79,6 +79,8 @@ export type PlanPart =
   | { kind: 'getCounters'; counter: 'poison'; amount: number }
   /** edh-cast-14 (CR 118.1, 119.7; Invigorate): the paying player chooses an opponent, who gains this much life as the cost is paid (rules/pay-parts.ts). */
   | { kind: 'opponentGainsLife'; amount: number }
+  /** edh-e-16 (CR 118.1, 119.3; Reverent Silence): every other player gains this much life as the cost is paid (rules/pay-parts.ts). */
+  | { kind: 'eachOtherGainsLife'; amount: number }
   /** edh-d-74 (CR 701.13a, 118.3; Thought Lash): the top cards of the payer's library are exiled as the cost is paid (rules/pay-parts.ts). */
   | { kind: 'exileTop'; count: number }
   /** edh-d-74 (CR 705.1-705.2, 118.3; Karplusan Minotaur): the payer flips a coin as the cost is paid (rules/pay-parts.ts). */
@@ -105,6 +107,7 @@ export const COST_PART_IMPLS: Readonly<Record<CostPart['kind'], true>> = {
   moveCards: true, // edh-d-54 (CR 118.3, 400.3, 401.4)
   addMana: true, // edh-mana-keywords-12 (CR 702.24a, 106.4)
   opponentGainsLife: true, // edh-cast-14 (CR 118.1, 119.7)
+  eachOtherGainsLife: true, // edh-e-16 (CR 118.1, 119.3)
   exileTop: true, flipCoin: true, // edh-d-74 (CR 701.13a, 705.1, 118.3)
 };
 
@@ -128,6 +131,8 @@ export const COST_FORMS: readonly string[] = [
   'removeCounters.among',
   // p2-counters-move-2: "Remove all charge counters from ~" (CR 118.3, 107.3a): the ability's X, fixed to the counters of that kind on ~ (actions/activate.ts#fixedCounterX)
   'removeCounters.all',
+  // edh-d-111: "Remove one or more +1/+1 counters from ~" (CR 107.1c, 107.3a, 602.2b): the ability's X, announced at least 1 (actions/activate.ts#leastX)
+  'removeCounters.oneOrMore',
   // r3-cost: "Sacrifice three artifact tokens with different names" (CR 118.3, 201.2): rules/cost-pick.ts#findAssignment picks objects with different names
   'sacrifice.distinctNames',
   // std-mana-1: "Sacrifice one or more artifacts" (CR 601.2b, 118.3): announced, at least `atLeast` (rules/pay.ts#resolveAnyCounts)
@@ -160,6 +165,14 @@ export const COST_FORMS: readonly string[] = [
   'exileFrom.mvTotal',
   // edh-d-100: "with four or more card types among them" (CR 118.3, 205.2a): a threshold part counting the union of card types (rules/cost-pick.ts)
   'exileFrom.typesAmong',
+  // edh-e-37: "Put a card from your graveyard on the bottom of your library" (CR 118.3, 401.4): rules/pay-parts.ts moves each picked card to the bottom of its owner's library
+  'moveCards.libraryBottom',
+  // edhe7: "Exile the top creature card of your graveyard" (CR 404.2, 118.3): the one card on top of the matching cards (rules/cost-pick.ts)
+  'exileFrom.top',
+  // edh-d-107: "Exile the top three black cards of your graveyard" (CR 404.2, 118.3): the N topmost cards of the filter (rules/cost-pick.ts)
+  'exileFrom.topCount',
+  // edh-d-107: "Exile a Fungus card from a graveyard" / "Exile two creature cards from a single graveyard" (CR 118.3, 404.1): cards of any graveyard, all of one graveyard (rules/cost-pick.ts)
+  'exileFrom.anyGraveyard', 'exileFrom.singleGraveyard',
 ];
 
 /**
@@ -295,6 +308,18 @@ export function toPlanPart(part: CostPart, xs: CostX): PlanPart {
         if (c0.any !== true || part.zone !== 'graveyard' || part.self === true || part.orGraveyard === true || part.atLeast !== undefined || part.symbolTotal !== undefined || part.totalManaValue !== undefined) return manual();
         return { kind: 'exileFrom', zone: 'graveyard', ...(part.filter ? { filter: fx(part.filter) } : {}), count: 0, mvTotal: { ...part.mvTotal }, ...(part.link !== undefined ? { link: part.link } : {}) };
       }
+      // edhe7 (CR 404.2, 118.3; Necratog): "Exile the top creature card of your graveyard": one card, from your graveyard, with no choice (rules/cost-pick.ts)
+      // edh-d-107 (CR 404.2, 118.3; Spinning Darkness): "Exile the top three black cards of your graveyard": the N topmost cards of the filter, a fixed number
+      if (part.top === true) {
+        if (part.zone !== 'graveyard' || part.self === true || part.orGraveyard === true || part.atLeast !== undefined || c0.any === true || !Number.isInteger(c0.count) || c0.count < 1 || part.anyGraveyard === true) return manual();
+        return { kind: 'exileFrom', zone: 'graveyard', ...(part.filter ? { filter: fx(part.filter) } : {}), count: c0.count, top: true, ...(part.link !== undefined ? { link: part.link } : {}) };
+      }
+      // edh-d-107 (CR 118.3, 404.1; Thelon of Havenwood, Night Soil): "from a graveyard" (any player's), "from a single graveyard" (all of one): a fixed number of cards, chosen
+      if (part.anyGraveyard === true || part.singleGraveyard === true) {
+        if (part.anyGraveyard !== true || part.zone !== 'graveyard' || part.self === true || part.orGraveyard === true || part.atLeast !== undefined || c0.any === true || !Number.isInteger(c0.count) || c0.count < 1
+          || part.totalManaValue !== undefined || part.symbolTotal !== undefined || part.mvTotal !== undefined || part.typesAmong !== undefined || part.faceUp === true) return manual();
+        return { kind: 'exileFrom', zone: 'graveyard', ...(part.filter ? { filter: fx(part.filter) } : {}), count: c0.count, anyGraveyard: true, ...(part.singleGraveyard === true ? { singleGraveyard: true as const } : {}), ...(part.link !== undefined ? { link: part.link } : {}) };
+      }
       // FAST5X E13: "N or more" (CR 702.167a): announced like "any number" (CR 601.2b) but never fewer than N; until it is announced the plan needs N
       const c = part.atLeast !== undefined ? { count: part.atLeast, any: true as const, atLeast: part.atLeast } : c0;
       return {
@@ -395,6 +420,11 @@ export function toPlanPart(part: CostPart, xs: CostX): PlanPart {
       // edh-cast-14 (CR 118.1, 119.3): "have an opponent gain N life"
       const amount = n(part.amount);
       return amount === null || amount < 1 ? manual() : { kind: 'opponentGainsLife', amount };
+    }
+    case 'eachOtherGainsLife': {
+      // edh-e-16 (CR 118.1, 119.3): "have each other player gain N life"
+      const amount = n(part.amount);
+      return amount === null || amount < 1 ? manual() : { kind: 'eachOtherGainsLife', amount };
     }
     case 'oneOf': {
       // FAST5X E27 (CR 601.2b, 118.12a): each option is a whole cost; one the build can't pay stays a manual part inside its option (that option is never payable)
@@ -627,6 +657,7 @@ export function partText(p: PlanPart): string {
     case 'exileFrom':
       if (p.zone === 'battlefield' && p.total !== undefined) return `Exile ${p.count} or more permanents you control with total mana value ${p.total}`; // std-costs-1
       if (p.zone === 'battlefield') return p.self ? 'Exile this permanent' : `Exile ${plural(p.count, 'permanent')} you control`; // FAST5X E13
+      if (p.anyGraveyard === true) return `Exile ${plural(p.count, 'card')} from ${p.singleGraveyard === true ? 'a single graveyard' : 'a graveyard'}`; // edh-d-107 (CR 118.3, 404.1)
       return `Exile ${p.self ? 'this card' : plural(p.count, 'card')} from your ${p.zone}`;
     case 'tapUntapped': return `Tap ${plural(p.count, `untapped ${p.other ? 'other ' : ''}permanent`)} you control`;
     case 'untapTapped': return `Untap ${plural(p.count, 'tapped permanent')} you control`; // p2-cost-parts-1
@@ -635,7 +666,7 @@ export function partText(p: PlanPart): string {
     case 'putCounters': return `Put ${plural(p.count, `${p.counter} counter`)} on ${p.self ? 'this permanent' : 'a permanent you control'}`;
     case 'unattach': return p.self ? 'Unattach this permanent' : 'Unattach the permanent that gave this ability'; // edh-top-15
     case 'returnToHand': return p.self ? 'Return this permanent to its owner\'s hand' : `Return ${plural(p.count, 'permanent')} to your hand`;
-    case 'moveCards': return p.to === 'graveyard' ? `Put ${plural(p.count, 'card')} from ${p.from === 'exile' ? 'exile' : 'your hand'} into ${p.count === 1 ? 'its' : 'their'} owner's graveyard` : `Put ${plural(p.count, 'card')} from your ${p.from} on top of your library`; // edh-d-54
+    case 'moveCards': return p.to === 'graveyard' ? `Put ${plural(p.count, 'card')} from ${p.from === 'exile' ? 'exile' : 'your hand'} into ${p.count === 1 ? 'its' : 'their'} owner's graveyard` : `Put ${plural(p.count, 'card')} from your ${p.from} on ${p.to === 'libraryBottom' ? 'the bottom' : 'top'} of your library`; // edh-d-54, edh-e-37
     case 'reveal': return p.hand === true ? 'Reveal your hand' : p.self ? 'Reveal this card from your hand' : `Reveal ${plural(p.count, 'card')} from your hand`;
     case 'putIntoLibrary': return p.zone === 'battlefield' ? `Put this permanent on the ${p.position} of its owner's library` : `Put this card from your ${p.zone} on the ${p.position} of your library`; // trek-9, edh-d-34
     case 'mill': return `Mill ${plural(p.count, 'card')}`;
@@ -653,6 +684,7 @@ export function partText(p: PlanPart): string {
     case 'waterbend': return `Waterbend {${p.amount}}`;
     case 'getCounters': return `Get ${plural(p.amount, `${p.counter} counter`)}`; // FAST5X E27
     case 'opponentGainsLife': return `Have an opponent gain ${p.amount} life`; // edh-cast-14
+    case 'eachOtherGainsLife': return `Have each other player gain ${p.amount} life`; // edh-e-16
     case 'exileTop': return `Exile the top ${p.count === 1 ? 'card' : `${p.count} cards`} of your library`; // edh-d-74
     case 'flipCoin': return 'Flip a coin'; // edh-d-74
     case 'revealChosen': return p.what === 'player' ? 'Reveal the player you chose' : 'Reveal the creature type you chose'; // std-combat-5; edh-next-135
@@ -750,6 +782,10 @@ export function partsDenial(s: GameState, player: PlayerId, sourceId: ObjectId |
           const total = plan.other.reduce((n, x) => n + (x.kind === 'exileTop' ? x.count : 0), 0);
           if ((s.zones.library[player]?.length ?? 0) < total) return deny(`You can't exile ${total} cards from the top of your library: it has fewer.`, 'CR 701.13a', 'CR 118.3');
         }
+        break;
+      case 'eachOtherGainsLife':
+        // edh-e-16 (CR 119.7, 118.3; Reverent Silence): every other player still in the game must be able to gain life (a cost that has a player gain life can't be paid if that player can't)
+        if (s.players.some((p) => p.id !== player && !p.hasLost && playerRestricted(s, p.id, 'cantGainLife'))) return deny('A player who would gain life from this cost can\'t gain life, so this cost can\'t be paid.', 'CR 119.7', 'CR 118.3');
         break;
       case 'opponentGainsLife':
         // edh-cast-14 (CR 119.7, 118.3; Scryfall ruling 2020-08-07 of Invigorate): an opponent who can't gain life can't be chosen; a replacement of the gain does not stop the payment

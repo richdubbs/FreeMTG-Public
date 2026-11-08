@@ -1,0 +1,206 @@
+[
+  {
+    "id": "eff.edhe58.return.thatCard.whenSelfLeaves",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 603.7",
+      "CR 603.7c",
+      "CR 400.7",
+      "CR 110.2"
+    ],
+    "pattern": "return {o:Obj} to the battlefield under its owner 's control when ~ leaves the battlefield",
+    "build": {
+      "op": "delay",
+      "when": {
+        "at": "event",
+        "event": {
+          "ev": "zoneChange",
+          "subject": {
+            "self": true
+          },
+          "from": "battlefield"
+        }
+      },
+      "do": [
+        {
+          "op": "move",
+          "what": "$o",
+          "to": {
+            "zone": "battlefield",
+            "controller": "owner"
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "when"
+    ],
+    "examples": [
+      {
+        "text": "Whenever a land enters, if there are three or more other lands on the battlefield, exile that land. Return that card to the battlefield under its owner's control when ~ leaves the battlefield."
+      },
+      {
+        "text": "Whenever an artifact enters, exile that artifact. Return that card to the battlefield under its owner's control when ~ leaves the battlefield."
+      }
+    ],
+    "counterExamples": [
+      "Whenever an artifact enters, exile that artifact. Return that card to the battlefield under its owner's control when ~ dies.",
+      "Whenever an artifact enters, exile that artifact. Return that card to the battlefield under your control when ~ leaves the battlefield.",
+      "Whenever an artifact enters, exile that artifact. Return that card to the battlefield tapped under its owner's control when ~ leaves the battlefield."
+    ]
+  },
+  {
+    "id": "eff.edhe58.opponentChooses.yourPermanent.exile",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 701.13a",
+      "CR 608.2d",
+      "CR 101.4"
+    ],
+    "pattern": "an opponent chooses ( a | an ) {f:Filter} you control other than ~ and exiles it",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "anOpponent"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "anyOf": [
+              "$f"
+            ],
+            "controller": {
+              "ref": "you"
+            },
+            "other": true
+          }
+        },
+        "min": 1,
+        "max": 1,
+        "as": "chosen"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "bound",
+          "name": "chosen"
+        },
+        "to": {
+          "zone": "exile"
+        }
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "choose",
+      "other"
+    ],
+    "examples": [
+      {
+        "text": "When ~ enters, an opponent chooses a creature you control other than ~ and exiles it.\nWhen ~ dies, return the exiled card to the battlefield under its owner's control."
+      },
+      {
+        "text": "When ~ enters, an opponent chooses an artifact you control other than ~ and exiles it.\nWhen ~ dies, return the exiled card to the battlefield under its owner's control."
+      }
+    ],
+    "counterExamples": [
+      "When ~ enters, an opponent chooses a permanent you control and exiles it.\nWhen ~ dies, return the exiled card to the battlefield under its owner's control.",
+      "When ~ enters, an opponent chooses a permanent you control other than ~ and sacrifices it.\nWhen ~ dies, return the exiled card to the battlefield under its owner's control."
+    ]
+  },
+  {
+    "id": "trg.edhe58.landOppControlsSameNameExiled.enters",
+    "kind": "trigger",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 603.2",
+      "CR 607.2a",
+      "CR 201.2",
+      "CR 400.7"
+    ],
+    "pattern": "whenever a land an opponent controls with the same name as the exiled card enters",
+    "build": {
+      "on": [
+        {
+          "ev": "zoneChange",
+          "subject": {
+            "types": [
+              "Land"
+            ],
+            "controller": "opponent",
+            "sharesWith": {
+              "with": {
+                "ref": "linked",
+                "link": "exiled"
+              },
+              "quality": "name"
+            }
+          },
+          "to": "battlefield"
+        }
+      ]
+    },
+    "consumes": [
+      "whenever",
+      "same"
+    ],
+    "examples": [
+      {
+        "text": "When ~ enters, exile target land an opponent controls.\nWhenever a land an opponent controls with the same name as the exiled card enters, ~ deals 3 damage to that player."
+      },
+      {
+        "text": "When ~ enters, you may exile target land you control.\nWhenever a land an opponent controls with the same name as the exiled card enters, you gain 1 life."
+      }
+    ],
+    "counterExamples": [
+      "When ~ enters, exile target land an opponent controls.\nWhenever a land you control with the same name as the exiled card enters, you gain 1 life.",
+      "When ~ enters, exile target land an opponent controls.\nWhenever a land an opponent controls with the same name as the exiled card is tapped for mana, you gain 1 life.",
+      "Whenever a land an opponent controls with the same name as the exiled card enters, you gain 1 life."
+    ],
+    "priority": 1
+  },
+  {
+    "id": "eff.edhe58.fateseal",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 701.29a",
+      "CR 109.5",
+      "CR 401.4"
+    ],
+    "pattern": "fateseal {n:Qty}",
+    "build": {
+      "op": "scry",
+      "who": {
+        "ref": "you"
+      },
+      "count": "$n",
+      "fateseal": true
+    },
+    "subject": "none",
+    "needs": [
+      "op:scry.fateseal"
+    ],
+    "examples": [
+      {
+        "text": "Fateseal 3."
+      },
+      {
+        "text": "Draw a card, then fateseal 2."
+      }
+    ],
+    "counterExamples": [
+      "Fateseal 3 cards.",
+      "Fateseal.",
+      "Scry 3, then fateseal."
+    ]
+  }
+]

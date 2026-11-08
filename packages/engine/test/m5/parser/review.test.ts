@@ -177,7 +177,7 @@ describe('structure ranges stop at the first character of the card name (design 
 });
 
 describe('CR 107.4: a brace group is a MANA token only when it is a mana symbol of the rules (guard G2)', () => {
-  const bad = ['{ZZ}', '{TK}', '{CHAOS}', '{L}', '{H}', '{D}', '{P}', '{W/W}', '{2/2}', '{W/U/B}', '{C/P}', '{PW}'];
+  const bad = ['{ZZ}', '{CHAOS}', '{L}', '{H}', '{D}', '{P}', '{W/W}', '{2/2}', '{W/U/B}', '{C/P}', '{PW}'];
 
   it.each(bad)('%s is an ERR, never a mana symbol', (sym) => {
     const [t] = tokenize(sym);
@@ -186,7 +186,7 @@ describe('CR 107.4: a brace group is a MANA token only when it is a mana symbol 
   });
 
   it('every symbol family of CR 107.4 is still MANA: numbers, colors, hybrid, monocolored hybrid, Phyrexian, hybrid Phyrexian, snow, X, Y, energy', () => {
-    const ok = ['{0}', '{1}', '{15}', '{W}', '{U}', '{B}', '{R}', '{G}', '{C}', '{X}', '{Y}', '{S}', '{E}', '{W/U}', '{G/U}', '{R/W}', '{2/W}', '{2/G}', '{C/W}', '{C/G}', '{W/P}', '{G/P}', '{W/U/P}', '{G/U/P}'];
+    const ok = ['{0}', '{1}', '{15}', '{W}', '{U}', '{B}', '{R}', '{G}', '{C}', '{X}', '{Y}', '{S}', '{E}', '{TK}' /* edh-e-30: the ticket symbol, CR 107.17 */, '{W/U}', '{G/U}', '{R/W}', '{2/W}', '{2/G}', '{C/W}', '{C/G}', '{W/P}', '{G/P}', '{W/U/P}', '{G/U/P}'];
     for (const sym of ok) expect(tokenize(sym).map((t) => t.kind), sym).toEqual(['MANA']);
   });
 

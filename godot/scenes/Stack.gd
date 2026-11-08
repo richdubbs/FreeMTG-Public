@@ -8,7 +8,9 @@ signal card_clicked(id: String)
 signal card_hovered(id: String, inside: bool)
 
 const CARD_SCENE: PackedScene = preload("res://scenes/Card.tscn")
-const CARD_SCALE: float = 0.42
+## The top of the stack (what resolves next) at full card size, the items under it smaller.
+const TOP_SCALE: float = 1.3
+const CARD_SCALE: float = 0.8
 
 @onready var _items: VBoxContainer = %Items
 
@@ -29,11 +31,12 @@ func show_stack(view: Dictionary, selection: BoardSelection) -> void:
 	ids.reverse()
 	for id: String in ids:
 		var obj := View.object(view, id)
+		var sc: float = TOP_SCALE if _cards.is_empty() else CARD_SCALE
 		var row := HBoxContainer.new()
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_theme_constant_override("separation", 8)
 		var holder := Control.new()
-		holder.custom_minimum_size = CardView.SIZE * CARD_SCALE
+		holder.custom_minimum_size = CardView.SIZE * sc
 		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		if _top_holder == null or not is_instance_valid(_top_holder) or _top_holder.is_queued_for_deletion():
 			_top_holder = holder
@@ -43,8 +46,8 @@ func show_stack(view: Dictionary, selection: BoardSelection) -> void:
 		var card: CardView = CARD_SCENE.instantiate()
 		holder.add_child(card)
 		card.show_object(view, id)
-		card.set_card_scale(CARD_SCALE)
-		card.position = CardView.SIZE * CARD_SCALE * 0.5 - card.pivot_offset
+		card.set_card_scale(sc)
+		card.position = CardView.SIZE * sc * 0.5 - card.pivot_offset
 		_cards[id] = card
 		card.clicked.connect(func(cid: String) -> void: card_clicked.emit(cid))
 		card.hovered.connect(func(cid: String, inside: bool) -> void: card_hovered.emit(cid, inside))
@@ -53,9 +56,9 @@ func show_stack(view: Dictionary, selection: BoardSelection) -> void:
 		elif selection != null and selection.can_select(id):
 			card.set_glow(CardView.GlowKind.SELECTABLE)
 		var label := Label.new()
-		label.custom_minimum_size = Vector2(160, 0)
+		label.custom_minimum_size = Vector2(150, 0)
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		label.add_theme_font_size_override("font_size", 12)
+		label.add_theme_font_size_override("font_size", 14 if sc == TOP_SCALE else 12)
 		label.text = _describe(view, obj)
 		row.add_child(label)
 
@@ -71,7 +74,7 @@ func _process(delta: float) -> void:
 	for c: Node in _top_holder.get_children():
 		if c is CardView:
 			var card := c as CardView
-			card.position.y = CardView.SIZE.y * CARD_SCALE * 0.5 - card.pivot_offset.y - 2.0 * (0.5 - 0.5 * cos(_t * TAU / 2.4))
+			card.position.y = CardView.SIZE.y * TOP_SCALE * 0.5 - card.pivot_offset.y - 2.0 * (0.5 - 0.5 * cos(_t * TAU / 2.4))
 
 
 ## The card nodes on the stack by object id (fx/Animator.gd).
@@ -81,7 +84,7 @@ func card_nodes() -> Dictionary:
 
 ## Where a spell arriving on the stack is drawn (global canvas rect of the top item, also while the stack is empty and hidden).
 func anchor_rect() -> Rect2:
-	var size := CardView.SIZE * CARD_SCALE
+	var size := CardView.SIZE * TOP_SCALE
 	var top_left := get_global_rect().position + Vector2(12.0, 34.0)
 	return Rect2(top_left, size)
 

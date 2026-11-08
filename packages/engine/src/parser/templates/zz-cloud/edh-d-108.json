@@ -1,0 +1,562 @@
+[
+  {
+    "id": "eff.edhd108.discardRandom.unlessHasDamage",
+    "kind": "effect",
+    "since": 108,
+    "status": "stable",
+    "cr": [
+      "CR 118.12a",
+      "CR 608.2d",
+      "CR 701.9b",
+      "CR 120.3"
+    ],
+    "pattern": "{p:Player} discard[s] {n:Qty} cards at random unless that player has ~ deal {m:Qty} damage to them",
+    "build": {
+      "op": "may",
+      "who": "$p",
+      "do": [
+        {
+          "op": "damage",
+          "source": {
+            "ref": "self"
+          },
+          "to": "$p",
+          "amount": "$m"
+        }
+      ],
+      "otherwise": [
+        {
+          "op": "discard",
+          "who": "$p",
+          "count": "$n",
+          "mode": "random"
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "unless",
+      "random"
+    ],
+    "examples": [
+      {
+        "text": "Target player discards three cards at random unless that player has ~ deal 5 damage to them."
+      },
+      {
+        "text": "{3}, {T}: Target opponent discards two cards at random unless that player has ~ deal 3 damage to them."
+      }
+    ],
+    "counterExamples": [
+      "Target player discards three cards unless that player has ~ deal 5 damage to them.",
+      "Target player discards three cards at random unless that player pays 5 life.",
+      "Target player discards three cards at random and that player has ~ deal 5 damage to them."
+    ]
+  },
+  {
+    "id": "eff.edhd108.exileNOfSeen.atRandom.restTopAnyOrder",
+    "kind": "effect",
+    "since": 108,
+    "status": "stable",
+    "cr": [
+      "CR 608.2d",
+      "CR 401.4",
+      "CR 406.1"
+    ],
+    "pattern": "exile {n:Qty} of {g:Seen} at random , then put {r:Rest} on top of your library in any order",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "is": "$g",
+            "zone": "library"
+          }
+        },
+        "min": "$n",
+        "max": "$n",
+        "random": true,
+        "as": "exiledAtRandom"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "bound",
+          "name": "exiledAtRandom"
+        },
+        "to": {
+          "zone": "exile"
+        }
+      },
+      {
+        "op": "move",
+        "what": "$r",
+        "to": {
+          "zone": "library",
+          "position": "top",
+          "order": "chosen"
+        }
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "random",
+      "then"
+    ],
+    "examples": [
+      {
+        "text": "{2}, {T}: Look at the top six cards of your library. Exile three of them at random, then put the rest on top of your library in any order."
+      },
+      {
+        "text": "When ~ enters, look at the top ten cards of your library. Exile five of them at random, then put the rest on top of your library in any order."
+      }
+    ],
+    "counterExamples": [
+      "{2}, {T}: Look at the top six cards of your library. Exile three of them, then put the rest on top of your library in any order.",
+      "{2}, {T}: Look at the top six cards of your library. Exile three of them at random, then put the rest on the bottom of your library in any order.",
+      "{2}, {T}: Look at the top six cards of your library. Put three of them into your hand at random, then put the rest on top of your library in any order."
+    ]
+  },
+  {
+    "id": "sta.edhd108.attached.pump.insteadAslong.controllerGraveyard",
+    "kind": "static",
+    "since": 108,
+    "status": "stable",
+    "cr": [
+      "CR 604.1",
+      "CR 611.3a",
+      "CR 613.4c",
+      "CR 404.1"
+    ],
+    "pattern": "( equipped | enchanted ) creature gets {pt:PT} . it gets {pt2:PT} instead as long as its controller has {n:Qty} or more cards in their graveyard",
+    "build": {
+      "kind": "static",
+      "condition": {
+        "cond": "compare",
+        "left": {
+          "q": "zoneSize",
+          "zone": "graveyard",
+          "of": {
+            "ref": "controllerOf",
+            "object": {
+              "ref": "attachedTo"
+            }
+          }
+        },
+        "op": ">=",
+        "right": "$n"
+      },
+      "effects": [
+        {
+          "s": "continuous",
+          "affects": {
+            "ref": "attachedTo"
+          },
+          "mods": [
+            {
+              "layer": "7c",
+              "power": "$pt2.p",
+              "toughness": "$pt2.t"
+            }
+          ]
+        }
+      ],
+      "otherwise": [
+        {
+          "s": "continuous",
+          "affects": {
+            "ref": "attachedTo"
+          },
+          "mods": [
+            {
+              "layer": "7c",
+              "power": "$pt.p",
+              "toughness": "$pt.t"
+            }
+          ]
+        }
+      ]
+    },
+    "consumes": [
+      "instead",
+      "as long as"
+    ],
+    "examples": [
+      {
+        "text": "Enchanted creature gets -1/-0. It gets -4/-0 instead as long as its controller has five or more cards in their graveyard."
+      },
+      {
+        "text": "Equipped creature gets +1/+1. It gets +3/+3 instead as long as its controller has ten or more cards in their graveyard."
+      }
+    ],
+    "counterExamples": [
+      "Enchanted creature gets -1/-0. It gets -4/-0 as long as its controller has five or more cards in their graveyard.",
+      "Enchanted creature gets -1/-0. It gets -4/-0 instead as long as its controller has five or more cards in their hand.",
+      "Enchanted creature gets -1/-0. It gets -4/-0 instead as long as you have five or more cards in your graveyard and it is tapped."
+    ]
+  },
+  {
+    "id": "eff.edhd108.eachOpponent.chooseNInGraveyard.exileRest",
+    "kind": "effect",
+    "since": 108,
+    "status": "stable",
+    "cr": [
+      "CR 608.2c",
+      "CR 608.2d",
+      "CR 101.4",
+      "CR 404.1",
+      "CR 406.1"
+    ],
+    "pattern": "each opponent chooses {n:Qty} cards in their graveyard and exiles the rest",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "iterating"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "zone": "graveyard",
+            "owner": {
+              "ref": "iterating"
+            },
+            "isCard": true
+          }
+        },
+        "min": "$n",
+        "max": "$n",
+        "perPlayer": {
+          "ref": "each",
+          "who": "opponent"
+        },
+        "as": "keptInGraveyard"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "each",
+          "filter": {
+            "zone": "graveyard",
+            "owner": "opponent",
+            "isCard": true,
+            "not": {
+              "is": {
+                "ref": "bound",
+                "name": "keptInGraveyard"
+              }
+            }
+          }
+        },
+        "to": {
+          "zone": "exile"
+        }
+      }
+    ],
+    "subject": "none",
+    "examples": [
+      {
+        "text": "{1}, {T}: Each opponent chooses three cards in their graveyard and exiles the rest."
+      },
+      {
+        "text": "When ~ enters, each opponent chooses four cards in their graveyard and exiles the rest."
+      }
+    ],
+    "counterExamples": [
+      "When ~ enters, each opponent chooses three cards in their hand and exiles the rest.",
+      "When ~ enters, each player chooses three cards in their graveyard and exiles the rest.",
+      "When ~ enters, each opponent chooses three cards in their graveyard and exiles them."
+    ],
+    "consumes": [
+      "each"
+    ]
+  },
+  {
+    "id": "eff.edhd108.may.putRevealedTopCards.ownersGraveyards",
+    "kind": "effect",
+    "since": 108,
+    "status": "stable",
+    "cr": [
+      "CR 701.20a",
+      "CR 400.3",
+      "CR 608.2c",
+      "CR 608.2d"
+    ],
+    "pattern": "you may put the revealed cards into their owners' graveyards",
+    "build": {
+      "op": "may",
+      "who": {
+        "ref": "you"
+      },
+      "do": [
+        {
+          "op": "move",
+          "what": {
+            "ref": "topCards",
+            "player": {
+              "ref": "each",
+              "who": "player"
+            },
+            "count": 1
+          },
+          "to": {
+            "zone": "graveyard"
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "may"
+    ],
+    "examples": [
+      {
+        "text": "{2}, {T}: Each player reveals the top card of their library. You may put the revealed cards into their owners' graveyards."
+      },
+      {
+        "text": "At the beginning of your upkeep, each player reveals the top card of their library. You may put the revealed cards into their owners' graveyards. If you do, you gain 2 life."
+      }
+    ],
+    "counterExamples": [
+      "{2}, {T}: Each player reveals the top card of their library. You may put the revealed cards into their owners' hands.",
+      "{2}, {T}: Each player reveals the top card of their library. Put the revealed cards into their owners' graveyards.",
+      "{2}, {T}: Target player reveals the top card of their library. You may put the revealed cards into their owners' graveyards."
+    ],
+    "priority": 1
+  },
+  {
+    "id": "eff.edhd108.player.choosesPermanentPerGraveyardCard.untapsThem",
+    "kind": "effect",
+    "since": 108,
+    "status": "stable",
+    "cr": [
+      "CR 608.2c",
+      "CR 608.2d",
+      "CR 701.26b",
+      "CR 404.1"
+    ],
+    "pattern": "{p:Player} chooses a permanent for each card in their graveyard , then untaps those permanents",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": "$p",
+        "from": {
+          "ref": "each",
+          "filter": {}
+        },
+        "min": {
+          "q": "zoneSize",
+          "zone": "graveyard",
+          "of": "$p"
+        },
+        "max": {
+          "q": "zoneSize",
+          "zone": "graveyard",
+          "of": "$p"
+        },
+        "as": "chosenToUntap"
+      },
+      {
+        "op": "untap",
+        "what": {
+          "ref": "bound",
+          "name": "chosenToUntap"
+        }
+      }
+    ],
+    "subject": "none",
+    "examples": [
+      {
+        "text": "At the beginning of each opponent's upkeep, that player chooses a permanent for each card in their graveyard, then untaps those permanents."
+      },
+      {
+        "text": "When ~ enters, target player chooses a permanent for each card in their graveyard, then untaps those permanents."
+      }
+    ],
+    "counterExamples": [
+      "When ~ enters, target player chooses a permanent for each card in their hand, then untaps those permanents.",
+      "When ~ enters, target player chooses a permanent for each card in their graveyard, then taps those permanents.",
+      "When ~ enters, target player chooses a creature for each card in their graveyard, then untaps those permanents."
+    ],
+    "consumes": [
+      "each",
+      "then"
+    ]
+  },
+  {
+    "id": "eff.edhd108.player.revealsNAtRandom.discardsNonlandRevealed",
+    "kind": "effect",
+    "since": 108,
+    "status": "stable",
+    "cr": [
+      "CR 701.20a",
+      "CR 608.2d",
+      "CR 701.9a",
+      "CR 402.1"
+    ],
+    "pattern": "{p:Player} reveals {n:Qty} cards at random from their hand , then discards each nonland card revealed this way",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": "$p",
+        "from": {
+          "ref": "each",
+          "filter": {
+            "zone": "hand",
+            "owner": "$p"
+          }
+        },
+        "min": "$n",
+        "max": "$n",
+        "random": true,
+        "as": "revealedAtRandom"
+      },
+      {
+        "op": "reveal",
+        "who": "$p",
+        "what": {
+          "ref": "bound",
+          "name": "revealedAtRandom"
+        }
+      },
+      {
+        "op": "discard",
+        "who": "$p",
+        "count": "hand",
+        "filter": {
+          "is": {
+            "ref": "bound",
+            "name": "revealedAtRandom"
+          },
+          "notTypes": [
+            "Land"
+          ]
+        }
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "random",
+      "this way",
+      "each",
+      "then"
+    ],
+    "examples": [
+      {
+        "text": "Target opponent reveals three cards at random from their hand, then discards each nonland card revealed this way."
+      },
+      {
+        "text": "When ~ enters, target player reveals two cards at random from their hand, then discards each nonland card revealed this way."
+      }
+    ],
+    "counterExamples": [
+      "Target opponent reveals three cards from their hand, then discards each nonland card revealed this way.",
+      "Target opponent reveals three cards at random from their hand, then discards each land card revealed this way.",
+      "Target opponent reveals three cards at random from their hand, then discards a nonland card revealed this way."
+    ]
+  },
+  {
+    "id": "eff.edhd108.search.threeReveal.differentNames.randomToHand.shuffleRest",
+    "kind": "effect",
+    "since": 108,
+    "status": "stable",
+    "cr": [
+      "CR 701.23a",
+      "CR 701.23b",
+      "CR 701.20a",
+      "CR 608.2d",
+      "CR 201.2"
+    ],
+    "pattern": "search your library for three {f:Filter} cards and reveal them . if you reveal three cards with different names , choose one of them at random and put that card into your hand . shuffle the rest into your library",
+    "build": [
+      {
+        "op": "search",
+        "who": {
+          "ref": "you"
+        },
+        "zone": "library",
+        "filter": "$f",
+        "min": 0,
+        "max": 3,
+        "reveal": true,
+        "as": "searchedThree"
+      },
+      {
+        "op": "if",
+        "cond": {
+          "cond": "compare",
+          "left": {
+            "q": "distinct",
+            "what": "names",
+            "among": {
+              "ref": "bound",
+              "name": "searchedThree"
+            }
+          },
+          "op": ">=",
+          "right": 3
+        },
+        "then": [
+          {
+            "op": "chooseObjects",
+            "who": {
+              "ref": "you"
+            },
+            "from": {
+              "ref": "each",
+              "filter": {
+                "is": {
+                  "ref": "bound",
+                  "name": "searchedThree"
+                },
+                "zone": "library"
+              }
+            },
+            "min": 1,
+            "max": 1,
+            "random": true,
+            "as": "pickedAtRandom"
+          },
+          {
+            "op": "move",
+            "what": {
+              "ref": "bound",
+              "name": "pickedAtRandom"
+            },
+            "to": {
+              "zone": "hand"
+            }
+          }
+        ]
+      },
+      {
+        "op": "shuffle",
+        "who": {
+          "ref": "you"
+        }
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "if",
+      "random",
+      "different"
+    ],
+    "examples": [
+      {
+        "text": "Search your library for three land cards and reveal them. If you reveal three cards with different names, choose one of them at random and put that card into your hand. Shuffle the rest into your library."
+      },
+      {
+        "text": "Search your library for three artifact cards and reveal them. If you reveal three cards with different names, choose one of them at random and put that card into your hand. Shuffle the rest into your library."
+      }
+    ],
+    "counterExamples": [
+      "Search your library for three land cards and reveal them. If you reveal three cards with different names, choose one of them and put that card into your hand. Shuffle the rest into your library.",
+      "Search your library for three land cards and reveal them. If you reveal three cards with the same name, choose one of them at random and put that card into your hand. Shuffle the rest into your library.",
+      "Search your library for three land cards and reveal them. Choose one of them at random and put that card into your hand. Shuffle the rest into your library."
+    ]
+  }
+]

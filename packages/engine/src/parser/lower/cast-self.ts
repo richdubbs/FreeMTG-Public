@@ -47,6 +47,13 @@ export function castSelfProgramSafe(program: unknown): boolean {
       if (!allowed) safe = false;
       return;
     }
+    // edhe32 (CR 601.2i, 400.7; Show of Confidence): a count of the spells cast this turn "other than" this one (`spell: { not: { self: true } }` of a cast event's history, edh-cast-12's reading):
+    // on the stack the ability's source IS this spell, which the history leaves out; it names no object the ability acts on
+    if (v['ev'] === 'cast' && isRec(v['spell']) && isRec(v['spell']['not']) && Object.keys(v['spell']['not']).length === 1 && v['spell']['not']['self'] === true) {
+      const { not: _not, ...spellRest } = v['spell'];
+      walk({ ...v, spell: spellRest }, parent, key);
+      return;
+    }
     if (v['self'] === true || Object.keys(v).some((k) => k.startsWith('$'))) { safe = false; return; }
     for (const [k, x] of Object.entries(v)) walk(x, v, k);
   };

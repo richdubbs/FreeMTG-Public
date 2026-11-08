@@ -1,0 +1,960 @@
+[
+  {
+    "id": "rep.edhe35.enters.secretlyChoose.opponent",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 614.12a",
+      "CR 608.2d",
+      "CR 607.2d",
+      "CR 102.3"
+    ],
+    "pattern": "as ~ enters , secretly choose an opponent",
+    "build": {
+      "kind": "static",
+      "zone": [
+        "stack",
+        "battlefield"
+      ],
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "zoneChange",
+            "subject": {
+              "self": true
+            },
+            "to": "battlefield"
+          },
+          "body": {
+            "b": "enters",
+            "choose": [
+              {
+                "what": "opponent",
+                "link": "opponent",
+                "secret": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "needs": [
+      "feature:choose.secret"
+    ],
+    "consumes": [],
+    "examples": [
+      {
+        "text": "As ~ enters, secretly choose an opponent.\nReveal the player you chose: Exile target creature that's attacking you if it's controlled by the chosen player."
+      },
+      {
+        "text": "As this creature enters, secretly choose an opponent.\nReveal the player you chose: Exile target creature that's attacking you if it's controlled by the chosen player."
+      }
+    ],
+    "counterExamples": [
+      "As ~ enters, secretly choose a player.\nReveal the player you chose: Exile target creature that's attacking you if it's controlled by the chosen player.",
+      "As ~ enters, choose an opponent.\nReveal the player you chose: Exile target creature that's attacking you if it's controlled by the chosen player.",
+      "As ~ enters, secretly choose two opponents.\nReveal the player you chose: Exile target creature that's attacking you if it's controlled by the chosen player."
+    ]
+  },
+  {
+    "id": "eff.edhe35.youAndObj.eachGainProtectionFromChosenPlayer",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 702.16a",
+      "CR 702.16b",
+      "CR 702.16e",
+      "CR 702.16k",
+      "CR 607.2d",
+      "CR 611.2a"
+    ],
+    "pattern": "you and {o:Obj} each gain protection from the chosen player {d:Dur}",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "restrict",
+          "subject": {
+            "ref": "you"
+          },
+          "mode": "cant",
+          "action": "beTargeted",
+          "other": {
+            "controller": {
+              "ref": "linked",
+              "link": "opponent"
+            }
+          }
+        },
+        {
+          "s": "restrict",
+          "subject": {
+            "ref": "you"
+          },
+          "mode": "cant",
+          "action": "beEnchanted",
+          "other": {
+            "controller": {
+              "ref": "linked",
+              "link": "opponent"
+            }
+          }
+        },
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "recipient": {
+              "player": "you"
+            },
+            "source": {
+              "controller": {
+                "ref": "linked",
+                "link": "opponent"
+              }
+            }
+          },
+          "body": {
+            "b": "prevent",
+            "amount": "all"
+          }
+        },
+        {
+          "s": "restrict",
+          "subject": {
+            "ref": "each",
+            "filter": {
+              "is": "$o"
+            }
+          },
+          "mode": "cant",
+          "action": "beTargeted",
+          "other": {
+            "controller": {
+              "ref": "linked",
+              "link": "opponent"
+            }
+          }
+        },
+        {
+          "s": "restrict",
+          "subject": {
+            "ref": "each",
+            "filter": {
+              "is": "$o"
+            }
+          },
+          "mode": "cant",
+          "action": "beEnchanted",
+          "other": {
+            "controller": {
+              "ref": "linked",
+              "link": "opponent"
+            }
+          }
+        },
+        {
+          "s": "restrict",
+          "subject": {
+            "ref": "each",
+            "filter": {
+              "is": "$o"
+            }
+          },
+          "mode": "cant",
+          "action": "beEquipped",
+          "other": {
+            "controller": {
+              "ref": "linked",
+              "link": "opponent"
+            }
+          }
+        },
+        {
+          "s": "restrict",
+          "subject": {
+            "ref": "each",
+            "filter": {
+              "is": "$o"
+            }
+          },
+          "mode": "cant",
+          "action": "beBlockedBy",
+          "other": {
+            "controller": {
+              "ref": "linked",
+              "link": "opponent"
+            }
+          }
+        },
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "recipient": {
+              "object": {
+                "is": "$o"
+              }
+            },
+            "source": {
+              "controller": {
+                "ref": "linked",
+                "link": "opponent"
+              }
+            }
+          },
+          "body": {
+            "b": "prevent",
+            "amount": "all"
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "each",
+      "chosen"
+    ],
+    "examples": [
+      {
+        "text": "As ~ enters, secretly choose an opponent.\nReveal the player you chose: You and target permanent you control each gain protection from the chosen player until end of turn."
+      },
+      {
+        "text": "As ~ enters, secretly choose an opponent.\nReveal the player you chose: You and target creature you control each gain protection from the chosen player until end of turn."
+      }
+    ],
+    "counterExamples": [
+      "As ~ enters, secretly choose an opponent.\nReveal the player you chose: You and target permanent you control each gain protection from each opponent until end of turn.",
+      "As ~ enters, secretly choose an opponent.\nReveal the player you chose: You and target permanent you control each gain protection from the chosen player.",
+      "As ~ enters, secretly choose an opponent.\nReveal the player you chose: You and each permanent you control each gain protection from the chosen player until end of turn."
+    ]
+  },
+  {
+    "id": "eff.edhe35.chooseNewTargets.ifChosenPlayerControlsAndTargetsYouOrYours",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 115.7",
+      "CR 115.7d",
+      "CR 115.7e",
+      "CR 607.2d",
+      "CR 608.2c"
+    ],
+    "pattern": "choose new targets for {o:Obj} if it's controlled by the chosen player and if it targets you or a permanent you control",
+    "build": {
+      "op": "if",
+      "cond": {
+        "cond": "exists",
+        "of": {
+          "ref": "each",
+          "filter": {
+            "is": "$o",
+            "controller": {
+              "ref": "linked",
+              "link": "opponent"
+            },
+            "anyOf": [
+              {
+                "zone": "stack",
+                "targets": {
+                  "ref": "you"
+                }
+              },
+              {
+                "zone": "stack",
+                "targets": {
+                  "ref": "each",
+                  "filter": {
+                    "controller": "you"
+                  }
+                }
+              }
+            ],
+            "zone": "stack"
+          }
+        }
+      },
+      "then": [
+        {
+          "op": "chooseNewTargets",
+          "who": {
+            "ref": "you"
+          },
+          "what": "$o"
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "if",
+      "chosen"
+    ],
+    "examples": [
+      {
+        "text": "As ~ enters, secretly choose an opponent.\nReveal the player you chose: Choose new targets for target spell or ability if it's controlled by the chosen player and if it targets you or a permanent you control."
+      },
+      {
+        "text": "As ~ enters, secretly choose an opponent.\nReveal the player you chose: Choose new targets for target spell or ability if it's controlled by the chosen player and if it targets you or a permanent you control."
+      }
+    ],
+    "counterExamples": [
+      "As ~ enters, secretly choose an opponent.\nReveal the player you chose: Choose new targets for target spell or ability if it's controlled by an opponent and if it targets you or a permanent you control.",
+      "As ~ enters, secretly choose an opponent.\nReveal the player you chose: Choose new targets for target spell or ability if it's controlled by the chosen player.",
+      "As ~ enters, secretly choose an opponent.\nReveal the player you chose: Choose new targets for target spell or ability if it's controlled by the chosen player and if it targets a creature you control."
+    ]
+  },
+  {
+    "id": "eff.edhe35.mill.forEachVote.thenDamageTotalManaValue",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 701.38a",
+      "CR 701.17a",
+      "CR 120.3",
+      "CR 202.3",
+      "CR 608.2h"
+    ],
+    "pattern": "you mill a card for each {n:VoteCount} , then {src:Obj} deal[s] damage to each opponent equal to the total mana value of cards milled this way",
+    "build": [
+      {
+        "op": "mill",
+        "who": {
+          "ref": "you"
+        },
+        "count": "$n",
+        "as": "milled"
+      },
+      {
+        "op": "damage",
+        "source": "$src",
+        "to": {
+          "ref": "each",
+          "who": "opponent"
+        },
+        "amount": {
+          "q": "stat",
+          "stat": "manaValue",
+          "of": {
+            "ref": "bound",
+            "name": "milled"
+          },
+          "sum": true
+        }
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "each",
+      "then",
+      "this way"
+    ],
+    "examples": [
+      {
+        "text": "Starting with you, each player votes for past or present. You mill a card for each past vote, then ~ deals damage to each opponent equal to the total mana value of cards milled this way."
+      },
+      {
+        "text": "Starting with you, each player votes for time or money. You mill a card for each money vote, then ~ deals damage to each opponent equal to the total mana value of cards milled this way."
+      }
+    ],
+    "counterExamples": [
+      "You mill a card for each past vote, then ~ deals damage to each opponent equal to the total mana value of cards milled this way.",
+      "Starting with you, each player votes for past or present. You mill a card for each past vote, then ~ deals damage to each opponent equal to the number of cards milled this way.",
+      "Starting with you, each player votes for past or present. You mill two cards for each past vote, then ~ deals damage to each opponent equal to the total mana value of cards milled this way."
+    ]
+  },
+  {
+    "id": "eff.edhe35.exileTop.forEachVote",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 701.38a",
+      "CR 406.3",
+      "CR 608.2c"
+    ],
+    "pattern": "exile the top card of your library for each {n:VoteCount}",
+    "build": {
+      "op": "move",
+      "what": {
+        "ref": "topCards",
+        "player": {
+          "ref": "you"
+        },
+        "count": "$n"
+      },
+      "to": {
+        "zone": "exile"
+      },
+      "as": "them"
+    },
+    "subject": "none",
+    "consumes": [
+      "each"
+    ],
+    "examples": [
+      {
+        "text": "Starting with you, each player votes for past or present. Exile the top card of your library for each present vote. Until the end of your next turn, you may play the exiled cards."
+      },
+      {
+        "text": "Starting with you, each player votes for carnage or homage. Exile the top card of your library for each homage vote. Until the end of your next turn, you may play the exiled cards."
+      }
+    ],
+    "counterExamples": [
+      "Exile the top card of your library for each present vote. Until the end of your next turn, you may play the exiled cards.",
+      "Starting with you, each player votes for past or present. Exile the top two cards of your library for each present vote. Until the end of your next turn, you may play the exiled cards.",
+      "Starting with you, each player votes for past or present. Exile the top card of your library for each present."
+    ]
+  },
+  {
+    "id": "eff.edhe35.vote.colors.four",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 701.38a",
+      "CR 701.38b",
+      "CR 105.1"
+    ],
+    "pattern": "starting with you , each player votes for blue , black , red , or green",
+    "build": {
+      "op": "action",
+      "action": "vote",
+      "who": {
+        "ref": "you"
+      },
+      "choices": [
+        "blue",
+        "black",
+        "red",
+        "green"
+      ]
+    },
+    "subject": "none",
+    "needs": [
+      "action:vote",
+      "feature:vote.words"
+    ],
+    "consumes": [
+      "each"
+    ],
+    "examples": [
+      {
+        "text": "When ~ enters, starting with you, each player votes for blue, black, red, or green. ~ gains protection from each color with the most votes or tied for most votes."
+      },
+      {
+        "text": "Starting with you, each player votes for blue, black, red, or green. Target creature gains protection from each color with the most votes or tied for most votes."
+      }
+    ],
+    "counterExamples": [
+      "Starting with you, each player votes for blue, black, or red.",
+      "Starting with you, each player votes for white, blue, black, red, or green.",
+      "Each player votes for blue, black, red, or green."
+    ]
+  },
+  {
+    "id": "eff.edhe35.gain.protectionFromMostVotedColors",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 702.16a",
+      "CR 701.38a",
+      "CR 701.38b",
+      "CR 608.2h"
+    ],
+    "pattern": "{o:Obj} gain[s] protection from {v:VotedColors}",
+    "build": {
+      "op": "effect",
+      "duration": {
+        "d": "permanent"
+      },
+      "effects": [
+        {
+          "s": "continuous",
+          "affects": "$o",
+          "mods": [
+            {
+              "layer": 6,
+              "protectionFromVotedColors": "$v"
+            }
+          ]
+        }
+      ]
+    },
+    "subject": "none",
+    "needs": [
+      "feature:mod.protectionFromVotedColors"
+    ],
+    "consumes": [
+      "each"
+    ],
+    "examples": [
+      {
+        "text": "When ~ enters, starting with you, each player votes for blue, black, red, or green. ~ gains protection from each color with the most votes or tied for most votes."
+      },
+      {
+        "text": "Starting with you, each player votes for blue, black, red, or green. Target creature gains protection from each color with the most votes or tied for most votes."
+      }
+    ],
+    "counterExamples": [
+      "~ gains protection from each color with the most votes or tied for most votes.",
+      "Starting with you, each player votes for carnage or homage. ~ gains protection from each color with the most votes or tied for most votes.",
+      "Starting with you, each player votes for blue, black, red, or green. ~ gains protection from each color with the most votes."
+    ]
+  },
+  {
+    "id": "eff.edhe35.exileTop.faceDownPileThenFaceUpPile",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 700.3",
+      "CR 700.3a",
+      "CR 406.3",
+      "CR 608.2c"
+    ],
+    "pattern": "exile the top {n:Qty} cards of your library in a face-down pile , then exile the top {m:Qty} cards of your library in a face-up pile",
+    "build": [
+      {
+        "op": "move",
+        "what": {
+          "ref": "topCards",
+          "player": {
+            "ref": "you"
+          },
+          "count": "$n"
+        },
+        "to": {
+          "zone": "exile",
+          "faceDown": true
+        },
+        "as": "firstPile"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "topCards",
+          "player": {
+            "ref": "you"
+          },
+          "count": "$m"
+        },
+        "to": {
+          "zone": "exile"
+        },
+        "as": "secondPile"
+      },
+      {
+        "op": "piles",
+        "cards": {
+          "ref": "bound",
+          "name": "firstPile"
+        },
+        "second": {
+          "ref": "bound",
+          "name": "secondPile"
+        },
+        "separator": {
+          "ref": "you"
+        },
+        "chosen": "chosenPile",
+        "other": "otherPile"
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "then"
+    ],
+    "needs": [
+      "feature:piles.given"
+    ],
+    "examples": [
+      {
+        "text": "Exile the top three cards of your library in a face-down pile, then exile the top two cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in the other pile. You may cast a spell from among them without paying its mana cost. Put the rest into your hand."
+      },
+      {
+        "text": "Exile the top five cards of your library in a face-down pile, then exile the top three cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in the other pile. You may cast a spell from among them without paying its mana cost. Put the rest into your hand."
+      }
+    ],
+    "counterExamples": [
+      "Exile the top four cards of your library in a face-up pile, then exile the top four cards of your library in a face-down pile. An opponent chooses one of those piles. Put that pile into your graveyard.",
+      "Exile the top four cards of your library in a face-down pile, then exile the top four cards of your library in a face-up pile.",
+      "Exile the top four cards of your library in a face-down pile, then exile the top four cards of your library in a face-up pile. You choose one of those piles. Put that pile into your graveyard."
+    ]
+  },
+  {
+    "id": "eff.edhe35.putThatPile.graveyard",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 700.3",
+      "CR 404.1",
+      "CR 608.2c"
+    ],
+    "pattern": "put that pile into your graveyard",
+    "build": {
+      "op": "move",
+      "what": {
+        "ref": "bound",
+        "name": "chosenPile"
+      },
+      "to": {
+        "zone": "graveyard"
+      }
+    },
+    "subject": "none",
+    "examples": [
+      {
+        "text": "Exile the top three cards of your library in a face-down pile, then exile the top two cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in the other pile. You may cast a spell from among them without paying its mana cost. Put the rest into your hand."
+      },
+      {
+        "text": "Exile the top five cards of your library in a face-down pile, then exile the top three cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in the other pile. You may cast a spell from among them without paying its mana cost. Put the rest into your hand."
+      }
+    ],
+    "counterExamples": [
+      "Put that pile into your graveyard.",
+      "Exile the top four cards of your library in a face-down pile, then exile the top four cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile onto the battlefield."
+    ]
+  },
+  {
+    "id": "eff.edhe35.look.otherPile",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 700.3",
+      "CR 701.20e",
+      "CR 406.3",
+      "CR 608.2c"
+    ],
+    "pattern": "look at the cards in the other pile",
+    "build": {
+      "op": "look",
+      "who": {
+        "ref": "you"
+      },
+      "at": {
+        "ref": "bound",
+        "name": "otherPile"
+      },
+      "as": "looked"
+    },
+    "subject": "none",
+    "consumes": [
+      "other"
+    ],
+    "examples": [
+      {
+        "text": "Exile the top three cards of your library in a face-down pile, then exile the top two cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in the other pile. You may cast a spell from among them without paying its mana cost. Put the rest into your hand."
+      },
+      {
+        "text": "Exile the top five cards of your library in a face-down pile, then exile the top three cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in the other pile. You may cast a spell from among them without paying its mana cost. Put the rest into your hand."
+      }
+    ],
+    "counterExamples": [
+      "Look at the cards in the other pile.",
+      "Exile the top four cards of your library in a face-down pile, then exile the top four cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in each pile.",
+      "Exile the top four cards of your library in a face-down pile, then exile the top four cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in the chosen pile."
+    ]
+  },
+  {
+    "id": "eff.edhe35.castOneFree.fromLookedPile",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 700.3",
+      "CR 601.2",
+      "CR 118.9",
+      "CR 608.2c",
+      "CR 701.20e"
+    ],
+    "pattern": "you may cast a spell from among {t:PileLooked} without paying its mana cost",
+    "build": [
+      {
+        "op": "chooseObjects",
+        "who": {
+          "ref": "you"
+        },
+        "from": {
+          "ref": "each",
+          "filter": {
+            "notTypes": [
+              "Land"
+            ],
+            "is": "$t",
+            "zone": "exile"
+          }
+        },
+        "min": 0,
+        "max": 1,
+        "as": "cast"
+      },
+      {
+        "op": "cast",
+        "who": {
+          "ref": "you"
+        },
+        "what": {
+          "ref": "bound",
+          "name": "cast"
+        },
+        "free": true
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "may"
+    ],
+    "examples": [
+      {
+        "text": "Exile the top three cards of your library in a face-down pile, then exile the top two cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in the other pile. You may cast a spell from among them without paying its mana cost. Put the rest into your hand."
+      },
+      {
+        "text": "Exile the top five cards of your library in a face-down pile, then exile the top three cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in the other pile. You may cast a spell from among them without paying its mana cost. Put the rest into your hand."
+      }
+    ],
+    "counterExamples": [
+      "Look at the top four cards of your library. You may cast a spell from among them without paying its mana cost.",
+      "Exile the top four cards of your library in a face-down pile, then exile the top four cards of your library in a face-up pile. An opponent chooses one of those piles. Put that pile into your graveyard. Look at the cards in the other pile. You may cast a spell from among them."
+    ]
+  },
+  {
+    "id": "eff.edhe35.onlyCreaturesInPileOfTheirChoice.canAttack",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 700.3",
+      "CR 508.1c",
+      "CR 101.2",
+      "CR 611.2a"
+    ],
+    "pattern": "only creatures in the pile of their choice can attack {d:Dur}",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "restrict",
+          "subject": {
+            "ref": "each",
+            "filter": {
+              "types": [
+                "Creature"
+              ],
+              "not": {
+                "is": {
+                  "ref": "bound",
+                  "name": "chosenPile"
+                }
+              }
+            }
+          },
+          "mode": "cant",
+          "action": "attack"
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "only"
+    ],
+    "examples": [
+      {
+        "text": "At the beginning of each opponent's upkeep, separate all creatures that player controls into two piles. Only creatures in the pile of their choice can attack this turn."
+      },
+      {
+        "text": "At the beginning of each opponent's draw step, separate all creatures that player controls into two piles. Only creatures in the pile of their choice can attack until end of turn."
+      }
+    ],
+    "counterExamples": [
+      "Only creatures in the pile of their choice can attack this turn.",
+      "At the beginning of combat on each opponent's turn, separate all creatures that player controls into two piles. Only creatures in the pile of their choice can block this turn.",
+      "At the beginning of combat on each opponent's turn, separate all creatures that player controls into two piles. Only creatures in the chosen piles can attack this turn."
+    ]
+  },
+  {
+    "id": "eff.edhe35.forEachDefending.separateCreatures.thatPlayerChooses",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 700.3",
+      "CR 700.3a",
+      "CR 608.2d",
+      "CR 506.2",
+      "CR 101.4"
+    ],
+    "pattern": "for each defending player , separate all creatures that player controls into two piles and that player chooses one",
+    "build": {
+      "op": "forEach",
+      "over": {
+        "ref": "each",
+        "who": "opponent"
+      },
+      "as": "opp",
+      "gather": "chosenPile",
+      "do": [
+        {
+          "op": "piles",
+          "cards": {
+            "ref": "each",
+            "filter": {
+              "types": [
+                "Creature"
+              ],
+              "controller": {
+                "ref": "iterating"
+              }
+            }
+          },
+          "separator": {
+            "ref": "you"
+          },
+          "chooser": {
+            "ref": "iterating"
+          },
+          "chosen": "chosenPile",
+          "other": "otherPile"
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "each",
+      "all",
+      "that"
+    ],
+    "examples": [
+      {
+        "text": "At the beginning of your upkeep, for each defending player, separate all creatures that player controls into two piles and that player chooses one. Only creatures in the chosen piles can block this turn."
+      },
+      {
+        "text": "At the beginning of your end step, for each defending player, separate all creatures that player controls into two piles and that player chooses one. Only creatures in the chosen piles can block until end of turn."
+      }
+    ],
+    "counterExamples": [
+      "At the beginning of combat on your turn, for each defending player, separate all creatures that player controls into two piles.",
+      "At the beginning of combat on your turn, for each defending player, separate all lands that player controls into two piles and that player chooses one. Only creatures in the chosen piles can block this turn.",
+      "At the beginning of combat on your turn, for each defending player, separate all creatures that player controls into two piles and you choose one. Only creatures in the chosen piles can block this turn."
+    ]
+  },
+  {
+    "id": "eff.edhe35.onlyCreaturesInChosenPiles.canBlock",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 700.3",
+      "CR 509.1c",
+      "CR 101.2",
+      "CR 611.2a"
+    ],
+    "pattern": "only creatures in the chosen piles can block {d:Dur}",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "restrict",
+          "subject": {
+            "ref": "each",
+            "filter": {
+              "types": [
+                "Creature"
+              ],
+              "not": {
+                "is": {
+                  "ref": "bound",
+                  "name": "chosenPile"
+                }
+              }
+            }
+          },
+          "mode": "cant",
+          "action": "block"
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "only",
+      "chosen"
+    ],
+    "examples": [
+      {
+        "text": "At the beginning of your upkeep, for each defending player, separate all creatures that player controls into two piles and that player chooses one. Only creatures in the chosen piles can block this turn."
+      },
+      {
+        "text": "At the beginning of your end step, for each defending player, separate all creatures that player controls into two piles and that player chooses one. Only creatures in the chosen piles can block until end of turn."
+      }
+    ],
+    "counterExamples": [
+      "Only creatures in the chosen piles can block this turn.",
+      "At the beginning of combat on your turn, for each defending player, separate all creatures that player controls into two piles and that player chooses one. Only creatures in the chosen piles can attack this turn.",
+      "At the beginning of combat on your turn, for each defending player, separate all creatures that player controls into two piles and that player chooses one. Only creatures in the pile of their choice can block this turn."
+    ]
+  },
+  {
+    "id": "eff.edhe35.separateCreatures.thatPlayer",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 700.3",
+      "CR 700.3a",
+      "CR 608.2d",
+      "CR 506.2"
+    ],
+    "pattern": "separate all creatures that player controls into two piles",
+    "build": {
+      "op": "piles",
+      "cards": {
+        "ref": "each",
+        "filter": {
+          "types": [
+            "Creature"
+          ],
+          "controller": {
+            "ref": "active"
+          }
+        }
+      },
+      "separator": {
+        "ref": "you"
+      },
+      "chooser": {
+        "ref": "active"
+      },
+      "chosen": "chosenPile",
+      "other": "otherPile"
+    },
+    "subject": "none",
+    "consumes": [
+      "all",
+      "that"
+    ],
+    "examples": [
+      {
+        "text": "At the beginning of each opponent's upkeep, separate all creatures that player controls into two piles. Only creatures in the pile of their choice can attack this turn."
+      },
+      {
+        "text": "At the beginning of each opponent's draw step, separate all creatures that player controls into two piles. Only creatures in the pile of their choice can attack until end of turn."
+      }
+    ],
+    "counterExamples": [
+      "At the beginning of combat on each opponent's turn, separate all creatures that player controls into two piles.",
+      "At the beginning of combat on each opponent's turn, separate all lands that player controls into two piles. Only creatures in the pile of their choice can attack this turn.",
+      "At the beginning of combat on your turn, separate all creatures that player controls into two piles. Only creatures in the pile of their choice can attack this turn."
+    ],
+    "priority": 1
+  }
+]

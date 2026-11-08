@@ -51,6 +51,8 @@ export interface Discourse {
    * "You may cast a spell from among those cards" is never two readings (guard G5) with the zone of the pool different.
    */
   readonly handLook?: boolean;
+  /** edhe35 (CR 700.3, 701.20e; Abstract Performance): an earlier sentence looked at the cards of the other of two given piles (`look` at `{ref:'bound', name:'otherPile'}`), a group in exile that is no `seen` library group: the hole `PileLooked` names it. */
+  readonly pileLook?: boolean;
   /** r3-choose (CR 115.1, 601.2c): an earlier sentence only announces targets ("Choose target opponent."), so "the chosen player" / "the chosen card" may name them. */
   readonly chose?: boolean;
   /** edh-next-60 (CR 608.2c, 607.2): an earlier sentence of the same ability chose one object that is no target (`chooseObjects`, "Choose a creature you control."), so "the chosen creature" names it and the link placeholder of another ability is the weaker reading. */
@@ -288,6 +290,8 @@ export interface TargetPhrase {
   equalToughness?: true;
   /** std-cardcopy-7: "up to one target nonland card of each card type from your graveyard" (`TargetSpec.perCardType`, CR 115.1, 205.2a). */
   perCardType?: boolean;
+  /** edh-e-64: "for each color, ... up to one target card of that color" (`TargetSpec.perQuality`, CR 105.1, 115.1, 601.2c). */
+  perQuality?: 'color';
   /** p2-damage-2: "target creature an opponent controls chosen at random": the game picks the targets at random among the legal ones (`TargetSpec.random`, CR 601.2c, 603.3d). */
   random?: boolean;
   /** edh-c-103 (CR 601.2c, 601.7; The Abyss): "destroy target creature that player controls of their choice": that player, not the controller, chooses the target (`TargetSpec.chooser`). */
@@ -361,6 +365,12 @@ export interface AnaphorInfo {
    * creature blocked or blocking), never the subject or a mention of an earlier step (lower/anaphora.ts#compatible).
    */
   otherParty?: true;
+  /**
+   * trek-23 ADDITION (optional): "for each card exiled this way" after two or more instructions of the ability that each exiled cards (CR 608.2c, 406.1; Vulcan Mind-Meld: "Target opponent
+   * ... exiles it face down. You ... exile them face down. For each card exiled this way, ..."): the cards ALL of those instructions exiled, as one group. Resolves to the union of their results
+   * only when every candidate is such an instruction's result (lower/anaphora.ts#resolveAnaphor, bindKey `both`); one candidate alone is that one, as without it.
+   */
+  every?: true;
 }
 
 export const targetRef = (t: TargetPhrase): Json => ({ ref: 'target', id: '', $target: t as unknown as Json });

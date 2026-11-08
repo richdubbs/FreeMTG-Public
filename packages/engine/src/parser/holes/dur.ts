@@ -16,6 +16,7 @@ import { possessivePlayerAt } from './player';
 const STEP_WORDS: [string[], Step][] = [
   [P('upkeep'), 'upkeep'], [P('draw step'), 'draw'], [P('precombat main phase'), 'main1'], [P('first main phase'), 'main1'], [P('postcombat main phase'), 'main2'],
   [P('second main phase'), 'main2'], [P('combat'), 'beginCombat'], [P('end step'), 'end'],
+  [P('untap step'), 'untap'], // edh-d-105 (CR 502.1, 611.2a; Orcish Farmer): "until its controller's next untap step" ends as that untap step begins (core/turn.ts#beginStep)
 ];
 
 export const dur: HoleFn = (ctx, pos) => {
@@ -47,6 +48,12 @@ export const dur: HoleFn = (ctx, pos) => {
     if (tn >= 0) for (const [ws, step] of STEP_WORDS) {
       const e = phraseAt(ctx, tn, ws);
       if (e >= 0) out.push({ end: e, value: { d: 'untilNextStep', step } });
+    }
+    // edh-d-104 (CR 611.2a, 500.5a; Brazen Cannonade): until end of combat on your next turn (the first combat phase of that turn)
+    const ec = phraseAt(ctx, un, P('end of combat on'));
+    if (ec >= 0) for (const o of possessivePlayerAt(ctx, ec)) {
+      const nt = phraseAt(ctx, o.end, P('next turn'));
+      if (nt >= 0) out.push({ end: nt, value: { d: 'endOfCombatNextTurn', whose: o.ref } });
     }
     // FAST5X E29 (CR 611.2a, 514.2): until the end of your next turn
     const et = phraseAt(ctx, un, P('the end of'));
@@ -91,6 +98,9 @@ export const dur: HoleFn = (ctx, pos) => {
       if ((o.value as { ref?: string }).ref === 'self') continue;
       const t = phraseAt(ctx, o.end, P('remains tapped'));
       if (t >= 0) out.push({ end: t, value: { d: 'whileObject', object: o.value as never, as: 'tapped' } });
+      // edh-e-2 (CR 611.2b, 303.4; Rootwater Matriarch): "for as long as that creature is enchanted" (an Aura attached to it)
+      const en = phraseAt(ctx, o.end, P('is enchanted'));
+      if (en >= 0) out.push({ end: en, value: { d: 'whileObject', object: o.value as never, as: 'enchanted' } });
       for (const art of [P('has a'), P('has an')]) {
         const h = phraseAt(ctx, o.end, art);
         if (h < 0) continue;

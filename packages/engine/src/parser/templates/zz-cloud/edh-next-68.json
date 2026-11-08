@@ -113,7 +113,7 @@
     "id": "sta.edhn68.self.gy.exileN.addCost",
     "kind": "static",
     "since": 9,
-    "status": "experimental",
+    "status": "stable",
     "cr": [
       "CR 601.2b",
       "CR 601.2f",

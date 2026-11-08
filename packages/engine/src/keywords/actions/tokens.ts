@@ -37,7 +37,8 @@ export const POPULATE: ActionMacro = {
   expand: (step) => {
     const once: EffectStep[] = [
       { op: 'chooseObjects', who: step.who, from: { ref: 'each', filter: OWN_TOKEN_CREATURES }, min: 1, max: 1, as: '_populate' },
-      { op: 'copy', what: { ref: 'bound', name: '_populate' }, result: 'token', who: step.who, ...(step.as !== undefined ? { as: step.as } : {}) },
+      // edh-d-105 (CR 701.36a, 508.4; Ghired, Conclave Exile): "populate. The token enters tapped and attacking." (a single populate only)
+      { op: 'copy', what: { ref: 'bound', name: '_populate' }, result: 'token', who: step.who, ...(step.as !== undefined ? { as: step.as } : {}), ...(step.n === undefined && step.tapped === true ? { tapped: true } : {}), ...(step.n === undefined && step.attacking === true ? { attacking: true } : {}) },
     ];
     // edh-b-4 (CR 701.36a, 608.2c; Full Flowering): "populate X times" populates X times in a row, each time choosing a token you control then (one a previous time made counts)
     if (step.n !== undefined) return carry(step, [{ op: 'repeat', times: step.n, do: once }]);

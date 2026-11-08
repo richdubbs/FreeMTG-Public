@@ -82,6 +82,7 @@ const W_CARD_DRAWN_THIS_WAY = P('card drawn this way'); // edh-perms-20
 const W_CARD_REVEALED_THIS_WAY = P('card revealed this way'); // edh-mana-keywords-12
 const W_CARDS_REVEALED_THIS_WAY = P('the number of cards revealed this way'); // edh-c-43
 const W_COUNTERED_THIS_WAY = P('spell and ability countered this way'); // r4-moved
+const W_SPELL_COUNTERED_THIS_WAY = P('spell countered this way'); // edh-e-15
 const W_SHUFFLED_THIS_WAY = P('the number of cards shuffled into your library this way'); // Cloud std-fin
 const W_MANA_PAID_THIS_WAY = P('the total amount of mana paid this way'); // edh-top-6
 const W_HEADS = P('the number of coins that came up heads'); // std-rx30
@@ -284,6 +285,10 @@ function atoms(ctx: HoleCtx, pos: number): Alt[] {
   // result count); the quantities pass binds it to the one counter step before it, or leaves the sentence manual
   const countered = phraseAt(ctx, pos, W_COUNTERED_THIS_WAY);
   if (countered >= 0) out.push({ end: countered, value: anaphorQty({ sort: 'number', number: 'singular', participle: 'countered', text: 'spell and ability countered this way' }) });
+  // edh-e-15 (CR 701.6a, 608.2c; Swift Silence): "for each spell countered this way": the same count as "spell and ability countered this way"; the render gate says it only after a counter step whose
+  // objects are all spells (render/steps-zones.ts#counter), so a step that could counter an ability stays manual
+  const spellCountered = phraseAt(ctx, pos, W_SPELL_COUNTERED_THIS_WAY);
+  if (spellCountered >= 0) out.push({ end: spellCountered, value: anaphorQty({ sort: 'number', number: 'singular', participle: 'countered', text: 'spell countered this way' }) });
   // Cloud std-fin (CR 701.24a, 608.2c): "the number of cards shuffled into your library this way": what the move into your library right before it moved (its result count);
   // the quantities pass binds it to such a move, or leaves the sentence manual
   const shuffled = phraseAt(ctx, pos, W_SHUFFLED_THIS_WAY);
@@ -418,6 +423,13 @@ function atoms(ctx: HoleCtx, pos: number): Alt[] {
       if (typed !== null) out.push(typed);
       const e = phraseAt(ctx, f.end, W_THAT_DIED_THIS_TURN);
       if (e >= 0) out.push({ end: e, value: { q: 'happenedCount', event: { ev: 'zoneChange', subject: f.value as ObjectFilter, from: 'battlefield', to: 'graveyard' }, scope: 'turn' }, weak: (f.weak ?? 0) + 1, ...(f.flags ? { flags: f.flags } : {}) });
+      // edh-e-43 (CR 700.4, 603.10a, 400.7; Tobias, Doomed Conqueror): "for each nontoken creature you controlled that died this turn": the turn's deaths of permanents of that
+      // description that were under your control as they last existed on the battlefield (as std-rc's "died under your control this turn"). Only a permanent kind
+      const fvc = f.value as ObjectFilter;
+      if (fvc.isCard === undefined && fvc.stackKind === undefined && fvc.zone === undefined && fvc.controller === undefined && fvc.owner === undefined) {
+        const yc = phraseAt(ctx, f.end, W_YOU_CONTROLLED_THAT_DIED_THIS_TURN);
+        if (yc >= 0) out.push({ end: yc, value: { q: 'happenedCount', event: { ev: 'zoneChange', subject: { ...fvc, controller: 'you' }, from: 'battlefield', to: 'graveyard' }, scope: 'turn' }, weak: (f.weak ?? 0) + 1, ...(f.flags ? { flags: f.flags } : {}) });
+      }
       // pc-tokens-3 (CR 700.4, 400.3; Fresh Meat, Caller of the Claw): "for each creature put into your graveyard from the battlefield this turn" (see historyCounts)
       const fv = f.value as ObjectFilter;
       // edh-b-7 (CR 701.21a; The Balrog, Durin's Bane): "for each permanent sacrificed this turn" (see historyCounts)
@@ -696,6 +708,7 @@ function atoms(ctx: HoleCtx, pos: number): Alt[] {
 }
 
 const W_THAT_DIED_THIS_TURN = P('that died this turn'); // std-ry10
+const W_YOU_CONTROLLED_THAT_DIED_THIS_TURN = P('you controlled that died this turn'); // edh-e-43
 const W_TIMES_SELF_MUTATED = P('times ~ has mutated'); // edh-next-33
 const W_CREATURES_IN_YOUR_PARTY = P('creatures in your party'); // std-ry10
 const W_CREATURE_IN_YOUR_PARTY = P('creature in your party'); // std-ry10
@@ -803,6 +816,12 @@ function opponentCounts(ctx: HoleCtx, pos: number, plural: boolean): Alt[] {
     if (dd >= 0) out.push({ end: dd, value: { q: 'countPlayers', of: { ref: 'event', role: 'recipient' } } });
     // edh-players-14 (CR 506.3, 508.1; Rose, Cutthroat Raider): "for each opponent you attacked [this turn]": the different opponents the turn's attackers were declared against
     // (Raid evaluates the whole turn, ruling of Rose); the same count as "the number of opponents you attacked this turn"
+    // edh-e-16 (CR 506.3, 508.1; Astral Confrontation): "for each opponent you're attacking": the different opponents your creatures are attacking in the combat under way (a
+    // planeswalker or battle attacked is not its player), as "the number of opponents being attacked"
+    for (const w of [P("opponent you're attacking"), P('opponent you are attacking')]) {
+      const att = phraseAt(ctx, pos, w);
+      if (att >= 0) out.push({ end: att, value: { q: 'opponentsAttacked', present: true } });
+    }
     const at = anyPhraseAt(ctx, pos, W_OPPONENT_YOU_ATTACKED);
     if (at >= 0) out.push({ end: at, value: { q: 'opponentsAttacked', scope: 'turn' } });
   }
@@ -1086,6 +1105,10 @@ function historyCounts(ctx: HoleCtx, pos: number): Alt[] {
   // declared attacking this turn (a planeswalker or battle attacked is not its player), read from the history as melee's count of one combat is
   const opp = anyPhraseAt(ctx, pos, W_OPPONENTS_YOU_ATTACKED_THIS_TURN);
   if (opp >= 0) out.push({ end: opp, value: { q: 'opponentsAttacked', scope: 'turn' } });
+  // edh-e-38 (CR 506.2, 506.3, 508.1; Custodi Soulcaller): "the number of players you attacked this combat": the different players (other than you: nobody attacks themselves) that creatures you control were declared
+  // attacking in this combat (a planeswalker or battle attacked is not its player), the count of melee (q:opponentsAttacked without a scope)
+  const pac = anyPhraseAt(ctx, pos, W_PLAYERS_YOU_ATTACKED_THIS_COMBAT);
+  if (pac >= 0) out.push({ end: pac, value: { q: 'opponentsAttacked' } });
   // edh-next-98 (CR 506.3, 508.1; Dimir Strandcatcher): "the number of opponents being attacked" in an attack trigger: the different opponents that creatures you control were declared attacking
   // in this combat (the count of melee, q:opponentsAttacked without a scope)
   const being = phraseAt(ctx, pos, P('opponents being attacked'));
@@ -1149,6 +1172,7 @@ const W_DILEMMAS_YOU_FACED_THIS_TURN = [P("dilemmas you've faced this turn"), P(
 const W_DILEMMA_YOU_FACED_THIS_TURN = [P("dilemma you've faced this turn"), P('dilemma you faced this turn'), P('dilemma you have faced this turn')]; // trek-7
 const FACED_DILEMMAS_THIS_TURN = (): Quantity => ({ q: 'happenedCount', event: { ev: 'action', verb: 'faceDilemma', actor: 'you' }, scope: 'turn' });
 const W_OPPONENT_YOU_ATTACKED = [P('opponent you attacked this turn'), P("opponent you've attacked this turn"), P('opponent you attacked')]; // edh-players-14: after "for each"
+const W_PLAYERS_YOU_ATTACKED_THIS_COMBAT = [P('players you attacked this combat'), P('opponents you attacked this combat')]; // edh-e-38
 const W_OPPONENTS_YOU_ATTACKED_THIS_TURN = [P('opponents you attacked this turn'), P("opponents you've attacked this turn"), P('opponents you have attacked this turn')]; // trek-7
 const W_SACRIFICED_THIS_TURN = P('sacrificed this turn'); // edh-b-7
 const W_YOU_SACRIFICED_THIS_TURN = [P("you've sacrificed this turn"), P('you sacrificed this turn')]; // std-r7

@@ -615,7 +615,7 @@ function objectPredicates(ctx: HoleCtx, pos: number): Pred[] {
     // "one or more" trigger, `batch`), so "those creatures" are its blockers; shared with a bare "blocks" ("blocks or becomes blocked by one or more creatures": the attackers it blocks). Only plain
     // creatures (the group is the event's, never filtered)
     const oneOrMore = by >= 0 && t !== 'a' && t !== 'an' ? phraseAt(ctx, by, W_ONE_OR_MORE) : -1;
-    if (oneOrMore >= 0) for (const n of npAlts(ctx, oneOrMore)) if (n.number === 'plural' && JSON.stringify(n.filter) === '{"types":["Creature"]}') out.push({ end: n.end, make: (s) => (s.batch ? null : { ev: 'becomesBlocked', attacker: sf(s), by: n.filter }), blockedBy: n.filter, batch: true });
+    if (oneOrMore >= 0) for (const n of npAlts(ctx, oneOrMore)) if (n.number === 'plural') out.push({ end: n.end, make: (s) => (s.batch || !(s.obj?.self === true || s.obj?.attachedToSource === true || JSON.stringify(n.filter) === '{"types":["Creature"]}') ? null : { ev: 'becomesBlocked', attacker: sf(s), by: n.filter }), blockedBy: n.filter, batch: true }); // edh-e-19 (CR 509.3c, 603.2c; Dwarven Soldier, Hedron Blade): also a described group ("one or more Orcs"): the blockers that match, all of one declaration ONE occurrence
   }
 
   // damage dealt by the subject
@@ -633,6 +633,9 @@ function objectPredicates(ctx: HoleCtx, pos: number): Pred[] {
     out.push({ end: e, make: base });
     const to = phraseAt(ctx, e, P('to'));
     if (to >= 0) for (const r of damageRecipients(ctx, to)) out.push({ end: r.end, make: (s) => { const b = base(s); return b === null ? null : ({ ...b, recipient: r.recipient } as EventPattern); } });
+    // edh-e-49 (CR 506.2, 508.5, 510.2; Latulla's Orders): "deals combat damage to defending player": combat damage to the player the source attacks (triggers/match.ts, `toDefendingPlayer`); "that player" is the player dealt the damage
+    const toDefending = to >= 0 && combat === true ? phraseAt(ctx, to, P('defending player')) : -1;
+    if (toDefending >= 0) out.push({ end: toDefending, make: (s) => { const b = s.batch ? null : base(s); return b === null ? null : ({ ...b, recipient: { player: 'any' }, toDefendingPlayer: true } as EventPattern); } });
     // edh-replace-3 (CR 603.2c, 510.2, 120.2b; Contaminant Grafter): "one or more creatures you control deal combat damage to one or more players": ONE trigger for all the damage the
     // creatures deal at once, however many players it goes to (the plural subject "one or more" and the plural recipient together; "to a player" is one trigger for each player)
     const toMany = to >= 0 ? phraseAt(ctx, to, W_ONE_OR_MORE_PLAYERS) : -1;
@@ -653,6 +656,10 @@ function objectPredicates(ctx: HoleCtx, pos: number): Pred[] {
     if (toAnything >= 0) out.push({ end: toAnything, make: (s) => (s.batch ? null : base(s)) });
     const toCreatures = to >= 0 ? phraseAt(ctx, to, W_ONE_OR_MORE_CREATURES) : -1;
     if (toCreatures >= 0) out.push({ end: toCreatures, whole: true, batch: true, make: (s) => { const b = s.batch ? null : base(s); return b === null ? null : ({ ...b, recipient: { object: { types: ['Creature'] } } } as EventPattern); } });
+    // edh-e-42 (CR 603.2c, 510.2, 506.4; Arashin War Beast): "deals combat damage to one or more blocking creatures": ONE occurrence for the creatures it damages at once, those that are
+    // blocking (the same batch event as "to one or more creatures" with the recipient narrowed to blocking creatures); a single source and combat damage only
+    const toBlocking = to >= 0 && combat === true ? phraseAt(ctx, to, W_ONE_OR_MORE) : -1;
+    if (toBlocking >= 0) for (const n of npAlts(ctx, toBlocking)) if (n.number === 'plural' && Object.keys(n.filter).sort().join() === 'blocking,types' && n.filter.blocking === true && n.filter.types?.join() === 'Creature') out.push({ end: n.end, whole: true, batch: true, make: (s) => { const b = s.batch ? null : base(s); return b === null ? null : ({ ...b, recipient: { object: n.filter } } as EventPattern); } });
     // std-rx28 (CR 115.9b, 120.1; Imodane, the Pyrohammer): "a spell that targets only a single creature deals damage to that creature": the damage dealt to the
     // object the subject itself targets (its one target, of the description the subject names); only a subject that targets only a single described object
     const tc = to >= 0 ? phraseAt(ctx, to, W_THAT_CREATURE) : -1;
@@ -730,6 +737,9 @@ function objectPredicates(ctx: HoleCtx, pos: number): Pred[] {
     const t = e >= 0 ? ctx.toks[e]?.norm : undefined;
     if (t === 'a' || t === 'an') for (const n of npAlts(ctx, e + 1)) if (n.number === 'singular') out.push({ end: n.end, make: (s) => (s.batch ? null : { ev: 'becomes', what: 'transformed', object: sf(s), into: n.filter }) });
   }
+  // edh-e-43 (CR 701.27e, 603.2; Blightreaper Thallid // Blightsower Thallid): "when this creature transforms into [its other face's name] or dies": the object itself transformed (the name is the
+  // object's own, read as ~; the m6 template trg.m6.self.transformsInto has the same event for the lone "transforms into ~"). One event of the union, not a face check
+  at(P('transforms into ~'), (s) => (s.batch || s.obj?.self !== true ? null : { ev: 'becomes', what: 'transformed', object: sf(s) }));
   // edh-players-20 (CR 508.1f, 603.4; Verity Circle): "becomes tapped, if it isn't being declared as an attacker": a tap that is not the declaration's own (said as the event's own words, so the condition
   // is part of the event: it is judged as the event happens)
   // edh-d-71 (CR 502.3, 603.2; The Ninth Doctor): "whenever ~ becomes untapped during your untap step": the object itself, untapped by the untap step's turn-based action (r5-trig's `untapStep`)
@@ -742,6 +752,8 @@ function objectPredicates(ctx: HoleCtx, pos: number): Pred[] {
     const e = phraseAt(ctx, pos, w);
     const t = e >= 0 ? ctx.toks[e]?.norm : undefined;
     if (t === 'a' || t === 'an') for (const n of npAlts(ctx, e + 1)) if (n.number === 'singular') out.push({ end: n.end, make: (s) => ({ ev: 'becomes', what: 'attached', object: sf(s), by: n.filter }) });
+    // edh-e-12 (CR 701.3a, 303.4, 603.2; Brood Keeper, Bramble Elemental): "whenever an Aura becomes attached to this creature": the host is the source itself (`by: { self: true }`), the attaching object is the subject (a described Aura, never the source)
+    if (e >= 0 && ctx.toks[e]?.kind === 'SELF') out.push({ end: e + 1, make: (s) => (s.batch || s.obj === undefined || s.obj.self === true ? null : { ev: 'becomes', what: 'attached', object: sf(s), by: { self: true } }) });
   }
   // edh-perms-10 (CR 701.3d, 603.10c; Grafted Exoskeleton): "whenever this Equipment becomes unattached from a permanent": the object itself left a permanent of that description (`by`;
   // the event's `object` role is that permanent, as it was when it left, triggers/normalize.ts)
@@ -912,6 +924,11 @@ function playerPredicates(ctx: HoleCtx, pos: number): PPred[] {
     const orCopy = !copyOnly && (w.includes('copy') || w.includes('copies'));
     if (copyOnly && !(ctx.toks[e]?.norm === 'a' || ctx.toks[e]?.norm === 'an')) continue;
     if (ctx.toks[e]?.kind === 'SELF') out.push({ end: e + 1, make: (pl) => ({ ev: 'cast', player: pl, spell: { self: true }, ...(orCopy ? { orCopy: true } : {}) }) });
+    // edhe32 (CR 601.2a, 113.6k; Banish into Fable): "When you cast this spell from your hand": the cast of the spell itself, from its caster's hand (the cast event's `from`)
+    if (ctx.toks[e]?.kind === 'SELF' && !orCopy) {
+      const fh = phraseAt(ctx, e + 1, P('from your hand'));
+      if (fh >= 0) out.push({ end: fh, make: (pl) => (pl === 'you' ? { ev: 'cast', player: pl, spell: { self: true }, from: 'hand' } : null) });
+    }
     // CMDF (CR 903.3d: "casting a commander" is a spell that is a commander; 903.3e, 702.124e: "your commander" is a commander you own, either one with
     // two): "when you cast your commander" (Skyfire Phoenix), from any zone. Only the caster "you" ("your" is the caster's own commander).
     if (!orCopy) for (const n of yourCommanderAt(ctx, e)) if (n.number === 'singular') out.push({ end: n.end, make: (pl) => (pl === 'you' ? { ev: 'cast', player: pl, spell: n.filter } : null) });
@@ -1010,6 +1027,10 @@ function playerPredicates(ctx: HoleCtx, pos: number): PPred[] {
       if (Object.keys(f).length === 0) continue; // "their second spell each turn" is the reading above
       const et = phraseAt(ctx, n.end, P('each turn'));
       if (et >= 0) out.push({ end: et, make: (pl) => ((pl === 'you') === own ? { ev: 'cast', player: pl, spell: f, nth, nthMatching: true } : null) });
+      // edhe32 (CR 601.2i, 601.2a; Sevinne, the Chronoclasm): "you cast your first instant or sorcery spell from your graveyard each turn": the first of YOUR spells of that kind cast from
+      // your graveyard (a graveyard is its owner's, so only "your")
+      const fg = own ? phraseAt(ctx, n.end, P('from your graveyard each turn')) : -1;
+      if (fg >= 0) out.push({ end: fg, make: (pl) => (pl === 'you' ? { ev: 'cast', player: pl, spell: { ...f, owner: 'you' }, nth, nthMatching: true, from: 'graveyard' } : null) });
     }
   }
   // draw
@@ -1148,6 +1169,13 @@ function playerPredicates(ctx: HoleCtx, pos: number): PPred[] {
   for (const [w, ability] of [[P('activate an exhaust ability'), 'exhaust'], [P('activates an exhaust ability'), 'exhaust'], [P('activate a loyalty ability'), 'loyalty'], [P('activates a loyalty ability'), 'loyalty'], [P('activate a ninjutsu ability'), 'ninjutsu'], [P('activates a ninjutsu ability'), 'ninjutsu'], [P('activate a boast ability'), 'boast'], [P('activates a boast ability'), 'boast']] as const) { // edh-zones-19 (CR 702.49a): Satoru Umezawa
     at(w, (pl) => ({ ev: 'activate', player: pl, ability }));
   }
+  // edh-e-43 (CR 702.107a, 602.2; Herald of Anafenza): "whenever you activate this creature's outlast ability": an activation of the object's own outlast ability
+  for (const w of [P('activate'), P('activates')]) {
+    const e = phraseAt(ctx, pos, w);
+    if (e < 0 || ctx.toks[e]?.kind !== 'SELF') continue;
+    const f = phraseAt(ctx, e + 1, P("'s outlast ability"));
+    if (f >= 0) out.push({ end: f, make: (pl) => ({ ev: 'activate', player: pl, ability: 'outlast', source: { self: true } }) });
+  }
   // edh-c-23 (CR 606.3, 602.2; Keral Keep Disciples): "whenever you activate a loyalty ability of a Chandra planeswalker": the planeswalker the loyalty ability belongs to (`source`)
   for (const w of [P('activate a loyalty ability of'), P('activates a loyalty ability of')]) {
     const e = phraseAt(ctx, pos, w);
@@ -1210,6 +1238,14 @@ function playerPredicates(ctx: HoleCtx, pos: number): PPred[] {
     if (a === 'a' || a === 'an') for (const n of npAlts(ctx, e + 1)) if (n.number === 'singular' && n.head === 'token') out.push({ end: n.end, make: (pl) => ({ ev: 'createToken', player: pl, token: n.filter }) });
   }
   at(P('roll a die'), (pl) => ({ ev: 'dieRoll', player: pl }));
+  // edhe34 (CR 701.52a, 603.2c; "Lifetime" Pass Holder): "whenever you roll to visit your Attractions" (the die rolled by the roll-to-visit instruction), alone or with the result stated: "..., if you roll a 6"
+  at(P('roll to visit your Attractions'), (pl) => (pl === 'you' ? { ev: 'dieRoll', player: pl, visit: true } : null));
+  for (let n = 1; n <= 6; n++) at(P(`roll to visit your Attractions , if you roll a ${n}`), (pl) => (pl === 'you' ? { ev: 'dieRoll', player: pl, visit: true, result: { op: '==', value: n } } : null));
+  // edhe34 (CR 706.2, 603.2c; Resolute Veggiesaur): "whenever you roll your third die each turn": the Nth die that player rolled this turn (as "draw your second card each turn")
+  for (const [word, n] of Object.entries(ORDINALS)) {
+    at(P(`roll your ${word} die each turn`), (pl) => (pl === 'you' ? { ev: 'dieRoll', player: pl, nth: n } : null));
+    at(P(`rolls their ${word} die each turn`), (pl) => (pl === 'you' ? null : { ev: 'dieRoll', player: pl, nth: n }));
+  }
   // edh-c-24 (CR 706.2, 603.2c; Dee Kay, Finder of the Lost): "whenever you roll a 2": a roll of one die whose natural result is that number
   for (const w of [P('roll a'), P('rolls a')]) {
     const e = phraseAt(ctx, pos, w);
@@ -2108,6 +2144,13 @@ function playerOr(ctx: HoleCtx, player: PlayerPred, end: number, made: EventPatt
   if (or < 0) return [];
   const out: Alt[] = [];
   for (const pr of playerPredicates(ctx, or)) {
+    // edh-d-112 (CR 603.2, 603.2c; Lo and Li, Royal Advisors): "an opponent discards a card or mills one or more cards": ONE single action event before a "one or more" action of the same
+    // player, the last of the list: a batch trigger whose single pattern is marked (`single`, triggers/occurrences.ts#mixedActionOccurrences). Only two actions, no zone said
+    if (pr.batch === true && depth === 0 && made.length === 1 && made[0]!.ev === 'action' && !from && !saysFrom(ctx, or, pr.end)) {
+      const b = pr.make(player);
+      if (b !== null && b.ev === 'action') out.push({ end: pr.end, value: [{ ...made[0]!, single: true } as EventPattern, b], flags: ['batch'] });
+      continue;
+    }
     const m = pr.batch === true ? null : pr.make(player);
     if (m === null || saysFrom(ctx, or, pr.end) !== from) continue;
     out.push({ end: pr.end, value: [...made, m] }, ...playerOr(ctx, player, pr.end, [...made, m], from, depth + 1));

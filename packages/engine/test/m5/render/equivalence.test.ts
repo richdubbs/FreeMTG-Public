@@ -2901,7 +2901,7 @@ Object.assign(EXAMPLES, {
   },
   'died-under-your-control': {
     def: spell([{ op: 'draw', who: you, count: R4S_DIED } as EffectStep]),
-    readings: ['Draw a card for each creature that died under your control this turn.', 'Draw a card for each creature you control that died this turn.'],
+    readings: ['Draw a card for each creature that died under your control this turn.', 'Draw a card for each creature you control that died this turn.', 'Draw a card for each creature you controlled that died this turn.' /* edh-e-43 (Tobias, Doomed Conqueror) */],
     near: ['Draw a card for each creature that died this turn.', 'Draw a card for each creature that died under your control last turn.'],
   },
   'shared-subject-group-evasion': {
@@ -9044,6 +9044,25 @@ Object.assign(EXAMPLES, {
   },
 });
 
+// edh-e-16 (render/cond.ts, render/stat.ts): the Traps' "an opponent had an artifact enter the battlefield under their control this turn", "you have been dealt damage by two or more creatures", "for each opponent you are attacking"
+Object.assign(EXAMPLES, {
+  'opponent-had-enter': {
+    def: spell([{ op: 'if', cond: { cond: 'happened', event: { ev: 'zoneChange', subject: { types: ['Artifact'], controller: 'opponent' }, to: 'battlefield' }, scope: 'turn' }, then: [draw()] } as unknown as EffectStep]),
+    readings: ["If an artifact entered the battlefield under an opponent's control this turn, draw a card.", 'If an opponent had an artifact enter the battlefield under their control this turn, draw a card.'],
+    near: ['If you had an artifact enter the battlefield under your control this turn, draw a card.', 'If an opponent had a creature enter the battlefield under their control this turn, draw a card.'],
+  },
+  'dealt-damage-by-creatures': {
+    def: spell([{ op: 'if', cond: { cond: 'compare', left: { q: 'happenedCount', event: { ev: 'damage', source: { types: ['Creature'] }, recipient: { player: 'you' } }, scope: 'turn', per: 'source' }, op: '>=', right: 2 }, then: [draw()] } as unknown as EffectStep]),
+    readings: ["If you've been dealt damage by two or more creatures this turn, draw a card.", 'If you have been dealt damage by two or more creatures this turn, draw a card.'],
+    near: ["If you've been dealt damage by three or more creatures this turn, draw a card.", "If you've been dealt damage by two or more creatures this combat, draw a card."],
+  },
+  'for-each-opponent-youre-attacking': {
+    def: rx30Def('Instant', "This spell costs {1} less to cast for each opponent you're attacking."),
+    readings: ["This spell costs {1} less to cast for each opponent you're attacking.", 'This spell costs {1} less to cast for each opponent you are attacking.'],
+    near: ['This spell costs {1} less to cast for each opponent you attacked this turn.', "This spell costs {2} less to cast for each opponent you're attacking."],
+  },
+});
+
 // p2-player-rules-3 (CR 701.30b-c): "whenever you clash and win" is "whenever you win a clash"
 Object.assign(EXAMPLES, {
   'clash-and-win': {
@@ -9555,6 +9574,20 @@ Object.assign(EXAMPLES, {
       'Reveal cards from the top of your library until you reveal an artifact card. Put that card into your hand and the rest of the cards revealed this way into your graveyard.', // edh-c-65 (Aethermage's Touch)
     ],
     near: ['Reveal cards from the top of your library until you reveal an artifact card. Put that card into your hand and all other cards revealed this way into your hand.'],
+  },
+});
+// edh-e-10 (Commander coordinator E; CR 701.20a, 401.4, 608.2c): after your reveal until, the move of every revealed card to the bottom is "the revealed cards" or "all cards revealed this way"
+Object.assign(EXAMPLES, {
+  'put-revealed-cards-bottom': {
+    def: spell([
+      { op: 'revealUntil', who: you, filter: { notTypes: ['Land'] }, as: 'hit', revealed: 'revealed' } as EffectStep,
+      { op: 'move', what: { ref: 'each', filter: { is: bound('revealed'), zone: 'library' } }, to: { zone: 'library', position: 'bottom', order: 'random' } } as EffectStep,
+    ]),
+    readings: [
+      'Reveal cards from the top of your library until you reveal a nonland card. Put the revealed cards on the bottom of your library in a random order.',
+      'Reveal cards from the top of your library until you reveal a nonland card. Put all cards revealed this way on the bottom of your library in a random order.',
+    ],
+    near: ['Reveal cards from the top of your library until you reveal a nonland card. Put the rest on the bottom of your library in a random order.'],
   },
 });
 // edh-zones-1 (Commander effort, lane edh-zones; CR 608.2c, 109.5, 110.2a; cites from memory, unverified)
@@ -15779,6 +15812,29 @@ describe('edh-next-70 (G6): the readings of its families are accepted and the ne
 // edh-d-43 (Commander coordinator D, lane counter-modes, second pass): three families (invented wordings, design 6.10; CR cites checked against the 2026-09-25 text)
 const edhd43Def = (type: string, text: string, cost = '{0}'): AbilityDef =>
   parseCard({ name: 'Test Card', layout: 'normal', mana_cost: cost, type_line: type, oracle_text: text, colors: [], ...(type.includes('Creature') ? { power: '2', toughness: '2' } : {}) } as OracleCard, RX30_OPTS).faces[0]!.abilities.at(-1)!;
+// edh-e-13 (CR 122.1, 608.2d; Plague Boiler): after "put a K counter on X or remove ...", the counter removed is "one" or named again
+Object.assign(EXAMPLES, {
+  'remove-one-or-named-counter': {
+    def: edhd43Def('Artifact', '{4}: Put a charge counter on this artifact or remove one from it.'),
+    readings: [
+      '{4}: Put a charge counter on this artifact or remove one from it.',
+      '{4}: Put a charge counter on this artifact or remove a charge counter from it.',
+    ],
+    near: [
+      '{4}: Put a charge counter on this artifact or remove two charge counters from it.',
+      '{4}: Put a charge counter on this artifact or remove a time counter from it.',
+      '{4}: Put a charge counter on this artifact and remove a charge counter from it.',
+    ],
+  },
+} satisfies Record<string, Example>);
+describe('edh-e-13 (G6): the readings of its family are accepted and the near misses are not', () => {
+  it('remove-one-or-named-counter: every reading is accepted and a near miss is not', () => {
+    const ex = (EXAMPLES as Record<string, Example>)['remove-one-or-named-counter']!;
+    for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+    for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+  });
+});
+
 Object.assign(EXAMPLES, {
   'player-may-discard-up-to': {
     def: edhd43Def('Sorcery', 'Target player may discard up to three cards.'),
@@ -17276,6 +17332,19 @@ Object.assign(EXAMPLES, {
     ],
     ctx: creature,
   },
+  // edhe28 (render/stat.ts; Urborg Lhurgoyf): "it" or "~" in "As ~ enters, mill N cards for each time it was kicked."
+  'enters-mill-it-or-self': {
+    def: { kind: 'static', text: '', zone: ['stack', 'battlefield'], effects: [{ s: 'replace', replaces: enters, body: { b: 'enters', mill: { count: { q: 'math', op: '*', args: [3, { q: 'kickCount' }] } } } }] } as unknown as AbilityDef,
+    readings: [
+      'As Test Card enters, mill three cards for each time it was kicked.',
+      'As Test Card enters, mill three cards for each time Test Card was kicked.',
+    ],
+    near: [
+      'As Test Card enters, mill three cards for each time it was cast.',
+      'As Test Card enters, mill two cards for each time it was kicked.',
+    ],
+    ctx: creature,
+  },
   'planeswalker-that-player-or-they-control': {
     def: trig([enters], [{ op: 'damage', source: self, to: { ref: 'active' }, amount: 2, orPlaneswalker: true } as EffectStep]),
     readings: [
@@ -18515,6 +18584,768 @@ Object.assign(EXAMPLES, {
 });
 describe('edh-d-101 (G6): the readings of its families are accepted and the near misses are not', () => {
   for (const id of ['trigger-mod-while', 'cost-exiled-that-card', 'choose-mana-value-where-x', 'then-after-modes', 'spell-exiled-owners-graveyard']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+Object.assign(EXAMPLES, {
+  // edh-e-14 (CR 701.6a, 113.7a, 602.5; Interdict): the restriction on the source of a countered ability, said with or without the "if"
+  'countered-source-then': {
+    def: spell([{ op: 'counter', what: t('t0'), sourceThen: { filter: {}, do: 'cantActivate' } } as EffectStep], [{ id: 't0', kind: 'ability', min: 1, max: 1, text: '', filter: { stackKind: 'activatedAbility' } }]),
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Instant'] },
+    readings: ["Counter target activated ability. If a permanent's ability is countered this way, activated abilities of that permanent can't be activated this turn.", "Counter target activated ability. That permanent's activated abilities can't be activated this turn."],
+    near: ["Counter target activated ability. That permanent's triggered abilities can't be activated this turn.", "Counter target activated ability. That permanent's activated abilities can't be activated."],
+  },
+} satisfies Record<string, Example>);
+
+// edh-e-18 (Commander coordinator E, group replace-prevent): the readings of its family (invented wording, design 6.10); fold-edhe18.ts +1
+Object.assign(EXAMPLES, {
+  'redirect-to-its-controller': {
+    def: spell([
+      { op: 'effect', duration: { d: 'endOfTurn' }, effects: [{ s: 'replace', replaces: { ev: 'damage', source: { is: { ref: 'target', id: 't0' } } }, body: { b: 'redirect', to: { ref: 'controllerOf', object: { ref: 'target', id: 't0' } } } }] },
+    ] as unknown as EffectStep[], [{ id: 't0', kind: 'spell', min: 1, max: 1, text: 'target instant spell', filter: { types: ['Instant'] } } as never]),
+    readings: ["All damage that would be dealt this turn by target instant spell is dealt to that spell's controller instead.", 'All damage that would be dealt this turn by target instant spell is dealt to its controller instead.'],
+    near: ["All damage that would be dealt this turn by target instant spell is dealt to you instead.", "All damage that would be dealt by target instant spell is dealt to that spell's controller instead."],
+  },
+} satisfies Record<string, Example>);
+describe('edh-e-18 (G6): the readings of its family are accepted and the near misses are not', () => {
+  it('redirect-to-its-controller: every reading is accepted and a near miss is not', () => {
+    const ex = (EXAMPLES as Record<string, Example>)['redirect-to-its-controller']!;
+    for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+    for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+  });
+});
+
+// edh-e-41 (Commander effort, coordinator E, library 2/3): one family (steps-flow.ts +1); invented wordings (design 6.10), CR cites checked against the 2026-09-25 text
+Object.assign(EXAMPLES, {
+  'pay-any-amount-of-life-no-may': {
+    def: edhn85Def('Sorcery', 'Pay any amount of life. Draw that many cards.'),
+    readings: ['Pay any amount of life. Draw that many cards.', 'You may pay any amount of life. Draw that many cards.'],
+    near: ['Pay any amount of life. Draw two cards.', 'Pay any amount of mana. Draw that many cards.', 'Each opponent pays any amount of life. Draw that many cards.'],
+  },
+} satisfies Record<string, Example>);
+describe('edh-e-41 (G6): the readings of its family are accepted and the near misses are not', () => {
+  for (const id of ['pay-any-amount-of-life-no-may']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, undefined);
+      for (const n of ex.near) rejects(ex.def, n, undefined);
+    });
+  }
+});
+
+// edh-e-37 (Commander coordinator E, graveyard 1/3; invented wordings, design 6.10; CR cites from memory, unverified): two families
+Object.assign(EXAMPLES, {
+  'opponent-chooses-card-in-their-graveyard-you-put': {
+    def: {"kind":"spell","text":"","effect":{"targets":[{"id":"t0","kind":"player","min":1,"max":1,"text":"target opponent","players":{"who":"opponent"}}],"steps":[{"op":"chooseObjects","who":{"ref":"target","id":"t0"},"from":{"ref":"each","filter":{"anyOf":[{"types":["Artifact"]}],"isCard":true,"zone":"graveyard","owner":{"ref":"target","id":"t0"}}},"min":1,"max":1,"as":"chosen"},{"op":"move","what":{"ref":"bound","name":"chosen"},"to":{"zone":"battlefield","controller":{"ref":"you"}}}]}} as AbilityDef,
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Sorcery'] },
+    readings: [
+      'Target opponent puts an artifact card of their choice from their graveyard onto the battlefield under your control.',
+      'Target opponent chooses an artifact card in their graveyard. Put that card onto the battlefield under your control.',
+    ],
+    near: [
+      'Target opponent chooses an artifact card in their graveyard. Put that card onto the battlefield.',
+      'Target opponent chooses a creature card in their graveyard. Put that card onto the battlefield under your control.',
+      'Target opponent chooses an artifact card in your graveyard. Put that card onto the battlefield under your control.',
+    ],
+  },
+  'aura-returned-by-creatures-controller': {
+    def: {"kind":"triggered","text":"","trigger":{"on":[{"ev":"zoneChange","subject":{"types":["Creature"],"attachedToSource":true},"from":"battlefield"}]},"effect":{"targets":[],"steps":[{"op":"move","what":{"ref":"self","moved":true},"to":{"zone":"battlefield","controller":{"ref":"controllerOf","object":{"ref":"event","role":"subject"}}}}]}} as AbilityDef,
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Enchantment'] },
+    readings: [
+      "When enchanted creature leaves the battlefield, that creature's controller returns ~ from its owner's graveyard to the battlefield.",
+      "When enchanted creature leaves the battlefield, put ~ onto the battlefield under that creature's controller's control.",
+    ],
+    near: [
+      "When enchanted creature leaves the battlefield, put ~ onto the battlefield under your control.",
+      "When enchanted creature leaves the battlefield, that creature's controller returns ~ from its owner's graveyard to their hand.",
+    ],
+  },
+} satisfies Record<string, Example>);
+describe('edh-e-37 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['opponent-chooses-card-in-their-graveyard-you-put', 'aura-returned-by-creatures-controller']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-e-9 (Commander effort, coordinator E, library 1/3): the readings of its three families (fold-edhd23.ts +3, steps-cards.ts +0 sites, one more family); invented wordings (design 6.10), CR cites unverified where the record says
+const EDHE9_TOP = 'Look at the top five cards of your library. Reveal up to one artifact card from among them, then put that card on top of your library and the rest on the bottom in a random order.';
+const EDHE9_REVEAL = 'Exile target artifact an opponent controls. That player reveals cards from the top of their library until an artifact card is revealed. The player puts that card onto the battlefield, then shuffles the rest into their library.';
+Object.assign(EXAMPLES, {
+  'dig-reveal-top-two-sentences': {
+    def: edhn85Def('Sorcery', EDHE9_TOP),
+    readings: [EDHE9_TOP, 'Look at the top five cards of your library. You may reveal an artifact card from among them and put it on top of your library. Put the rest on the bottom of your library in a random order.', 'Look at the top five cards of your library. You may reveal an artifact card from among them and put that card on top of your library. Put the rest on the bottom of your library in a random order.'],
+    near: [EDHE9_TOP.replace('random', 'chosen'), 'Look at the top five cards of your library. You may reveal an artifact card from among them and put it on the bottom of your library. Put the rest on the bottom of your library in a random order.', 'Look at the top five cards of your library. You must reveal an artifact card from among them and put it on top of your library. Put the rest on the bottom of your library in a random order.'],
+  },
+  'puts-hit-that-card': {
+    def: edhn85Def('Sorcery', EDHE9_REVEAL),
+    readings: [EDHE9_REVEAL, EDHE9_REVEAL.replace('puts that card', 'puts it')],
+    near: [EDHE9_REVEAL.replace('onto the battlefield', 'into their hand'), EDHE9_REVEAL.replace('puts that card', 'puts those cards')],
+  },
+  'reveal-until-is-revealed': {
+    def: edhn85Def('Sorcery', EDHE9_REVEAL),
+    readings: [EDHE9_REVEAL, EDHE9_REVEAL.replace('until an artifact card is revealed', 'until they reveal an artifact card')],
+    near: [EDHE9_REVEAL.replace('an artifact card is revealed', 'two artifact cards are revealed'), EDHE9_REVEAL.replace('their library', 'your library'), EDHE9_REVEAL.replace('an artifact card is revealed', 'a land card is revealed')],
+  },
+} satisfies Record<string, Example>);
+describe('edh-e-9 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['dig-reveal-top-two-sentences', 'puts-hit-that-card', 'reveal-until-is-revealed']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, undefined);
+      for (const n of ex.near) rejects(ex.def, n, undefined);
+    });
+  }
+});
+
+// edhe44 (Commander coordinator E, counters 1/2; invented wordings, design 6.10; CR cites from memory, unverified): two families
+Object.assign(EXAMPLES, {
+  'remove-all-counters-group-no-all': {
+    def: edhd43Def('Artifact', '{0}: Remove all gloom counters from creatures you control.'),
+    readings: ['{0}: Remove all gloom counters from all creatures you control.', '{0}: Remove all gloom counters from creatures you control.'],
+    near: ['{0}: Remove all husk counters from creatures you control.', '{0}: Remove all gloom counters from creatures your opponents control.'],
+  },
+  'exiled-cards-with-counters-group': {
+    def: edhd43Def('Artifact', '{0}: Return all exiled cards with gloom counters on them to the battlefield under their owners\' control.'),
+    readings: ['{0}: Return all cards in exile with gloom counters on them to the battlefield under their owners\' control.', '{0}: Return all exiled cards with gloom counters on them to the battlefield under their owners\' control.'],
+    near: ['{0}: Return all exiled cards with husk counters on them to the battlefield under their owners\' control.', '{0}: Return all exiled cards with gloom counters on them to the battlefield under your control.'],
+  },
+} satisfies Record<string, Example>);
+describe('edhe44 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['remove-all-counters-group-no-all', 'exiled-cards-with-counters-group']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+Object.assign(EXAMPLES, {
+  'exiled-top-each-of-those-has-keyword': {
+    def: { kind: 'spell', text: '', effect: { targets: [], steps: [
+      { op: 'move', as: 'b0', what: { ref: 'topCards', player: you, count: 2 }, to: { zone: 'exile' } },
+      { op: 'putCounters', on: { ref: 'each', filter: { is: { ref: 'bound', name: 'b0' }, keyword: 'suspend', zone: 'any' } }, kind: 'time', count: 2 },
+    ] } } as unknown as AbilityDef,
+    readings: [
+      'Exile the top two cards of your library. Put two time counters on each of those cards that has suspend.',
+      'Exile the top two cards of your library. Put two time counters on all cards with suspend exiled this way.',
+    ],
+    near: [
+      'Exile the top two cards of your library. Put two time counters on each of those cards that has flash.',
+      'Exile the top two cards of your library. Put three time counters on each of those cards that has suspend.',
+    ],
+  },
+});
+
+describe('edh-e-45 (G6): the readings of its family are accepted and the near misses are not', () => {
+  for (const id of ['exiled-top-each-of-those-has-keyword']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edhe33 (Commander coordinator E, group control): a choice between a mana cost and a payment of life (invented wording, design 6.10)
+Object.assign(EXAMPLES, {
+  'pay-mana-or-life': {
+    def: edhd43Def('Sorcery', 'Target opponent may pay {R}{R} or 2 life.'),
+    readings: ['Target opponent may pay {R}{R} or 2 life.', 'Target opponent may pay {R}{R} or pay 2 life.'],
+    near: ['Target opponent may pay {R}{R} or 3 life.', 'Target opponent may pay {R} or 2 life.'],
+  },
+} satisfies Record<string, Example>);
+
+// edh-e-38 (Commander coordinator E, group graveyard 2/3 second batch): the reading of its new family (invented wordings, design 6.10)
+Object.assign(EXAMPLES, {
+  'players-you-attacked-this-combat': {
+    def: spell([{ op: 'move', what: t('c'), to: { zone: 'hand' } } as EffectStep], [objTarget('c', { types: ['Creature'], zone: 'graveyard', owner: 'you', isCard: true, manaValue: { op: '<=', value: { q: 'opponentsAttacked' } } })]),
+    readings: ['Return target creature card with mana value X or less from your graveyard to your hand, where X is the number of opponents you attacked with a creature this combat.', 'Return target creature card with mana value X or less from your graveyard to your hand, where X is the number of players you attacked this combat.', 'Return target creature card with mana value X or less from your graveyard to your hand, where X is the number of opponents you attacked this combat.'],
+    near: ['Return target creature card with mana value X or less from your graveyard to your hand, where X is the number of opponents you attacked this turn.', 'Return target creature card with mana value X or less from your graveyard to your hand, where X is the number of creatures you attacked this combat.'],
+  },
+});
+
+// edh-e-49 (CR 609.4, 702.28b): the block-as-though shadow permission in either wording
+Object.assign(EXAMPLES, {
+  'block-as-though-had-shadow': {
+    def: { kind: 'static', text: '', effects: [{ s: 'permit', who: { ref: 'you' }, action: 'blockAsThough', of: { self: true }, attacker: { types: ['Creature'] }, asThough: 'shadow' }] } as unknown as AbilityDef,
+    ctx: creature,
+    readings: ['~ can block creatures with shadow as though it had shadow.', "~ can block creatures with shadow as though they didn't have shadow."],
+    near: ['~ can block creatures with shadow as though it had flying.', '~ can block creatures with fear as though it had shadow.'],
+  },
+});
+describe('edh-e-49 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['block-as-though-had-shadow']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-e-36: the object that shares the keywords of the cards exiled with it
+Object.assign(EXAMPLES, {
+  'static-keywords-as-long-as-exiled-with': {
+    def: { kind: 'static', text: '', effects: [{ s: 'continuous', affects: { ref: 'self' }, mods: [{ layer: 6, keywordsOf: { ref: 'linked', link: 'exiled' }, keywordsFirst: [{ kind: 'keyword', keyword: 'flying', text: 'flying' }], keywordsAmong: [{ kind: 'keyword', keyword: 'reach', text: 'reach' }, { kind: 'keyword', keyword: 'trample', text: 'trample' }] }] }] },
+    readings: [
+      'As long as a card exiled with ~ has flying, ~ has flying. The same is true for reach and trample.',
+      '~ has flying as long as a card exiled with it has flying. The same is true for reach and trample.',
+    ],
+    near: [
+      '~ has flying as long as a card exiled with it has reach. The same is true for reach and trample.',
+      '~ has flying as long as a card exiled with it has flying. The same is true for reach and vigilance.',
+    ],
+  },
+});
+describe('edh-e-36 (G6): the readings of its family are accepted and the near misses are not', () => {
+  it('static-keywords-as-long-as-exiled-with: every reading is accepted and a near miss is not', () => {
+    const ex = (EXAMPLES as Record<string, Example>)['static-keywords-as-long-as-exiled-with']!;
+    for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+    for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+  });
+});
+
+Object.assign(EXAMPLES, {
+  // edh-e-23: one target of either of two descriptions of the same player, the determiner said before the first and what they share once after the second
+  'target-creature-or-creature-words': {
+    def: { kind: 'triggered', text: '', trigger: { on: [{ ev: 'step', step: 'beginCombat', whose: 'you' }] }, effect: { targets: [{ id: 't0', kind: 'object', min: 1, max: 1, text: 'target', filter: { anyOf: [{ enchanted: true, types: ['Creature'] }, { allTypes: ['Enchantment', 'Creature'] }], controller: 'you' } }], steps: [{ op: 'effect', duration: { d: 'endOfTurn' }, effects: [{ s: 'continuous', affects: { ref: 'target', id: 't0' }, mods: [{ layer: '7c', power: 1, toughness: 1 }] }] }] } },
+    ctx: creature,
+    readings: [
+      'At the beginning of combat on your turn, target enchanted creature or enchantment creature you control gets +1/+1 until end of turn.',
+      'At the beginning of combat on your turn, target enchanted creature you control or enchantment creature you control gets +1/+1 until end of turn.',
+    ],
+    near: [
+      'At the beginning of combat on your turn, target enchanted creature or enchantment creature an opponent controls gets +1/+1 until end of turn.',
+      'At the beginning of combat on your turn, target enchanted creature or enchantment creature you control gets +1/+2 until end of turn.',
+    ],
+  },
+  // edh-e-23: the creature the source is attached to and the other creatures that share a creature type with it
+  'enchanted-and-sharing-group': {
+    def: { kind: 'activated', text: '', cost: { other: [{ kind: 'sacrifice', filter: { self: true }, count: 1, self: true }] }, effect: { targets: [], steps: [{ op: 'effect', duration: { d: 'endOfTurn' }, effects: [{ s: 'continuous', affects: { ref: 'union', of: [{ ref: 'attachedTo' }, { ref: 'each', filter: { types: ['Creature'], sharesWith: { with: { ref: 'attachedTo' }, quality: 'creatureType', other: true } } }] }, mods: [{ layer: '7c', power: 2, toughness: -1 }] }] }] } },
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Enchantment', 'Aura'] },
+    readings: [
+      'Sacrifice this Aura: Enchanted creature and other creatures that share a creature type with it get +2/-1 until end of turn.',
+    ],
+    near: [
+      'Sacrifice this Aura: Enchanted creature and other creatures that share a color with it get +2/-1 until end of turn.',
+      'Sacrifice this Aura: Enchanted creature and other creatures that share a creature type with it get +2/-2 until end of turn.',
+    ],
+  },
+} satisfies Record<string, Example>);
+describe('edh-e-23 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['target-creature-or-creature-words', 'enchanted-and-sharing-group']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// ---- edh-e-25 -------------------------------------------------------------------------------------------------------------------------------------------------
+Object.assign(EXAMPLES, {
+  'damage-and-no-untap': {
+    def: spell([
+      { op: 'damage', source: { ref: 'self' }, to: { ref: 'you' }, amount: 2 } as EffectStep,
+      { op: 'effect', duration: { d: 'throughNextUntap', whose: 'you' }, effects: [{ s: 'restrict', subject: { ref: 'self' }, mode: 'cant', action: 'untapDuringUntapStep' }] } as EffectStep,
+    ]),
+    readings: ["~ deals 2 damage to you and doesn't untap during your next untap step.", "~ deals 2 damage to you. ~ doesn't untap during your next untap step."],
+    near: ["~ deals 2 damage to you and doesn't untap during your untap step.", "~ deals 3 damage to you and doesn't untap during your next untap step.", "~ deals 2 damage to you and untaps during your next untap step."],
+  },
+});
+describe('edh-e-25 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['damage-and-no-untap']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-e-2 (Commander coordinator E; CR 705.2, 603.7): a delayed coin flip with a result, said with the time words closing the flip's sentence (Fickle Efreet)
+Object.assign(EXAMPLES, {
+  'delay-flip-then-result': {
+    def: spell([
+      { op: 'delay', when: { at: 'endOfCombat' }, do: [{ op: 'flipCoin', who: { ref: 'you' }, onLose: [{ op: 'effect', duration: { d: 'permanent' }, effects: [{ s: 'continuous', affects: self, mods: [{ layer: 2, controller: { ref: 'anOpponent' } }] }] }] } as EffectStep] } as EffectStep,
+    ], []),
+    readings: [
+      'Flip a coin at end of combat. If you lose the flip, an opponent gains control of Test Card.',
+      'At end of combat, flip a coin. If you lose the flip, an opponent gains control of Test Card.',
+    ],
+    near: ['Flip a coin at end of combat. If you win the flip, an opponent gains control of Test Card.', 'Flip a coin. If you lose the flip, an opponent gains control of Test Card at end of combat.'],
+  },
+});
+describe('edh-e-2 equivalence family (design 6.8 G6)', () => {
+  it('delay-flip-then-result: every reading is accepted and a near miss is not', () => {
+    const ex = (EXAMPLES as Record<string, Example>)['delay-flip-then-result']!;
+    for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+    for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+  });
+});
+
+// edh-e-22 (Commander coordinator E, group type-change; CR cites from memory, unverified): the readings of the four new families of render/mods.ts
+Object.assign(EXAMPLES, {
+  'becomes-with-base-list-lead': {
+    def: spell([{ op: 'effect', duration: { d: 'endOfTurn' }, effects: [{ s: 'continuous', affects: { ref: 'self' }, mods: [{ layer: 4, subtypes: { set: ['Dragon'] } }, { layer: 6, add: [{ kind: 'keyword', keyword: 'flying' }, { kind: 'keyword', keyword: 'haste' }] }, { layer: '7b', power: 4, toughness: 4 }] }] }] as unknown as EffectStep[]),
+    readings: ['Until end of turn, ~ becomes a Dragon with base power and toughness 4/4, flying, and haste.'],
+    near: ['Until end of turn, ~ becomes a Dragon with base power and toughness 3/3, flying, and haste.', 'Until end of turn, ~ becomes a Dragon with base power and toughness 4/4, flying, and trample.'],
+  },
+  'becomes-colored-loses-then-gains': {
+    def: spell([{ op: 'effect', duration: { d: 'endOfTurn' }, effects: [{ s: 'continuous', affects: { ref: 'self' }, mods: [{ layer: 4, subtypes: { set: ['Dragon'] } }, { layer: 5, colors: { set: ['U'] } }, { layer: 6, removeAll: true, add: [{ kind: 'keyword', keyword: 'flying' }] }, { layer: '7b', power: 4, toughness: 4 }] }] }] as unknown as EffectStep[]),
+    readings: ['Until end of turn, ~ becomes a blue Dragon with base power and toughness 4/4, loses all abilities, and gains flying.'],
+    near: ['Until end of turn, ~ becomes a red Dragon with base power and toughness 4/4, loses all abilities, and gains flying.', 'Until end of turn, ~ becomes a blue Dragon with base power and toughness 4/4, loses all abilities, and gains haste.'],
+  },
+  'artifact-creature-still-land': {
+    def: spell([{ op: 'effect', duration: { d: 'permanent' }, effects: [{ s: 'continuous', affects: { ref: 'self' }, mods: [{ layer: 4, types: { add: ['Artifact', 'Creature'] } }, { layer: '7b', power: 3, toughness: 3 }] }] }] as unknown as EffectStep[]),
+    readings: ['~ becomes a 3/3 artifact creature that\'s still a land.'],
+    near: ['~ becomes a 2/2 artifact creature that\'s still a land.', '~ becomes a 3/3 artifact creature that\'s still an artifact.'],
+  },
+  'becomes-and-it-loses': {
+    def: spell([{ op: 'effect', duration: { d: 'permanent' }, effects: [{ s: 'continuous', affects: { ref: 'self' }, mods: [{ layer: 4, subtypes: { set: ['Bird', 'Giant'] } }, { layer: 6, remove: ['defender'] }] }] }] as unknown as EffectStep[]),
+    readings: ['~ becomes a Bird Giant, and it loses defender.'],
+    near: ['~ becomes a Bird Giant, and it loses flying.', '~ becomes a Bird, and it loses defender.'],
+  },
+});
+describe('edh-e-22 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['becomes-with-base-list-lead', 'becomes-colored-loses-then-gains', 'artifact-creature-still-land', 'becomes-and-it-loses']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-e-15 (invented wordings, design 6.10): the readings of its family
+Object.assign(EXAMPLES, {
+  'remove-counters-where-x': {
+    def: { kind: 'activated', text: '', cost: { tap: true }, effect: { targets: [
+      { id: 't0', kind: 'object', min: 1, max: 1, text: 'target permanent', filter: {} },
+    ], steps: [
+      { op: 'removeCounters', from: { ref: 'target', id: 't0' }, kind: 'any', count: { q: 'count', of: { ref: 'each', filter: { subtypes: ['Elf'], controller: 'you' } } } } as EffectStep,
+    ] } } as AbilityDef,
+    readings: [
+      '{T}: Remove X counters from target permanent, where X is the number of Elves you control.',
+      '{T}: Remove a number of counters equal to the number of Elves you control from target permanent.',
+    ],
+    near: [
+      '{T}: Remove X counters from target permanent, where X is the number of Goblins you control.',
+      '{T}: Remove X counters from target creature, where X is the number of Elves you control.',
+    ],
+    ctx: creature,
+  },
+});
+describe('edh-e-15 (G6): the readings of its family are accepted and the near misses are not', () => {
+  for (const id of ['remove-counters-where-x']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-e-5 (zz-cloud/edh-e-5.json, render/steps-zones.ts): the reading of its family (synthetic lines, design 6.10)
+const EDHE5_LINK = ez14('Artifact', "{T}: Exile a card from your hand face down.\nAt the beginning of your upkeep, return all cards you own exiled with this artifact to your hand.")[1]!;
+Object.assign(EXAMPLES, {
+  'linked-return-all-owned-hand': {
+    def: EDHE5_LINK,
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Artifact'] },
+    readings: ['At the beginning of your upkeep, return all cards you own exiled with this artifact to your hand.', 'At the beginning of your upkeep, return all cards you own exiled with Test Card to your hand.'],
+    near: ['At the beginning of your upkeep, return all cards you own exiled with this artifact to the battlefield.', 'At the beginning of your upkeep, return all cards exiled with this artifact to your hand.'],
+  },
+} satisfies Record<string, Example>);
+describe('edh-e-5 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['linked-return-all-owned-hand']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-d-105 (CR 502.1, 611.2a; Orcish Farmer): "until its controller's next untap step" of the object the effect is about
+Object.assign(EXAMPLES, {
+  'its-controllers-next-untap-step': {
+    def: edhd43Def('Artifact', "{T}: Target land becomes a Swamp until its controller's next untap step."),
+    readings: ["{T}: Target land becomes a Swamp until its controller's next untap step."],
+    near: ["{T}: Target land becomes a Swamp until your next untap step.", "{T}: Target land becomes a Swamp until its controller's next upkeep.", "{T}: Target land becomes a Swamp until end of turn."],
+  },
+} satisfies Record<string, Example>);
+describe('edh-d-105 (G6): the readings of its family are accepted and the near misses are not', () => {
+  it('its-controllers-next-untap-step: every reading is accepted and a near miss is not', () => {
+    const ex = (EXAMPLES as Record<string, Example>)['its-controllers-next-untap-step']!;
+    for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+    for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+  });
+});
+
+// edh-d-106 (lane tokens/control, coordinator D): the readings of its families (synthetic lines, design 6.10)
+const EDHD106 = (type: string, text: string): AbilityDef[] => parseCard({ name: 'Test Card', layout: 'normal', mana_cost: '{0}', type_line: type, oracle_text: text, colors: [] } as never, EZ14_OPTS).faces[0]!.abilities;
+Object.assign(EXAMPLES, {
+  'x-cant-be-0-each-mode': {
+    def: EDHD106('Creature — Elf', "{X}, {T}: Choose one --\n• Target player mills X cards. X can't be 0.\n• You gain X life. X can't be 0.").find((a) => a.kind === 'activated')!,
+    ctx: creature,
+    readings: ["{X}, {T}: Choose one -- • Target player mills X cards. X can't be 0. • You gain X life. X can't be 0.", "{X}, {T}: Choose one -- • Target player mills X cards. • You gain X life. X can't be 0."],
+    near: ["{X}, {T}: Choose one -- • Target player mills X cards. X can't be 0. • You gain X life.", "{X}, {T}: Choose one -- • Target player mills X cards. X can't be 1. • You gain X life. X can't be 1."],
+  },
+  'plural-name-enters-and-whenever': {
+    def: EDHD106('Creature — Elf', 'When this creature enters and whenever you cast a spell with mana value 5, draw a card.')[0]!,
+    ctx: creature,
+    readings: ['When Test Card enters and whenever you cast a spell with mana value 5, draw a card.', 'When Test Card enter and whenever you cast a spell with mana value 5, draw a card.'],
+    near: ['When Test Card enter and whenever you cast a spell with mana value 6, draw a card.', 'When Test Card enter and whenever you cast a spell with mana value 5, draw two cards.'],
+  },
+  'per-opponent-choose-after-instructions': {
+    def: EDHD106('Sorcery', 'You gain 3 life. For each opponent, choose up to one target creature that player controls. Test Card deals 2 damage to each of the chosen creatures.')[0]!,
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Sorcery'] },
+    readings: ['You gain 3 life. For each opponent, choose up to one target creature that player controls. Test Card deals 2 damage to each of the chosen creatures.', 'For each opponent, choose up to one target creature that player controls. You gain 3 life. Test Card deals 2 damage to each of the chosen creatures.'],
+    near: ['You gain 3 life. For each opponent, choose up to one target creature you control. Test Card deals 2 damage to each of the chosen creatures.', 'You gain 3 life. For each opponent, choose up to one target creature that player controls. Test Card deals 3 damage to each of the chosen creatures.'],
+  },
+} satisfies Record<string, Example>);
+describe('edh-d-106 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['x-cant-be-0-each-mode', 'plural-name-enters-and-whenever', 'per-opponent-choose-after-instructions']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-d-112 (Commander coordinator D, groups counters 1/3 and 2/3; zz-cloud/edh-d-112.json): the readings of its families (synthetic lines, design 6.10)
+const EDHD112_CTX = { selfNames: ['Test Card'], selfTypes: ['Creature'] };
+Object.assign(EXAMPLES, {
+  'enters-counters-unless': {
+    def: ez14('Artifact Creature — Golem', 'This creature enters with three +1/+1 counters on it unless you control a Forest.')[0]!,
+    ctx: EDHD112_CTX,
+    readings: ['This creature enters with three +1/+1 counters on it unless you control a Forest.', 'If you control no Forests, this creature enters with three +1/+1 counters on it.'],
+    near: ['This creature enters with three +1/+1 counters on it if you control a Forest.', 'This creature enters with two +1/+1 counters on it unless you control a Forest.'],
+  },
+  'colors-spent-at-least': {
+    def: ez14('Sorcery', 'If two or more colors of mana were spent to cast this spell, draw a card.')[0]!,
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Sorcery'] },
+    readings: ['If two or more colors of mana were spent to cast this spell, draw a card.', 'If two or more colors of mana were spent to cast Test Card, draw a card.'],
+    near: ['If three or more colors of mana were spent to cast this spell, draw a card.', 'If two or more mana was spent to cast this spell, draw a card.'],
+  },
+  'obj-and-each-other-sharing-type': {
+    def: ez14('Enchantment — Aura', 'Enchant creature\nWhenever enchanted creature attacks, put a +1/+1 counter on it and each other creature you control that shares a creature type with it.')[1]!,
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Enchantment'] },
+    readings: ['Whenever enchanted creature attacks, put a +1/+1 counter on it and each other creature you control that shares a creature type with it.'],
+    near: ['Whenever enchanted creature attacks, put a +1/+1 counter on it and each other creature you control that shares a color with it.', 'Whenever enchanted creature attacks, put a +1/+1 counter on it and each other creature that shares a creature type with it.'],
+  },
+  'pay-one-of-mana-list': {
+    def: ez14('Creature — Yeti', 'When this creature enters, you may pay {R}, {B}, or {G}. If you do, draw a card.')[0]!,
+    ctx: EDHD112_CTX,
+    readings: ['When this creature enters, you may pay {R}, {B}, or {G}. If you do, draw a card.', 'When this creature enters, you may pay {R} or pay {B} or pay {G}. If you do, draw a card.'],
+    near: ['When this creature enters, you may pay {R}, {B}, and {G}. If you do, draw a card.', 'When this creature enters, you may pay {R}, {B}, or {U}. If you do, draw a card.'],
+  },
+  'enters-pay-then-counters': {
+    def: ez14('Creature — Sphinx', 'As this creature enters, you may sacrifice an artifact. If you do, this creature enters with two +1/+1 counters on it.')[0]!,
+    ctx: EDHD112_CTX,
+    readings: ['As this creature enters, you may sacrifice an artifact. If you do, this creature enters with two +1/+1 counters on it.', 'As this creature enters, you may sacrifice an artifact. If you do, it enters with two +1/+1 counters on it.'],
+    near: ['As this creature enters, you may sacrifice an artifact. If you do, this creature enters with three +1/+1 counters on it.', 'As this creature enters, you may sacrifice a creature. If you do, it enters with two +1/+1 counters on it.'],
+  },
+  'for-each-counter-removed-first': {
+    def: ez14('Creature — Spirit', '{1}, Remove X ki counters from this creature: For each counter removed, this creature gets +2/+0 until end of turn.')[0]!,
+    ctx: EDHD112_CTX,
+    readings: ['{1}, Remove X ki counters from this creature: For each counter removed, this creature gets +2/+0 until end of turn.', '{1}, Remove X ki counters from this creature: This creature gets +2/+0 until end of turn for each ki counter removed this way.'],
+    near: ['{1}, Remove X ki counters from this creature: For each counter removed, this creature gets +2/+2 until end of turn.', '{1}, Remove X ki counters from this creature: For each counter removed, this creature gets +1/+0 until end of turn.'],
+  },
+  'counter-limit-instead': {
+    def: ez14('Instant', 'Kicker {3}{U}{B}\nCounter target spell if its mana value is 1 or less. If this spell was kicked, counter that spell if its mana value is 3 or less instead.')[1]!,
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Instant'] },
+    readings: ['Counter target spell if its mana value is 1 or less. If this spell was kicked, counter that spell if its mana value is 3 or less instead.'],
+    near: ['Counter target spell if its mana value is 1 or less. If this spell was kicked, counter that spell if its mana value is 4 or less instead.', 'Counter target spell if its mana value is 2 or less. If this spell was kicked, counter that spell if its mana value is 3 or less instead.'],
+  },
+} satisfies Record<string, Example>);
+describe('edh-d-112 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['enters-counters-unless', 'colors-spent-at-least', 'obj-and-each-other-sharing-type', 'pay-one-of-mana-list', 'enters-pay-then-counters', 'for-each-counter-removed-first', 'counter-limit-instead']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-d-107 (zz-cloud/edh-d-107.json; render/refs.ts, render/fold.ts, render/cond.ts): the readings of its families (synthetic lines, design 6.10)
+Object.assign(EXAMPLES, {
+  'each-group-on-the-battlefield': {
+    def: edhd43Def('Sorcery', 'Put a charge counter on each Goblin.'),
+    readings: ['Put a charge counter on each Goblin.', 'Put a charge counter on each Goblin on the battlefield.'],
+    near: ['Put a charge counter on each Goblin you control.', 'Put a charge counter on each Elf on the battlefield.', 'Put a charge counter on each Goblin in your graveyard.'],
+  },
+  'revealed-this-way-one': {
+    def: edhd43Def('Sorcery', 'Reveal the top three cards of your library. Put a land card from among them into your hand and the rest into your graveyard.'),
+    readings: [
+      'Reveal the top three cards of your library. Put a land card from among them into your hand and the rest into your graveyard.',
+      'Reveal the top three cards of your library. Put a land card revealed this way into your hand and the rest into your graveyard.',
+    ],
+    near: [
+      'Reveal the top three cards of your library. Put a creature card revealed this way into your hand and the rest into your graveyard.',
+      'Reveal the top three cards of your library. Put two land cards revealed this way into your hand and the rest into your graveyard.',
+      'Reveal the top three cards of your library. Put a land card exiled this way into your hand and the rest into your graveyard.',
+    ],
+  },
+  'no-cards-in-that-graveyard': {
+    def: edhd43Def('Artifact', "{T}: Exile target card from an opponent's graveyard. If no cards are in that graveyard, draw a card."),
+    readings: ["{T}: Exile target card from an opponent's graveyard. If no cards are in that graveyard, draw a card."],
+    near: [
+      "{T}: Exile target card from an opponent's graveyard. If no cards are in your graveyard, draw a card.",
+      "{T}: Exile target card from an opponent's graveyard. If two or more cards are in that graveyard, draw a card.",
+      "{T}: Exile target card from an opponent's graveyard. If no cards are in that graveyard, discard a card.",
+    ],
+  },
+} satisfies Record<string, Example>);
+describe('edh-d-107 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['each-group-on-the-battlefield', 'revealed-this-way-one', 'no-cards-in-that-graveyard']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-d-110 (zz-cloud/edh-d-110.json, render/fold.ts, render/steps-cards.ts): the readings of its families (synthetic lines, design 6.10)
+const EDHD110_PUT = ez14('Creature — Goblin', 'Whenever this creature attacks, reveal the top four cards of your library, put all Goblin and Equipment cards from among them into your hand, then put the rest on the bottom of your library in a random order.')[0]!;
+const EDHD110_UNTIL = ez14('Sorcery', 'Reveal cards from the top of your library until you reveal a Wizard card, a card with flying, or an Equipment card. Put that card into your hand and the rest on the bottom of your library in a random order.')[0]!;
+const EDHD110_CTX = { selfNames: ['Test Card'], selfTypes: ['Creature'] };
+Object.assign(EXAMPLES, {
+  'subtypes-and-union': {
+    def: EDHD110_PUT,
+    ctx: EDHD110_CTX,
+    readings: ['Whenever this creature attacks, reveal the top four cards of your library, put all Goblin and Equipment cards from among them into your hand, then put the rest on the bottom of your library in a random order.',
+      'Whenever this creature attacks, reveal the top four cards of your library. Put all Goblin or Equipment cards from among them into your hand and the rest on the bottom of your library in a random order.'],
+    near: ['Whenever this creature attacks, reveal the top four cards of your library, put all Goblin and Aura cards from among them into your hand, then put the rest on the bottom of your library in a random order.',
+      'Whenever this creature attacks, reveal the top four cards of your library, put all Goblin and Equipment cards from among them into your hand, then put the rest into your graveyard.'],
+  },
+  'then-put-the-rest': {
+    def: EDHD110_PUT,
+    ctx: EDHD110_CTX,
+    readings: ['Whenever this creature attacks, reveal the top four cards of your library, put all Goblin or Equipment cards from among them into your hand, then put the rest on the bottom of your library in a random order.',
+      'Whenever this creature attacks, reveal the top four cards of your library. Put all Goblin or Equipment cards from among them into your hand and the rest on the bottom of your library in a random order.'],
+    near: ['Whenever this creature attacks, reveal the top four cards of your library, put all Goblin or Equipment cards from among them into your hand, then put the rest on the bottom of your library in any order.',
+      'Whenever this creature attacks, reveal the top four cards of your library, put all Goblin or Equipment cards from among them into your graveyard, then put the rest on the bottom of your library in a random order.'],
+  },
+  'reveal-until-three-descriptions': {
+    def: EDHD110_UNTIL,
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Sorcery'] },
+    readings: ['Reveal cards from the top of your library until you reveal a Wizard card, a card with flying, or an Equipment card. Put that card into your hand and the rest on the bottom of your library in a random order.'],
+    near: ['Reveal cards from the top of your library until you reveal a Wizard card, a card with reach, or an Equipment card. Put that card into your hand and the rest on the bottom of your library in a random order.',
+      'Reveal cards from the top of your library until you reveal a Wizard card, a card with flying, and an Equipment card. Put that card into your hand and the rest on the bottom of your library in a random order.'],
+  },
+} satisfies Record<string, Example>);
+describe('edh-d-110 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['subtypes-and-union', 'then-put-the-rest', 'reveal-until-three-descriptions']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+
+// edh-e-64 (zz-cloud/edh-e-64.json, render/fold-edhe64.ts, fold-r4refs.ts, steps-cards.ts): the readings of its families (synthetic lines, design 6.10)
+Object.assign(EXAMPLES, {
+  'search-zones-library-first': {
+    def: spell([{ op: 'search', who: you, zone: 'graveyard', alsoZones: ['hand', 'library'], filter: { types: ['Artifact'] }, max: 1, as: 'found' } as EffectStep, { op: 'move', what: bound('found'), to: { zone: 'battlefield', controller: you } } as EffectStep, { op: 'shuffle', who: you, ifSearched: true } as EffectStep]),
+    readings: ['Search your library, hand, and/or graveyard for an artifact card and put it onto the battlefield. If you search your library this way, shuffle.', 'Search your library, hand and/or graveyard for an artifact card and put it onto the battlefield. If you search your library this way, shuffle.'],
+    near: ['Search your library, hand or graveyard for an artifact card and put it onto the battlefield. If you search your library this way, shuffle.', 'Search your library, graveyard, and/or hand for an artifact card and put it onto the battlefield. If you search your library this way, shuffle.'],
+  },
+  'search-library-of-then-shuffles': {
+    def: spell([{ op: 'counter', what: t('s') } as EffectStep, { op: 'search', who: you, owner: { ref: 'controllerOf', object: t('s') }, zone: 'graveyard', alsoZones: ['hand', 'library'], allZones: true, filter: { sharesWith: { with: t('s'), quality: 'name' } }, min: 0, max: 'any', as: 'found' } as EffectStep, { op: 'move', what: bound('found'), to: { zone: 'exile' } } as EffectStep, { op: 'shuffle', who: { ref: 'controllerOf', object: t('s') } } as EffectStep], [{ id: 's', kind: 'spell', min: 1, max: 1, text: 'target spell' } as TargetSpec]),
+    readings: ["Counter target spell. Search the graveyard, hand, and library of that spell's controller for any number of cards with the same name as that spell, exile those cards, then that player shuffles.", "Counter target spell. Search that spell's controller's graveyard, hand, and library for any number of cards with the same name as that spell and exile them. Then that player shuffles."],
+    near: ["Counter target spell. Search the graveyard, hand, and library of that spell's controller for any number of cards with the same name as that spell, exile those cards, then you shuffle.", "Counter target spell. Search the graveyard, hand, and library of that spell's controller for all cards with the same name as that spell, exile those cards, then that player shuffles."],
+  },
+  'lose-gain-for-each-lead': {
+    def: spell([{ op: 'move', what: t('c'), to: { zone: 'exile' }, as: 'them' } as EffectStep, { op: 'loseLife', who: { ref: 'target', id: 'p' }, amount: { q: 'count', of: { ref: 'each', filter: { zone: 'exile', is: bound('them'), isCard: true } } } } as EffectStep, { op: 'gainLife', who: you, amount: { q: 'count', of: { ref: 'each', filter: { zone: 'exile', is: bound('them'), isCard: true } } } } as EffectStep],
+      [{ id: 'c', kind: 'object', min: 0, max: 'any', text: '', filter: { zone: 'graveyard', isCard: true, owner: { ref: 'target', id: 'p' } } } as TargetSpec, { id: 'p', kind: 'player', min: 1, max: 1, text: 'target player' } as TargetSpec]),
+    readings: ["Exile any number of target cards from target player's graveyard. For each card exiled this way, that player loses 1 life and you gain 1 life.", "Exile any number of target cards from target player's graveyard. That player loses life equal to the number of cards exiled this way and you gain life equal to the number of cards exiled this way."],
+    near: ["Exile any number of target cards from target player's graveyard. For each card exiled this way, that player loses 1 life and you gain 2 life.", "Exile any number of target cards from target player's graveyard. For each card exiled this way, you lose 1 life and that player gains 1 life."],
+  },
+} satisfies Record<string, Example>);
+describe('edh-e-64 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['search-zones-library-first', 'search-library-of-then-shuffles', 'lose-gain-for-each-lead']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+// edh-e-51 (zz-cloud/edh-e-51.json, render/qty.ts): the reading of its family (invented wordings, design 6.10)
+Object.assign(EXAMPLES, {
+  'mana-from-spent-for-each-that-was': {
+    def: spell([{ op: 'effect', duration: { d: 'endOfTurn' }, effects: [{ s: 'continuous', affects: t('c'), mods: [{ layer: '7c', power: { q: 'spellManaSpent', of: { ref: 'self' }, from: { subtypes: ['Forest'] } }, toughness: 0 }] }] } as EffectStep], [objTarget('c', { types: ['Creature'] })]),
+    readings: ['Target creature gets +1/+0 until end of turn for each mana from a Forest spent to cast this spell.', 'Target creature gets +1/+0 until end of turn for each mana from a Forest that was spent to cast this spell.'],
+    near: ['Target creature gets +1/+0 until end of turn for each mana from an Island that was spent to cast this spell.', 'Target creature gets +1/+0 until end of turn for each mana from a Forest that was spent to activate this spell.'],
+  },
+} satisfies Record<string, Example>);
+// edh-e-11: the family of fold-edhe11.ts
+Object.assign(EXAMPLES, {
+  'instead-put-that-or-it': {
+    def: spell([
+      { op: 'may', who: you, as: 'b0', guard: { cond: 'designation', what: 'citysBlessing', who: you }, do: [{ op: 'move', what: { ref: 'target', id: 't0' }, to: { zone: 'library', position: 'top' } }] } as EffectStep,
+      { op: 'move', what: { ref: 'target', id: 't0' }, to: { zone: 'hand' }, guard: { cond: 'did', step: 'b0', not: true } } as EffectStep,
+    ], [objTarget('t0')]),
+    readings: ["Return target creature to its owner's hand. If you have the city's blessing, you may put that creature on top of its owner's library instead.", "Return target creature to its owner's hand. If you have the city's blessing, you may put it on top of its owner's library instead."],
+    near: ["Return target creature to its owner's hand. If you have the city's blessing, you may put that creature on the bottom of its owner's library instead."],
+  },
+});
+
+// edh-e-32 (render/steps-zones.ts): the family of the round (invented wordings, design 6.10)
+Object.assign(EXAMPLES, {
+  'copy-exiled-card-plain': {
+    def: { kind: 'activated', text: '', cost: { mana: [{ kind: 'generic', amount: 2 }], tap: true }, effect: { targets: [], steps: [{ op: 'cast', who: { ref: 'you' }, what: { ref: 'linked', link: 'exiled' }, free: true, optional: true, copyIn: 'exile' }] } } as unknown as AbilityDef,
+    readings: [
+      '{2}, {T}: You may copy the exiled card. If you do, you may cast the copy without paying its mana cost.',
+      '{2}, {T}: Copy the exiled card. You may cast the copy without paying its mana cost.',
+    ],
+    near: [
+      '{2}, {T}: Copy the exiled card. You may cast the copy.',
+      '{2}, {T}: Copy the exiled card. You may cast it without paying its mana cost.',
+    ],
+  },
+} satisfies Record<string, Example>);
+describe('edh-e-32 (G6): the readings of its family are accepted and the near misses are not', () => {
+  for (const id of ['copy-exiled-card-plain']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-e-3 (Commander coordinator E, dice-random): the readings of its family (invented wordings, design 6.10)
+Object.assign(EXAMPLES, {
+  'destroy-one-of-them-at-random': {
+    def: { kind: 'spell', text: '', effect: { targets: [{ id: 't0', kind: 'object', min: 3, max: 3, text: '', filter: { types: ['Creature'] } }], steps: [
+      { op: 'chooseObjects', who: { ref: 'you' }, from: { ref: 'each', filter: { is: { ref: 'target', id: 't0' } } }, min: 1, max: 1, random: true, as: 'randomPick' },
+      { op: 'destroy', what: { ref: 'bound', name: 'randomPick' } },
+    ] } } as unknown as AbilityDef,
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Sorcery'] },
+    readings: ['Choose three target creatures. Destroy one of them at random.', 'Choose three target creatures. Destroy one of them chosen at random.'],
+    near: ['Choose three target creatures. Destroy all of them at random.', 'Choose three target creatures. Destroy one of them at random. Draw a card.'],
+  },
+});
+describe('edh-e-3 (G6): the readings of its family are accepted and the near misses are not', () => {
+  for (const id of ['destroy-one-of-them-at-random']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-d-104 (zz-cloud/edh-d-104.json, render/steps-zones.ts): the reading of its family (synthetic lines, design 6.10)
+const EDHD104_OTHER = ez14('Artifact', "Whenever you gain life, exile the top card of your library face down.\nAt the beginning of your end step, you may exile all cards from your hand face down. If you do, put all other cards you own exiled with this artifact into your hand.")[1]!;
+Object.assign(EXAMPLES, {
+  'linked-other-owned-hand': {
+    def: EDHD104_OTHER,
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Artifact'] },
+    readings: ['At the beginning of your end step, you may exile all cards from your hand face down. If you do, put all other cards you own exiled with this artifact into your hand.', 'At the beginning of your end step, you may exile all cards from your hand face down. If you do, put all other cards you own exiled with Test Card into your hand.'],
+    near: ['At the beginning of your end step, you may exile all cards from your hand face down. If you do, put all other cards you own exiled with this artifact into your graveyard.', 'At the beginning of your end step, you may exile all cards from your hand face down. If you do, put all cards you own exiled with this artifact into your hand.'],
+  },
+} satisfies Record<string, Example>);
+describe('edh-d-104 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['linked-other-owned-hand']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      expect(ex.def.kind).toBe('triggered');
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-d-111 (zz-cloud/edh-d-111.json; render/np.ts, fold.ts, fold-edhd111.ts, steps-cards.ts): the readings of its families (synthetic lines, design 6.10)
+const EDHD111_CTX = { selfNames: ['Test Card'], selfTypes: ['Artifact', 'Creature'] };
+Object.assign(EXAMPLES, {
+  'color-or-type-card': {
+    def: ez14('Artifact Creature — Golem', 'When Test Card enters, look at the top five cards of your library. You may reveal a red or artifact card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.')[0]!,
+    ctx: EDHD111_CTX,
+    readings: ['When this creature enters, look at the top five cards of your library. You may reveal a red or artifact card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.', 'When this creature enters, look at the top five cards of your library. You may reveal a red card or an artifact card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.'],
+    near: ['When this creature enters, look at the top five cards of your library. You may reveal a red or creature card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.', 'When this creature enters, look at the top five cards of your library. You may reveal a green or artifact card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.'],
+  },
+  'reveal-in-your-hand': {
+    def: ez14('Artifact Creature — Golem', '{2}, {T}: Reveal an artifact card in your hand. Draw a card.')[0]!,
+    ctx: EDHD111_CTX,
+    readings: ['{2}, {T}: Reveal an artifact card in your hand. Draw a card.', '{2}, {T}: Reveal an artifact card from your hand. Draw a card.'],
+    near: ['{2}, {T}: Reveal an artifact card in your graveyard. Draw a card.', '{2}, {T}: Reveal a creature card in your hand. Draw a card.'],
+  },
+  'look-put-one-on-top': {
+    def: ez14('Artifact Creature — Golem', 'When Test Card enters, look at the top three cards of your library. You may put one of those cards on top of your library. Put the rest on the bottom of your library in a random order.')[0]!,
+    ctx: EDHD111_CTX,
+    readings: ['When this creature enters, look at the top three cards of your library. You may put one of those cards on top of your library. Put the rest on the bottom of your library in a random order.', 'When this creature enters, look at the top three cards of your library. You may put one of them on top of your library. Put the rest on the bottom of your library in a random order.'],
+    near: ['When this creature enters, look at the top three cards of your library. You may put two of them on top of your library. Put the rest on the bottom of your library in a random order.', 'When this creature enters, look at the top three cards of your library. You may put one of them on top of your library. Put the rest on the bottom of your library in any order.'],
+  },
+  'the-nonland-card': {
+    def: ez14('Sorcery', 'Reveal cards from the top of your library until you reveal a nonland card. Put that card into your hand and the rest on the bottom of your library in any order.')[0]!,
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Sorcery'] },
+    readings: ['Reveal cards from the top of your library until you reveal a nonland card. Put that card into your hand and the rest on the bottom of your library in any order.', 'Reveal cards from the top of your library until you reveal a nonland card. Put the nonland card into your hand and the rest on the bottom of your library in any order.'],
+    near: ['Reveal cards from the top of your library until you reveal a nonland card. Put the land card into your hand and the rest on the bottom of your library in any order.', 'Reveal cards from the top of your library until you reveal a nonland card. Put the nonland card into your hand and the rest on the bottom of your library in a random order.'],
+  },
+  'mana-that-much-removed': {
+    def: ez14('Artifact Creature — Golem', '{T}, Remove one or more charge counters from Test Card: Add that much {C}.')[0]!,
+    ctx: EDHD111_CTX,
+    readings: ['{T}, Remove one or more charge counters from this creature: Add that much {C}.', '{T}, Remove one or more charge counters from this creature: Add an amount of {C} equal to that many.'],
+    near: ['{T}, Remove one or more charge counters from this creature: Add {C}.', '{T}, Remove one or more charge counters from this creature: Add that much {R}.'],
+  },
+} satisfies Record<string, Example>);
+describe('edh-d-111 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['color-or-type-card', 'reveal-in-your-hand', 'look-put-one-on-top', 'the-nonland-card', 'mana-that-much-removed']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-d-108 (zz-cloud/edh-d-108.json, render/cond.ts): the readings of its families (synthetic lines, design 6.10)
+Object.assign(EXAMPLES, {
+  'attached-controller-has-cards-in-graveyard': {
+    def: xp2Def('Enchantment — Aura', 'Enchant creature\nEnchanted creature gets -1/-0. It gets -3/-0 instead as long as its controller has five or more cards in their graveyard.'),
+    readings: ['Enchanted creature gets -1/-0. It gets -3/-0 instead as long as its controller has five or more cards in their graveyard.'],
+    near: ['Enchanted creature gets -1/-0. It gets -3/-0 instead as long as its controller has four or more cards in their graveyard.', 'Enchanted creature gets -1/-0. It gets -3/-0 instead as long as you have five or more cards in your graveyard.'],
+  },
+} satisfies Record<string, Example>);
+describe('edh-d-108 (G6): the readings of its families are accepted and the near misses are not', () => {
+  for (const id of ['attached-controller-has-cards-in-graveyard']) {
+    it(`${id}: every reading is accepted and a near miss is not`, () => {
+      const ex = (EXAMPLES as Record<string, Example>)[id]!;
+      for (const r of ex.readings) accepts(ex.def, r, ex.ctx);
+      for (const n of ex.near) rejects(ex.def, n, ex.ctx);
+    });
+  }
+});
+
+// edh-e-62 (zz-cloud/edh-e-62.json, render/refs.ts): the reading of its family (synthetic lines, design 6.10)
+Object.assign(EXAMPLES, {
+  'opponent-to-your-left': {
+    def: ez14('Instant', 'Target creature you control fights target creature the player to your left controls.')[0]!,
+    ctx: { selfNames: ['Test Card'], selfTypes: ['Instant'] },
+    readings: ['Target creature you control fights target creature the player to your left controls.', 'Target creature you control fights target creature the opponent to your left controls.'],
+    near: ['Target creature you control fights target creature the player to your right controls.', 'Target creature you control fights target creature the opponent to your right controls.'],
+  },
+} satisfies Record<string, Example>);
+describe('edh-e-62 (G6): the readings of its family are accepted and the near misses are not', () => {
+  for (const id of ['opponent-to-your-left']) {
     it(`${id}: every reading is accepted and a near miss is not`, () => {
       const ex = (EXAMPLES as Record<string, Example>)[id]!;
       for (const r of ex.readings) accepts(ex.def, r, ex.ctx);

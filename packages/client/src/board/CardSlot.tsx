@@ -88,7 +88,7 @@ function OneCard({ id, size = 'normal', back = false, markers = true, clickable:
   const compact = useContext(CompactContext) && onBattlefield && !faceDown && def !== null;
   // The Scryfall picture's artist in the card's accessible name: "Lightning Bolt (Alice), illustrated by ..."; a card drawn as a
   // back (hidden or face down on the table) or with a compact face shows no picture to credit.
-  const artist = board.useArtist(faceDown || compact ? null : def, face);
+  const artist = board.useArtist(faceDown || compact ? null : def, face, o.owner);
   const name = creditedName(whose ? `${baseName} (${whose})` : baseName, artist);
 
   // M6-11: the layout and double-faced states (which face is up, chapter, level, prototyped, prepared...) after the permanent's own markers
@@ -180,7 +180,7 @@ function OneCard({ id, size = 'normal', back = false, markers = true, clickable:
     >
       <div className="board-card-image">
         <OwnerSleeve owner={o.owner}>
-          {compact && def ? <CompactFace def={def} face={face} chars={chars} /> : renderCard({ def: faceDown ? null : def, face, chars: faceDown ? null : chars, size, faceDown: o.faceDown === true })}
+          {compact && def ? <CompactFace def={def} face={face} chars={chars} /> : renderCard({ def: faceDown ? null : def, face, chars: faceDown ? null : chars, size, faceDown: o.faceDown === true, owner: o.owner })}
         </OwnerSleeve>
         {overlay && <CardOverlay overlay={overlay} pt={!compact} id={overlayId} />}
         {tokenCopy && (

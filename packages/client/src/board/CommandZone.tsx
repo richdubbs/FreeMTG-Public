@@ -24,13 +24,13 @@ export function CommandZone({ player }: { player: PlayerState }) {
   return (
     <div className="command-zone" role="group" aria-label={`${player.name}'s command zone`} title="Command zone (CR 408)" data-player-id={player.id}>
       {infos.map((info) => (
-        <CommanderSlot key={info.rec.card} info={info} />
+        <CommanderSlot key={info.rec.card} info={info} owner={player.id} />
       ))}
     </div>
   );
 }
 
-function CommanderSlot({ info }: { info: CommanderInfo }) {
+function CommanderSlot({ info, owner }: { info: CommanderInfo; owner: PlayerState['id'] }) {
   const board = useBoard();
   const { view, interaction } = board;
   const def = view.defs[info.rec.defId] ?? null;
@@ -48,7 +48,7 @@ function CommanderSlot({ info }: { info: CommanderInfo }) {
           <CardSlot id={object!.id} size="small" markers={false} />
         ) : (
           <span className="command-card-away" aria-hidden="true">
-            {board.renderCard({ def, face: 0, chars: null, size: 'small', faceDown: false })}
+            {board.renderCard({ def, face: 0, chars: null, size: 'small', faceDown: false, owner })}
           </span>
         )}
       </span>

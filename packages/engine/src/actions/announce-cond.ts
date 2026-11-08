@@ -12,7 +12,7 @@
 import type { Condition, PlayerPred, PlayerRef, Quantity } from '../types/ability';
 import type { ObjectId, PlayerId } from '../types/ids';
 import type { CastOrigin, CostsPaid, EventContext, GameState, ZoneKind } from '../types/state';
-import { announceCondForms, isAttackedWithThisTurn, isBarePlayerCount, isOpponentDrawsPerPlayer, isOpponentSpellsPerPlayer, isOpponentsHappenedPlayers, isSelfEnteredThisTurn, isTurnDamageTotal, isTurnEnergySpent, isTurnPlayerCombatDamage, isTurnPlayerLifeLoss, turnHistoryAtAnnouncement, type AnnounceWhere } from '../model/forms';
+import { announceCondForms, isAttackedWithThisTurn, isBarePlayerCount, isOpponentDrawsPerPlayer, isOpponentSpellsPerPlayer, isOpponentsHappenedPlayers, isSelfEnteredThisTurn, isTurnDamageTotal, isTurnDamageSourcesToYou, isTurnEnergySpent, isTurnPlayerCombatDamage, isTurnPlayerLifeLoss, turnHistoryAtAnnouncement, type AnnounceWhere } from '../model/forms';
 import { countHistory, enteredThisTurn, happenedCountOf, happenedPlayersOf, opponentsAttackedCount } from '../rules/history';
 import { compareNumbers } from '../rules/predicates';
 import { charsOfObject, controllerOf, ptNumbers } from '../rules/characteristics';
@@ -96,6 +96,8 @@ export const ANNOUNCE_READABLE: readonly string[] = [
   'announce.sref.controllerOf.self', 'announce.sref.controllerOf.target', 'announce.sref.ownerOf.self', 'announce.sref.ownerOf.target',
   // edh-replace-5 (CR 107.14): "activate only if you've paid or lost four or more {E} this turn" (model/forms.ts#isTurnEnergySpent; rules/history.ts#happenedCountOf)
   'announce.qty.happenedCount.energySpent',
+  // edh-e-16 (CR 120.1, 118.9; Inferno Trap): the different creatures that dealt damage to the casting player this turn (model/forms.ts#isTurnDamageSourcesToYou), read as a spell is cast
+  'announce.qty.happenedCount.damageSourcesToYou',
   'announce.qty.mostSharingName', // edh-mana-keywords-7 (CR 201.2, 602.5b): "three or more lands with the same name"
   'announce.exists.attachedTo', // edh-mana-keywords-7 (CR 702.151a)
   // trek-15 (CR 506.3, 508.1, 603.3d): "goad up to X target creatures, where X is the number of opponents you attacked this turn": the history's attacks of the turn, written
@@ -283,6 +285,7 @@ export function announceQty(env: AnnounceEnv, q: Quantity): number | undefined {
     case 'happenedCount':
       if (isOpponentSpellsPerPlayer(q)) return Math.max(0, ...env.s.players.filter((p) => !p.hasLost && p.id !== env.player).map((p) => p.turnStats.spellsCast));
       if (isOpponentDrawsPerPlayer(q)) return Math.max(0, ...env.s.players.filter((p) => !p.hasLost && p.id !== env.player).map((p) => p.turnStats.cardsDrawn)); // edh-next-3 (CR 121.1)
+      if (isTurnDamageSourcesToYou(q)) return env.history === true ? happenedCountOf(env.s, q, { you: env.player, sourceId: env.sourceId }) : undefined; // edh-e-16 (CR 120.1, 118.9)
       return env.history === true && (isTurnDamageTotal(q) || isTurnEnergySpent(q)) ? happenedCountOf(env.s, q, { you: env.player, sourceId: env.sourceId }) : undefined;
     // edh-c-30 (CR 102.3, 118.9, 120.8): each opponent still in the game judged alone on this turn's history, as the cost change of actions/cast.ts counts them
     case 'happenedPlayers':
@@ -524,6 +527,7 @@ export function announceCond(env: AnnounceEnv, c: Condition): boolean | undefine
       return who;
     }
     case 'wasCast': {
+      if (c.nth !== undefined) return false; // edh-d-111: read by triggers/cond.ts and effects/eval.ts only (fail closed)
       const paid = env.costsPaid;
       if (c.kicked !== undefined) {
         // `true` / `false` mean any kicker cost (CR 702.33d); a string names one additional cost ("kicker:2", "entwine", "buyback", CR 702.33f).

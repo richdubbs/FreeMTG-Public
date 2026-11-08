@@ -96,13 +96,13 @@ static func draw_logo(canvas: CanvasItem, c: Vector2, px: float, rx: float, ry: 
 		var b := 0.16 + 0.42 * t
 		var tint := Color.WHITE if front else Color(b * 0.95, b * 0.75, b * 1.35, 1.0)
 		var half := px / 2.0
-		var pts := PackedVector2Array()
 		var persp := px * 4.5
-		for p3: Vector3 in [Vector3(-half, -half, z), Vector3(half, -half, z), Vector3(half, half, z), Vector3(-half, half, z)]:
+		var project := func(uv: Vector2) -> Vector2:
+			var p3 := Vector3(lerpf(-half, half, uv.x), lerpf(-half, half, uv.y), z)
 			var y1 := p3.y * cos(rx) - p3.z * sin(rx)
 			var z1 := p3.y * sin(rx) + p3.z * cos(rx)
 			var x2 := p3.x * cos(ry) + z1 * sin(ry)
 			var z2 := -p3.x * sin(ry) + z1 * cos(ry)
 			var k := persp / (persp - z2)
-			pts.append(c + Vector2(x2, y1) * k)
-		canvas.draw_colored_polygon(pts, tint, PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]), LOGO)
+			return c + Vector2(x2, y1) * k
+		TiltedPicture.draw(canvas, LOGO, project, tint)

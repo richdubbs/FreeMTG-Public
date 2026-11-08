@@ -53,8 +53,9 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 
 /** The deck as the server's store keeps it (server library/decks.ts readDeck). */
 function libraryDeck(d: Deck): LibraryDeck {
-  const entries = (list: readonly { name: string; count: number; oracleId?: string }[] | undefined) =>
-    (list ?? []).map((e) => ({ name: e.name, count: e.count, ...(e.oracleId ? { oracleId: e.oracleId } : {}) }));
+  // deck-art-1: the chosen printings go along (the server's readDeck keeps them).
+  const entries = (list: readonly { name: string; count: number; oracleId?: string; printing?: { set: string; number: string } }[] | undefined) =>
+    (list ?? []).map((e) => ({ name: e.name, count: e.count, ...(e.oracleId ? { oracleId: e.oracleId } : {}), ...(e.printing ? { printing: e.printing } : {}) }));
   return {
     id: d.id,
     name: d.name,
@@ -67,6 +68,7 @@ function libraryDeck(d: Deck): LibraryDeck {
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
     ...(d.cover ? { cover: d.cover } : {}),
+    ...(d.tokens && Object.keys(d.tokens).length ? { tokens: d.tokens } : {}),
   };
 }
 

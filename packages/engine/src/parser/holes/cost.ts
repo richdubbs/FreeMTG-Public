@@ -17,6 +17,7 @@ import { putSelfIntoLibrary } from './trek9'; // trek-9
 
 const W_FACE_UP = P('face up'); // edh-d-101
 const W_SAC = P('sacrifice');
+const W_SAC_ATTACHED_CREATURE = [P('enchanted creature'), P('equipped creature')]; // edh-e-53
 const W_UNATTACH = P('unattach');
 const W_AN_EQUIPMENT_FROM = P('an equipment from'); // edh-next-141
 const W_DISCARD = P('discard');
@@ -61,6 +62,7 @@ const W_ENERGY_EQUAL_TO = P('an amount of {e} equal to'); // std-promote-3
 const W_GET = P('get');
 const W_POISON_COUNTERS = [P('poison counter'), P('poison counters')];
 const W_HAVE_OPP_GAIN = P('have an opponent gain'); // edh-cast-14
+const W_HAVE_EACH_OTHER_GAIN = P('have each other player gain'); // edh-e-16 (Reverent Silence)
 
 /** FAST5X E27 (CR 122.1f, 702.21a): "get N poison counters" as a cost: the paying player gets them. */
 function getPoison(ctx: HoleCtx, pos: number): Alt[] {
@@ -90,6 +92,19 @@ function opponentGainsLife(ctx: HoleCtx, pos: number): Alt[] {
     if (typeof c.count !== 'number' || c.count < 1) continue;
     const w = phraseAt(ctx, c.end, W_LIFE);
     if (w >= 0) out.push({ end: w, value: { part: { kind: 'opponentGainsLife', amount: c.count } } satisfies Frag });
+  }
+  return out;
+}
+
+/** edh-e-16 (CR 118.1, 119.3; Reverent Silence, Skyshroud Cutter): "have each other player gain 6 life" as a cost. Only a fixed number. */
+function eachOtherGainsLife(ctx: HoleCtx, pos: number): Alt[] {
+  const out: Alt[] = [];
+  const e = phraseAt(ctx, pos, W_HAVE_EACH_OTHER_GAIN);
+  if (e < 0) return out;
+  for (const c of numCount(ctx, e)) {
+    if (typeof c.count !== 'number' || c.count < 1) continue;
+    const w = phraseAt(ctx, c.end, W_LIFE);
+    if (w >= 0) out.push({ end: w, value: { part: { kind: 'eachOtherGainsLife', amount: c.count } } satisfies Frag });
   }
   return out;
 }
@@ -161,6 +176,10 @@ function sacrifice(ctx: HoleCtx, pos: number): Alt[] {
   const e = phraseAt(ctx, pos, W_SAC);
   if (e < 0) return out;
   if (ctx.toks[e]?.kind === 'SELF') out.push({ end: e + 1, value: { part: { kind: 'sacrifice', filter: { self: true }, count: 1, self: true } } satisfies Frag });
+  // edh-e-53 (CR 701.21a, 303.4, 301.5, 118.3, 602.2b; Betrothed of Fire, Bloodfire Infusion): "Sacrifice enchanted creature" / "Sacrifice equipped creature": the one permanent the source is attached
+  // to (`attachedToSource`), paid by its controller only (CR 701.21a: a player sacrifices only a permanent they control)
+  const att = anyPhraseAt(ctx, e, W_SAC_ATTACHED_CREATURE);
+  if (att >= 0) out.push({ end: att, value: { part: { kind: 'sacrifice', filter: { types: ['Creature'], attachedToSource: true }, count: 1 } } satisfies Frag });
   // edh-perms-12 (CR 701.21a, 118.3, 602.2b; Mount Doom): "Sacrifice ~ and a legendary artifact": the object itself and one other permanent, two parts (the second part never takes ~: it is paid first)
   if (ctx.toks[e]?.kind === 'SELF') {
     const and = phraseAt(ctx, e + 1, W_AND);
@@ -308,6 +327,30 @@ function exile(ctx: HoleCtx, pos: number): Alt[] {
       }
     }
   }
+  // edhe7 (CR 404.2, 118.3, 602.2b; Necratog, Nature's Kiss, Alms, Barrow Ghoul): "Exile the top creature card of your graveyard" / "Exile the top card of your graveyard": the card put there
+  // last among the cards of that description, nothing chosen (`top`); your own graveyard only
+  const theTop = phraseAt(ctx, e, P('the top'));
+  if (theTop >= 0) {
+    const typeOf: Record<string, string> = { creature: 'Creature', artifact: 'Artifact', enchantment: 'Enchantment', land: 'Land', instant: 'Instant', sorcery: 'Sorcery', planeswalker: 'Planeswalker' };
+    const bare = phraseAt(ctx, theTop, P('card of your graveyard'));
+    if (bare >= 0) out.push({ end: bare, value: { part: { kind: 'exileFrom', zone: 'graveyard', count: 1, top: true } } satisfies Frag });
+    const ty = typeOf[ctx.toks[theTop]?.norm ?? ''];
+    const typed = ty === undefined ? -1 : phraseAt(ctx, theTop + 1, P('card of your graveyard'));
+    if (typed >= 0) out.push({ end: typed, value: { part: { kind: 'exileFrom', zone: 'graveyard', count: 1, filter: { types: [ty!] }, top: true } } satisfies Frag });
+    // edh-d-107 (CR 404.2, 118.3; Spinning Darkness): "Exile the top three black cards of your graveyard": a number of two or more, then a color and/or a card type, then "cards of your
+    // graveyard": the N topmost cards of that description, nothing chosen
+    const n = numberAt(ctx, theTop);
+    if (n !== undefined && n >= 2) {
+      let at = theTop + 1;
+      const color = COLOR_LETTER[ctx.toks[at]?.norm ?? ''];
+      if (color !== undefined) at++;
+      const ty2 = typeOf[ctx.toks[at]?.norm ?? ''];
+      if (ty2 !== undefined) at++;
+      const end = phraseAt(ctx, at, P('cards of your graveyard'));
+      const filter: ObjectFilter = { ...(color !== undefined ? { colors: [color] } : {}), ...(ty2 !== undefined ? { types: [ty2] } : {}) };
+      if (end >= 0) out.push({ end, value: { part: { kind: 'exileFrom', zone: 'graveyard', count: n, ...(Object.keys(filter).length > 0 ? { filter } : {}), top: true } } satisfies Frag });
+    }
+  }
   // std-costs-1 (CR 118.3, 107.3a, 202.3; Fabrication Foundry): "Exile one or more other artifacts you control with total mana value X": permanents you control,
   // at least one, whose mana values add up to exactly X (announced with the ability)
   const oneOrMore = phraseAt(ctx, e, W_ONE_OR_MORE);
@@ -317,8 +360,34 @@ function exile(ctx: HoleCtx, pos: number): Alt[] {
     if (tm < 0 || ctx.toks[tm]?.kind !== 'X') continue;
     out.push({ end: tm + 1, value: { part: { kind: 'exileFrom', zone: 'battlefield', count: 'any', atLeast: 1, filter: n.filter, totalManaValue: { q: 'X' } } } satisfies Frag, ...(n.flags.length > 0 ? { flags: n.flags } : {}) });
   }
+  // edh-e-37 (CR 118.3, 601.2b, 602.2b; Corpseweft): "Exile one or more creature cards from your graveyard": any number of your graveyard's cards of the description, at least one, announced with the ability
+  if (oneOrMore >= 0) for (const n of npAlts(ctx, oneOrMore)) {
+    if (n.number !== 'plural' || n.filter.zone !== 'graveyard' || n.filter.owner !== 'you' || n.filter.isCard !== true) continue;
+    const f = nonEmpty(without(n.filter, 'isCard', 'zone', 'owner'));
+    out.push({ end: n.end, value: { part: { kind: 'exileFrom', zone: 'graveyard', count: 'any', atLeast: 1, ...(f ? { filter: f } : {}) } } satisfies Frag, ...(n.flags.length > 0 ? { flags: n.flags } : {}) });
+  }
   // std-control-3 (CR 201.5a, 406.1): "Exile The Dominion Bracelet" in an ability the Equipment grants: the granting object, from the battlefield (as "Sacrifice ¤")
   if (ctx.toks[e]?.kind === 'GRANTOR') out.push({ end: e + 1, value: { part: { kind: 'exileFrom', zone: 'battlefield', count: 1, filter: { is: { ref: 'grantor' }, controller: 'you' } } } satisfies Frag });
+  // edh-d-107 (CR 118.3, 404.1, 602.2b; Thelon of Havenwood, Night Soil): "Exile a Fungus card from a graveyard" (any player's graveyard) and "Exile two creature cards from a single
+  // graveyard" (all of one player's): cards of a plain description, a fixed number; the words "from a graveyard" / "from a single graveyard" are read here, never "from graveyards"
+  for (const c of counted(ctx, e)) {
+    if (typeof c.count !== 'number' || c.count < 1 || c.filter.owner !== undefined || c.filter.controller !== undefined || c.filter.other !== undefined) continue;
+    const words = (from: number, to: number): string => ctx.toks.slice(from, to).map((t) => t.norm).join(' ');
+    const plain = (f: ObjectFilter): boolean => Object.keys(f).every((k) => k === 'types' || k === 'subtypes' || k === 'colors' || k === 'supertypes' || k === 'not');
+    // "two cards from a graveyard" could mean one graveyard or several: only one card reads "from a graveyard" (several read "from a single graveyard")
+    if (c.filter.zone === 'graveyard' && c.count === 1 && c.end >= 3 && words(c.end - 3, c.end) === 'from a graveyard') {
+      const f = nonEmpty(without(c.filter, 'isCard', 'zone'));
+      if (f === undefined || plain(f)) out.push({ end: c.end, value: { part: { kind: 'exileFrom', zone: 'graveyard', count: c.count, ...(f ? { filter: f } : {}), anyGraveyard: true } } satisfies Frag });
+    }
+    if (c.filter.zone === undefined && c.filter.isCard === true) {
+      const f = nonEmpty(without(c.filter, 'isCard'));
+      if (f !== undefined && !plain(f)) continue;
+      const single = phraseAt(ctx, c.end, W_FROM_A_SINGLE_GRAVEYARD);
+      if (single >= 0 && c.count >= 2) out.push({ end: single, value: { part: { kind: 'exileFrom', zone: 'graveyard', count: c.count, ...(f ? { filter: f } : {}), anyGraveyard: true, singleGraveyard: true } } satisfies Frag });
+      const any = phraseAt(ctx, c.end, W_FROM_A_GRAVEYARD);
+      if (any >= 0 && c.count === 1) out.push({ end: any, value: { part: { kind: 'exileFrom', zone: 'graveyard', count: c.count, ...(f ? { filter: f } : {}), anyGraveyard: true } } satisfies Frag });
+    }
+  }
   for (const c of counted(ctx, e)) {
     const z: ZoneName = (c.filter.zone as ZoneName | undefined) ?? 'battlefield';
     if (Array.isArray(c.filter.zone) || c.filter.zone === 'any') continue;
@@ -359,6 +428,8 @@ function exile(ctx: HoleCtx, pos: number): Alt[] {
 }
 
 const W_WITH = P('with'); // std-cardcopy-7
+const W_FROM_A_SINGLE_GRAVEYARD = P('from a single graveyard'); // edh-d-107
+const W_FROM_A_GRAVEYARD = P('from a graveyard'); // edh-d-107
 const W_OR_MORE = P('or more');
 const W_SYMBOLS_AMONG_COSTS = P('mana symbols among their mana costs');
 const W_CARD_TYPES_AMONG_THEM = P('card types among them'); // edh-d-100
@@ -377,6 +448,14 @@ function pay(ctx: HoleCtx, pos: number): Alt[] {
         const { $forEach: _fe, ...per } = c.value as Record<string, unknown>;
         const amount = (q.value === 1 ? per : { q: 'math', op: '*', args: [q.value, per] }) as Quantity;
         out.push({ end: c.end, value: { part: { kind: 'payLife', amount } } satisfies Frag, ...(c.flags ? { flags: c.flags } : {}) });
+      }
+    }
+    // edh-e-14 (CR 119.4, 122.1, 601.2h; Tornado): "Pay 3 life for each velocity counter on ~": a number of life times the counters on the object, read as the cost is paid
+    if (typeof q.value === 'number' && q.value >= 1 && phraseAt(ctx, q.end, W_LIFE) >= 0 && ctx.toks[q.end + 1]?.norm === 'for' && ctx.toks[q.end + 2]?.norm === 'each') {
+      for (const c of ctx.call('Qty', q.end + 3)) {
+        const v = c.value as unknown as Record<string, unknown> | null;
+        if (typeof v !== 'object' || v === null || v['q'] !== 'counters' || (v['on'] as Record<string, unknown> | undefined)?.['ref'] !== 'self') continue;
+        out.push({ end: c.end, value: { part: { kind: 'payLife', amount: (q.value === 1 ? c.value : { q: 'math', op: '*', args: [q.value, c.value] }) as Quantity } } satisfies Frag, ...(c.flags ? { flags: c.flags } : {}) });
       }
     }
     if (ctx.toks[q.end]?.norm === '{e}') out.push({ end: q.end + 1, value: { part: { kind: 'payEnergy', amount: q.value as Quantity } } satisfies Frag });
@@ -523,6 +602,17 @@ function counters(ctx: HoleCtx, pos: number): Alt[] {
           const pe = w >= 0 ? phraseAt(ctx, w, prep) : -1;
           if (pe >= 0 && ctx.toks[pe]?.kind === 'SELF') {
             out.push({ end: pe + 1, value: { part: { kind, counter: k.value as string, count: { q: 'X' }, self: true, anyNumber: true } } satisfies Frag, ...(k.weak ? { weak: k.weak } : {}) });
+          }
+        }
+      }
+      // edh-d-111 (CR 107.1c, 107.3a, 602.2b; Arcee, Sharpshooter): "Remove one or more +1/+1 counters from ~": the same choice, of at least one (`oneOrMore`), only from ~ itself
+      const om = phraseAt(ctx, e, W_ONE_OR_MORE);
+      if (om >= 0) {
+        for (const k of ctx.call('CounterKind', om)) {
+          const w = phraseAt(ctx, k.end, P('counters'));
+          const pe = w >= 0 ? phraseAt(ctx, w, prep) : -1;
+          if (pe >= 0 && ctx.toks[pe]?.kind === 'SELF') {
+            out.push({ end: pe + 1, value: { part: { kind, counter: k.value as string, count: { q: 'X' }, self: true, anyNumber: true, oneOrMore: true } } satisfies Frag, ...(k.weak ? { weak: k.weak } : {}) });
           }
         }
       }
@@ -706,6 +796,7 @@ function revealChosen(ctx: HoleCtx, pos: number): Alt[] {
 const W_PUT_OPPONENT_EXILED_GRAVEYARD = P("put a card an opponent owns from exile into that player 's graveyard"); // edh-d-54
 const W_PUT_HAND_TOP_LIBRARY = P('put a card from your hand on top of your library'); // edh-d-54
 const W_PUT_A = [P('put a'), P('put an')]; // edhd94
+const W_PUT_GY_BOTTOM = [P('put a card from your graveyard on the bottom of your library'), P('put two cards from your graveyard on the bottom of your library'), P('put three cards from your graveyard on the bottom of your library') /* edh-d-108: Battlefield Scrounger */]; // edh-e-37
 const W_INTO_OWNERS_GRAVEYARD = P("into its owner 's graveyard"); // edhd94
 /**
  * edh-d-54 (CR 118.3, 400.3, 401.4; Void Attendant, Hidden Retreat): "Put a card an opponent owns from exile into that player's graveyard" and "Put a card from your hand on top of
@@ -717,6 +808,12 @@ function moveCards(ctx: HoleCtx, pos: number): Alt[] {
   if (a >= 0) out.push({ end: a, value: { part: { kind: 'moveCards', from: 'exile', filter: { owner: 'opponent' }, count: 1, to: 'graveyard' } } satisfies Frag });
   const b = phraseAt(ctx, pos, W_PUT_HAND_TOP_LIBRARY);
   if (b >= 0) out.push({ end: b, value: { part: { kind: 'moveCards', from: 'hand', count: 1, to: 'libraryTop' } } satisfies Frag });
+  // edh-e-37 (CR 118.3, 401.4; Anurid Scavenger, Gurzigost): "Put a card from your graveyard on the bottom of your library" and "Put two cards from your graveyard on the bottom of your
+  // library": any cards of your graveyard (no description), one or two of them; each goes to the bottom of its owner's library (rules/pay-parts.ts)
+  W_PUT_GY_BOTTOM.forEach((w, k) => {
+    const g = phraseAt(ctx, pos, w);
+    if (g >= 0) out.push({ end: g, value: { part: { kind: 'moveCards', from: 'graveyard', count: k + 1, to: 'libraryBottom' } } satisfies Frag });
+  });
   // edh-d-94 (CR 118.3, 400.3, 607.2a; Shelob, Dread Weaver): "Put a creature card exiled with ~ into its owner's graveyard": one card of the object's linked exile set (the cards its
   // linked exiling instruction exiled, still in exile) goes to its owner's graveyard; the noun phrase is a singular card phrase that ends with "exiled with ~"/"exiled with it" and says
   // nothing else of a zone or owner (std-rx5's target reading of the phrase, parser/holes/filter.ts)
@@ -750,7 +847,7 @@ function libraryAndCoinCosts(ctx: HoleCtx, pos: number): Alt[] {
 
 function partAt(ctx: HoleCtx, pos: number): Alt[] {
   return [...symbols(ctx, pos), ...sacrifice(ctx, pos), ...unattach(ctx, pos), ...discard(ctx, pos), ...exile(ctx, pos), ...pay(ctx, pos), ...tapUntapped(ctx, pos), ...counters(ctx, pos),
-    ...returnToHand(ctx, pos), ...reveal(ctx, pos), ...actionsAndMill(ctx, pos), ...behold(ctx, pos), ...getPoison(ctx, pos), ...opponentGainsLife(ctx, pos), ...libraryAndCoinCosts(ctx, pos), // edh-d-74
+    ...returnToHand(ctx, pos), ...reveal(ctx, pos), ...actionsAndMill(ctx, pos), ...behold(ctx, pos), ...getPoison(ctx, pos), ...opponentGainsLife(ctx, pos), ...eachOtherGainsLife(ctx, pos), ...libraryAndCoinCosts(ctx, pos), // edh-d-74
     ...revealChosen(ctx, pos), // std-combat-5
     ...putSelfIntoLibrary(ctx, pos).map((a) => ({ end: a.end, value: { part: a.part } satisfies Frag })), // trek-9
     ...untapTapped(ctx, pos), ...moveCards(ctx, pos)]; // p2-cost-parts-1; edh-d-54

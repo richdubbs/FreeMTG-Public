@@ -11,6 +11,8 @@ import { alt, NoRenderer } from './text';
 const json = (v: unknown): string => JSON.stringify(v);
 const ATTACKED = json({ cond: 'happened', event: { ev: 'attacks', attacker: { self: true } }, scope: 'turn' });
 const BLOCKED = json({ cond: 'happened', event: { ev: 'blocks', blocker: { self: true } }, scope: 'turn' });
+const ATTACKED_COMBAT = json({ cond: 'happened', event: { ev: 'attacks', attacker: { self: true } }, scope: 'combat' }); // edh-e-14
+const BLOCKED_COMBAT = json({ cond: 'happened', event: { ev: 'blocks', blocker: { self: true } }, scope: 'combat' });
 const PLAYED_LAND = json({ cond: 'happened', event: { ev: 'action', verb: 'playLand', actor: 'you' }, scope: 'turn' });
 
 function phrase(c: Condition, st: RenderState): string | null {
@@ -24,6 +26,10 @@ function phrase(c: Condition, st: RenderState): string | null {
   // "~ attacked or blocked this turn" (CR 508.1, 509.1)
   if (c.cond === 'any' && c.of.length === 2 && json(c.of[0]) === ATTACKED && json(c.of[1]) === BLOCKED) {
     return `${K.obj({ ref: 'self' }, st, 'subject').text} attacked or blocked this turn`;
+  }
+  // edh-e-14 (CR 508.1, 509.1): "~ attacked or blocked this combat"
+  if (c.cond === 'any' && c.of.length === 2 && json(c.of[0]) === ATTACKED_COMBAT && json(c.of[1]) === BLOCKED_COMBAT) {
+    return `${K.obj({ ref: 'self' }, st, 'subject').text} attacked or blocked this combat`;
   }
   return null;
 }

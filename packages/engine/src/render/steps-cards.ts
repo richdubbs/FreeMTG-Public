@@ -118,6 +118,8 @@ function manaDynamic(d: ManaProduction, st: RenderState): string {
     case 'anyOneColor': {
       // FAST5 T48 (CR 106.1b): "Add X {G} or X {W}, where X is the number of other creatures you control": X mana of one of the listed types
       if (d.from !== undefined) {
+        // edh-e-51 (CR 106.1b, 106.4; Cadaverous Bloom): "Add {B}{B} or {G}{G}": two mana of one of the listed types
+        if (typeof d.count === 'number' && d.count === 2 && d.from.length === 2 && d.from[0] !== d.from[1]) return d.from.map((t) => sym(t).repeat(2)).join(' or ');
         if (typeof d.count === 'number' || d.count.q === 'X') throw new NoRenderer('a limited choice of mana types with a fixed amount');
         const x = K.qty(d.count, st);
         return `X ${d.from.map(sym).join(' or X ')}, where X is ${x}`;
@@ -178,6 +180,8 @@ function manaDynamic(d: ManaProduction, st: RenderState): string {
       return `${n(d.count)} mana of any ${d.colorsOnly === true ? 'color' : 'type'} that ${K.np(d.among.filter, st, { det: 'a' })} could produce`;
     }
     case 'devotionColor': throw new NoRenderer('a devotion production that is the whole clause'); // p2-mana-2: said by the addMana step
+    // edh-e-21 (CR 106.1, 202.1; Elemental Resonance): "mana equal to enchanted permanent's mana cost"
+    case 'manaCostOf': return `mana equal to ${K.obj(d.of, st, 'possessive').text} mana cost`;
     // M11-0 (m11 design 4.5): CR 903.4, 702.124c (Command Tower, Arcane Signet)
     case 'commanderIdentity': return typeof d.count === 'number' && d.count === 1 ? "one mana of any color in your commander's color identity" : `${n(d.count)} mana in any combination of colors in your commander's color identity`;
     case 'ofType': {
@@ -197,16 +201,19 @@ function manaDynamic(d: ManaProduction, st: RenderState): string {
       // edh-players-16 (CR 106.4, 608.2c; Neheb, Dreadhorde Champion): ... and the cards an earlier discard of the ability discarded ("If you do, draw that many cards and add that much {R}")
       const thatMuch = typeof d.count === 'object' && d.count.q === 'resultCount' && d.count.which === undefined && d.count.maxPerOwner === undefined && st.info.get(`r:${d.count.step}`)?.thisWay === 'discarded this way';
       if (thatMuch) return alt(amount, `that much {${d.type}}`);
+      // edh-d-111 (CR 106.4, 107.1c, 602.2b; Rasputin, the Oneiromancer; family mana-that-much): the X of a cost "Remove one or more dream counters from ~" (or "any number of") is also
+      // "add that much {C}" (render/qty.ts says the X "that many" / "that much" there), beside the readings below ("add {R} for each storage counter removed this way")
+      const xMuch = typeof d.count === 'object' && d.count.q === 'X' && st.anyNumberX === true ? [`that much {${d.type}}`] : [];
       // edh-next-104 (CR 106.4, 107.1, 608.2h; Fangorn, Tree Shepherd): twice the amount of the triggering event is "add twice that much {G}"
       const twiceThat = typeof d.count === 'object' && d.count.q === 'math' && d.count.op === '*' && d.count.args.length === 2 && d.count.args[0] === 2 && typeof d.count.args[1] === 'object' && d.count.args[1].q === 'eventAmount';
       if (twiceThat) return alt(amount, `twice that much {${d.type}}`);
       if (typeof d.count === 'number' || d.count.q === 'eventAmount' || d.count.q === 'excessDamage') return alt(amount, typeof d.count === 'number' ? `${n(d.count)} {${d.type}}` : `that much {${d.type}}`);
-      if (!per) return amount;
+      if (!per) return xMuch.length > 0 ? alt(amount, ...xMuch) : amount;
       // every player's permanents: "for each Elf" is "for each Elf on the battlefield" (family on-the-battlefield, CR 110.1)
       const c = d.count as Extract<typeof d.count, { q: 'count' }>;
       const f = typeof d.count === 'object' && d.count.q === 'count' && c.of.ref === 'each' ? c.of.filter : undefined;
       const everywhere = f !== undefined && f.controller === undefined && f.owner === undefined && (f.zone === undefined || f.zone === 'battlefield');
-      return everywhere ? alt(amount, `{${d.type}} for each ${per.singular}`, `{${d.type}} for each ${per.singular} on the battlefield`) : alt(amount, `{${d.type}} for each ${per.singular}`);
+      return everywhere ? alt(amount, `{${d.type}} for each ${per.singular}`, `{${d.type}} for each ${per.singular} on the battlefield`) : alt(amount, `{${d.type}} for each ${per.singular}`, ...xMuch);
     }
     case 'sameAsSpent': return 'one mana of any type that was spent to activate this ability';
     case 'eventProduced': return `${n(d.count)} mana of any type that ${d.noun} produced`; // T38: CR 106.3
@@ -493,7 +500,7 @@ export const CLAUSES_CARDS = {
       }
       if (typeof s.count === 'object' && s.count.q === 'resultCount' && s.count.which === undefined && (st.info.has(`r:${s.count.step}`) || st.info.get(`b:${s.count.step}`)?.paidAny === true /* edh-players-16: "you may pay any amount of life. If you do, draw that many cards" */)) {
         // std-tdm (CR 701.8a, 608.2c): "draw a card for each permanent destroyed this way" (render/qty.ts#countParts; render/steps-zones.ts#destroy)
-        const per = ['destroyed this way', 'tapped this way' /* edh-next-94 (CR 701.26a): "draw a card for each Gate tapped this way" */].includes(st.info.get(`r:${s.count.step}`)?.thisWay ?? '') ? countParts(s.count, st) : null;
+        const per = ['destroyed this way', 'tapped this way' /* edh-next-94 (CR 701.26a): "draw a card for each Gate tapped this way" */, 'countered this way' /* edh-e-15 (CR 701.6a): "draw a card for each spell countered this way" */].includes(st.info.get(`r:${s.count.step}`)?.thisWay ?? '') ? countParts(s.count, st) : null;
         // edh-c-68 (CR 701.9a, 121.1, 608.2c; family draw-as-many-discarded; Forget): the cards the discard of the same ability moved, "draws as many cards as they discarded this way"
         const asMany = st.info.get(`r:${s.count.step}`)?.thisWay === 'discarded this way' ? [`as many cards as ${s.who.ref === 'you' ? 'you' : 'they'} discarded this way`] : [];
         return alt(base, 'that many cards', ...(per ? [`a card for each ${per.singular}`] : []), ...asMany);
@@ -572,7 +579,16 @@ export const CLAUSES_CARDS = {
       // FAST1 T6: "each player discards their hand" (each one discards their own hand, CR 701.9a); "each player's hand" is not Oracle wording;
       // "discard all the cards in your hand" is the same as "discard your hand"
       // edh-c-51 (CR 701.9a, 400.1; Persecute): "discards all cards of that color": every card of the hand that matches the filter
+      // edh-e-26 (CR 701.9a, 701.20e, 608.2c; Mind Warp): "That player discards those cards.": every card of the group an earlier choice picked that is still in the hand
+      const grp = s.count === 'hand' && s.mode === undefined && s.filter !== undefined && Object.keys(s.filter).filter((k) => (s.filter as Record<string, unknown>)[k] !== undefined).join() === 'is' && s.filter.is?.ref === 'bound'
+        && st.info.get(`b:${s.filter.is.name}`)?.plural === true ? s.filter.is : null;
+      if (grp !== null) return K.obj(grp, st, 'object').text;
       if (s.count === 'hand' && s.filter?.chosen !== undefined && s.mode === undefined) { // only an earlier choice (a card of that color/type); "all nonland cards" is edh-c-32's fold
+        return `all ${K.np({ ...s.filter, zone: 'hand' }, st, { det: 'none', plural: true, noZone: true })}`;
+      }
+      // edh-e-9 (CR 701.9a, 105.2, 400.1; Shatter Assumptions): a plain description of the cards of the hand (only colors or lack of them, card types), "all colorless nonland cards", "all multicolored cards"
+      if (s.count === 'hand' && s.filter?.chosen === undefined && s.mode === undefined && s.filter !== undefined && Object.entries(s.filter).every(([k, v]) => v === undefined || ['colorless', 'multicolored', 'colors', 'types', 'notTypes', 'isCard'].includes(k))
+        && Object.values(s.filter).some((v) => v !== undefined) && !(s.filter.notTypes?.length === 1 && s.filter.notTypes[0] === 'Land' && Object.entries(s.filter).filter(([k, v]) => v !== undefined && k !== 'isCard').length === 1)) {
         return `all ${K.np({ ...s.filter, zone: 'hand' }, st, { det: 'none', plural: true, noZone: true })}`;
       }
       if (s.count === 'hand' && s.filter?.chosen === undefined && s.filter !== undefined && Object.values(s.filter).some((v) => v !== undefined)) throw new NoRenderer('a discard of the cards of a description in a hand outside the fold that says it (edh-c-32)');
@@ -613,7 +629,10 @@ export const CLAUSES_CARDS = {
       // edh-next-21 (CR 122.1f, 701.9a, 608.2h; Whispering Specter): the counters of a kind the discarding player has are "they have": "that player discards a card for each poison counter they have"
       const c = typeof s.count === 'object' ? s.count : null;
       const theyForm = c !== null && c.q === 'counters' && c.kind !== 'any' && JSON.stringify(c.on) === JSON.stringify(s.who) && s.who.ref !== 'each' ? `a card for each ${c.kind} counter they have` : null;
-      const what = xForm !== null ? alt(what0, xForm, ...(numberForm !== null ? [numberForm] : []), ...(eachForm !== null ? [eachForm] : []), ...(theyForm !== null ? [theyForm] : [])) : what0;
+      // edh-e-26 (CR 701.9a, 608.2c; Sink into Takenuma, family discard-a-card-for-each-returned): "target player discards a card for each Swamp returned this way", one card for each
+      // permanent an earlier return to the hand of the ability moved (render/moved.ts)
+      const movedEach = !hasFilter && s.mode === undefined && typeof s.count === 'object' && s.count.q === 'resultCount' && s.count.which !== undefined && st.info.get(`r:${s.count.step}`)?.moved === 'hand' ? countParts(s.count, cloneState(st)) : null;
+      const what = xForm !== null || movedEach !== null ? alt(what0, ...(xForm !== null ? [xForm] : []), ...(numberForm !== null ? [numberForm] : []), ...(eachForm !== null ? [eachForm] : []), ...(theyForm !== null ? [theyForm] : []), ...(movedEach !== null ? [`a card for each ${movedEach.singular}`] : [])) : what0;
       const how = s.mode === 'random' ? ' at random' : s.mode === 'opponentChooses' ? alt(' of your choice', ' of their choice') : '';
       return `${what}${how}`;
     });
@@ -739,19 +758,29 @@ export const CLAUSES_CARDS = {
     if (computed === null && (typeof n !== 'number' || !Number.isInteger(n) || n < 1)) throw new NoRenderer('"reveal ... until you reveal" a count that is not a positive number');
     const f = { ...s.filter, zone: 'library' as const };
     const plural = K.np(f, st, { det: 'none', plural: true, noZone: true });
-    const what = spellX ? `X ${plural}` : computed !== null ? computedUntilCount(computed, plural, st, K.np(f, st, { det: 'a', noZone: true })) : n === 1 ? K.np(f, st, { det: 'a', noZone: true }) : `${numWord(n as number)} ${plural}`;
+    // edh-d-110 (CR 701.20a, 608.2c; family reveal-until-three-descriptions; An Unearthly Child): one card of any of two or three descriptions, each with its own article,
+    // "until you reveal a Doctor card, a card with doctor's companion, or a Vehicle card" (the list search-three-descriptions says for a search)
+    const parts = n === 1 && computed === null && !spellX && Object.keys(s.filter).length === 1 && s.filter.anyOf !== undefined && s.filter.anyOf.length >= 2 && s.filter.anyOf.length <= 3 ? s.filter.anyOf : null;
+    const one = (): string => parts !== null
+      ? alt(K.np(f, cloneState(st), { det: 'a', noZone: true }), joinList(parts.map((g) => K.np({ ...g, zone: 'library' } as ObjectFilter, cloneState(st), { det: 'a', noZone: true })), 'or'))
+      : K.np(f, st, { det: 'a', noZone: true });
+    const what = spellX ? `X ${plural}` : computed !== null ? computedUntilCount(computed, plural, st, K.np(f, st, { det: 'a', noZone: true })) : n === 1 ? one() : `${numWord(n as number)} ${plural}`;
     const nouns = [...new Set([...K.nounsOf(s.filter), 'card'])];
     // "those land cards" for several cards of one card type (parser/holes/object.ts#typedThose)
     const typed = n !== 1 && Object.keys(s.filter).join(',') === 'types' && s.filter.types?.length === 1 ? [`those ${s.filter.types[0]!.toLowerCase()} cards`] : [];
     // (the other player is named before the cards it stops at are: "Its controller reveals ... until they reveal a permanent card that shares a card type with that permanent",
     // in which "its" is no more ambiguous for the card the reveal has not found yet)
     // edh-next-96 (CR 701.20a-b; Mind Funeral): several cards are also said "until four land cards are revealed" (family reveal-until-are-revealed; another player's reveal, a count of a number)
-    const areRevealed = other && n !== 1 && computed === null && !spellX;
+    const areRevealed = other && computed === null && !spellX; // edh-e-9 (Blessed Reincarnation): and one card too, "until a creature card is revealed"
     const clause = other ? byPlayer(s.who, st, 'reveal', areRevealed
-      ? () => alt(`cards from the top of their library until they reveal ${what}`, `cards from the top of their library until ${what} are revealed`)
+      ? () => alt(`cards from the top of their library until they reveal ${what}`, `cards from the top of their library until ${what} ${n === 1 ? 'is' : 'are'} revealed`)
       : `cards from the top of their library until they reveal ${what}`) : null;
     // edh-zones-22 (CR 701.20a, 608.2c; Old Stickfingers): the several cards a counted reveal until stopped at are also "<cards> revealed this way" (render/np.ts, render/fold-edhzones22.ts)
-    bind(st, s.as, { nouns, plural: n !== 1, zone: 'library', ...(n === 1 && !other ? { revealedUntilHit: true as const } : {}), ...(typed.length > 0 ? { alts: typed } : {}), ...(other ? { revealedBy: s.who } : {}), ...(n !== 1 && !other ? { thisWay: 'revealed this way', hitsAre: plural } : {}) });
+    // edh-d-111 (CR 608.2c; Explosive Revelation): the one card your own reveal until stopped at is also "the nonland card", "the card" with the step's own description said again
+    // (one "non-" type only; parser/holes/object.ts), said only by render/fold-edhd111.ts#hitHandRestBottomAny (an alt of the reference would change how other folds say "that card")
+    const oneDesc = n === 1 && !other && Object.keys(s.filter).length === 1 && s.filter.notTypes?.length === 1
+      ? K.np(f, cloneState(st), { det: 'none', noZone: true }) : undefined;
+    bind(st, s.as, { nouns, plural: n !== 1, zone: 'library', ...(n === 1 && !other ? { revealedUntilHit: true as const } : {}), ...(typed.length > 0 ? { alts: typed } : {}), ...(oneDesc !== undefined ? { untilDesc: oneDesc } : {}), ...(other ? { revealedBy: s.who } : {}), ...(n !== 1 && !other ? { thisWay: 'revealed this way', hitsAre: plural } : {}) });
     bind(st, s.revealed, { nouns: ['card'], plural: true, zone: 'library' });
     st.info.set(`r:${s.as}`, { nouns: ['card'], plural: true, thisWay: 'revealed this way' }); // edh-c-103 (Madcap Experiment): "the number of cards revealed this way" is the count of every card revealed
     return clause ?? byPlayer(s.who, st, 'reveal', `cards from the top of your library until you reveal ${what}`);
@@ -761,6 +790,8 @@ export const CLAUSES_CARDS = {
     if (s.as !== undefined) st.info.set(`r:${s.as}`, { nouns: ['card'], plural: true, moved: 'top' });
     // edh-d-4 (CR 701.22a, 706.2; Boing!): the result of a die roll is also said "scry a number of cards equal to the result" (Boing!), beside "Scry X, where X is the result" (Netherese Puzzle-Ward)
     if (typeof s.count === 'object' && s.count.q === 'dieResult') return byPlayer(s.who, st, 'scry', () => { const x = whereX(s.count, st); return alt(x, `a number of cards equal to ${K.qty(s.count, cloneState(st))}`); }); // family scry-equal-result
+    // edhe58 (CR 701.29a; Mesmeric Sliver, Spin into Myth): "fateseal 2", the same words with the verb fateseal
+    if (s.fateseal === true) return byPlayer(s.who, st, 'fateseal', () => whereX(s.count, st));
     return byPlayer(s.who, st, 'scry', () => whereX(s.count, st));
   },
   surveil: (s: StepOf<'surveil'>, st: RenderState): Clause => {
@@ -863,7 +894,7 @@ export const CLAUSES_CARDS = {
       if (s.allZones === true && !bothZones && !threeZones) throw new NoRenderer('a search of every zone listed ("graveyard, hand, and library") outside its fold (render/fold-r4refs.ts)'); // r4-refs
       const listed = [s.zone, ...(s.alsoZones ?? [])];
       const zones = bothZones ? 'library and graveyard' : threeZones ? 'graveyard, hand, and library' : s.alsoZones !== undefined && s.alsoZones.length > 0
-        ? (listed.length >= 3 ? alt(joinList(listed, 'and/or'), `${listed.slice(0, -1).join(', ')} and/or ${listed[listed.length - 1]}`) : joinList(listed, 'and/or')) : s.zone;
+        ? (listed.length >= 3 ? alt(joinList(listed, 'and/or'), `${listed.slice(0, -1).join(', ')} and/or ${listed[listed.length - 1]}`, joinList([...listed].reverse(), 'and/or') /* edh-e-64: Oracle may list the zones library first (Runed Crown) */, `${[...listed].reverse().slice(0, -1).join(', ')} and/or ${listed[0]}`) : joinList(listed, 'and/or')) : s.zone;
       let text = `${poss} ${zones} for ${what}`;
       if (s.shareLandType === true) text += ' that share a land type'; // pc-zones-2 (CR 205.3i): the cards found share a land type
       const plural = s.max !== 1 || s.and !== undefined;
@@ -903,6 +934,11 @@ export const CLAUSES_CARDS = {
   },
 
   shuffle: (s: StepOf<'shuffle'>, st: RenderState): Clause => {
+    // edhe34 (CR 404.2, 701.24a; Search for Survivors, Fossil Find): "reorder your graveyard at random" / "..., then reorder your graveyard as you choose"
+    if (s.reorderGraveyard !== undefined) {
+      if (s.ifSearched !== undefined || JSON.stringify(s.who) !== '{"ref":"you"}') throw new NoRenderer('a graveyard reorder of another player or after a search');
+      return plain(`reorder your graveyard ${s.reorderGraveyard === 'random' ? 'at random' : 'as you choose'}`, { leadThen: true });
+    }
     // CLOUD std-dft (CR 701.23a, 701.24a): "If you search your library this way, shuffle." (only the library a search of this resolution searched)
     if (s.ifSearched === true) {
       // edh-zones-8 (CR 701.23a, 701.24a): "Then each player who searched a library this way shuffles." (only the libraries searched, whoever searched them)
@@ -1010,7 +1046,9 @@ export const CLAUSES_CARDS = {
     }
     const c = byPlayer(s.who, st, 'add', () => {
       const what = s.units !== undefined ? manaUnits(s.units) : manaDynamic(s.dynamic!, st);
-      return alt(what, `an additional ${what}`);
+      // edh-e-21 (CR 106.1b, 106.4, 608.2d; Stadium Vendors): another player's mana of one color is also said "... of any one color they choose" (a fixed amount; family player-adds-any-one-color)
+      const theyChoose = s.dynamic?.kind === 'anyOneColor' && s.dynamic.from === undefined && s.dynamic.otherGroup === undefined && typeof s.dynamic.count === 'number' && s.who.ref !== 'you' ? [`${what} they choose`] : [];
+      return alt(what, `an additional ${what}`, ...theyChoose);
     });
     // r4-cost (CR 106.1, 106.4; parser/lower/ability.ts#joinChooseColor): X mana of any one color is also "choose a color. add an amount of mana of that color equal to
     // <X>" and, for the different powers among a group, "choose a color. add one mana of that color for each different power among <group>"

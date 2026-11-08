@@ -8,20 +8,22 @@
  * are found in the events the performer emitted; `link` and `as` bind them (CR 607.2a, design 3.1: "tokens created this way").
  * Tokens created "tapped and attacking" become attacking creatures (CR 508.4, zones-util.ts#enterAttacking).
  */
-import type { EffectStep } from '../../types/ability';
+import type { AbilityDef, EffectStep } from '../../types/ability';
 import type { ObjectId, PlayerId } from '../../types/ids';
 import type { ObjHandle } from '../../types/state';
 import type { DestinationFacts, ExecCtx, StepHandler, StepResult } from '../api';
 import { evalQty } from '../eval';
 import { propose } from '../propose';
-import { resolvePlayers } from '../refs';
+import { linkValue, resolvePlayers } from '../refs';
+import { COLORS } from '../../types/mana';
+import type { Color } from '../../types/mana';
 import { tokenAttachment } from './tokens-attach';
 import { tokenCardDef, type TokenSpec } from './token-defs';
 import { readFor, readsEachPlayer } from './cards-util';
 import { actOn, addToLink, bindAs, byHand, did, enterAttacking, enteringAttacking, enterBlocking, NOTHING, wholeNumber } from './zones-util';
 
 /** cmd1: the `feature:` names of this handler: a token put onto the battlefield attacking a named player (`attacking: {defender}`, CR 508.4). */
-export const TOKEN_FEATURES: readonly string[] = ['createToken.attackingWhom', 'createToken.exceptReplaced', 'createToken.blocking' /* edh-combat-4 */, 'createToken.perPlayerCount' /* edh-c-27 */, 'createToken.manaCost' /* edh-next-64 */];
+export const TOKEN_FEATURES: readonly string[] = ['createToken.attackingWhom', 'createToken.exceptReplaced', 'createToken.blocking' /* edh-combat-4 */, 'createToken.perPlayerCount' /* edh-c-27 */, 'createToken.manaCost' /* edh-next-64 */, 'createToken.chosen' /* edh-e-12 */];
 
 type CreateToken = Extract<EffectStep, { op: 'createToken' }>;
 
@@ -44,6 +46,25 @@ export function tokensCreatedSince(cx: ExecCtx, mark: number): ObjHandle[] {
   return out;
 }
 
+/**
+ * edh-e-66 (CR 111.4, 201.5a, 400.7; Gutter Grime, Saproling Burst): an ability the created token has that names the permanent that made it ("This token's power and toughness are each equal
+ * to the number of slime counters on Gutter Grime", the outer card's name inside the quote, `{ref:'grantor'}`) names the source of the instruction that creates the token, written as a fixed
+ * reference to it (named as `self` names the source: a permanent that left the battlefield is a new object that has no counters, CR 400.7, so the token's power and toughness are then 0).
+ */
+function bindCreator(abilities: readonly AbilityDef[] | undefined, source: ObjHandle): readonly AbilityDef[] | undefined {
+  if (abilities === undefined || !JSON.stringify(abilities).includes('"grantor"')) return abilities;
+  const by = { ref: 'fixed', objects: [{ id: source.id, zone: source.zone }], source: true };
+  const walk = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (v === null || typeof v !== 'object') return v;
+    const o = v as Record<string, unknown>;
+    if (o['ref'] === 'grantor') return by;
+    // review fix (Toggo): an ability the token's own static grants (layer 6 `add`) names ITS granting object (the token), which statics/mods.ts#withGrantor binds; left alone here
+    return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, k === 'add' && Array.isArray(x) ? x : walk(x)]));
+  };
+  return walk(abilities) as readonly AbilityDef[];
+}
+
 export const createToken: StepHandler<CreateToken> = (cx, st) => enteringAttacking(cx, st.attacking, () => createTokenStep(cx, st)); // trek-8 review (CR 508.4): zones-util.ts#enteringAttacking
 const createTokenStep: StepHandler<CreateToken> = (cx, st) => {
   const g = cx.g;
@@ -60,8 +81,20 @@ const createTokenStep: StepHandler<CreateToken> = (cx, st) => {
   if (!perPlayer && (n0 === undefined || n0 === 0)) return none();
 
   // The token's characteristics, evaluated now (CR 608.2h). A power or toughness that fails to determine creates nothing (CR 608.2b).
-  const { power, toughness, ...rest } = st.token;
+  const { power, toughness, chosenColor, chosenSubtype, ...rest } = st.token;
   const spec: TokenSpec = { ...rest };
+  if (spec.abilities !== undefined) spec.abilities = bindCreator(spec.abilities, cx.source) as typeof spec.abilities; // edh-e-66
+  // edh-e-12 (CR 607.2d, 105.1, 205.3; Volrath's Laboratory): the color and creature type the source chose; a choice that was never made creates nothing
+  if (chosenColor !== undefined) {
+    const c = linkValue(cx, chosenColor)?.values?.[0];
+    if (c === undefined || !(COLORS as readonly string[]).includes(c)) return byHand(cx, st, 'the source kept no chosen color (CR 607.2d)'); // review: never silently nothing (Sarpadian Empires, a copy)
+    spec.colors = [c as Color];
+  }
+  if (chosenSubtype !== undefined) {
+    const t = linkValue(cx, chosenSubtype)?.values?.[0];
+    if (t === undefined || t.length === 0) return byHand(cx, st, 'the source kept no chosen creature type (CR 607.2d)');
+    spec.subtypes = [...(spec.subtypes ?? []), t];
+  }
   if (power !== undefined) {
     const p = evalQty(cx, power);
     if (p === undefined) return none();

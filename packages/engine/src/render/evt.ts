@@ -63,6 +63,9 @@ function personVerb(base: string, past: string, tense: Tense, person: Person): s
   return sp < 0 ? conj(base, person) : `${conj(base.slice(0, sp), person)}${base.slice(sp)}`;
 }
 
+/** edh-e-42 (CR 506.4; Arashin War Beast): the recipients of a batch of damage that are exactly blocking creatures. */
+const blockingCreaturesDealt = (o: ObjectFilter | undefined): boolean => o !== undefined && Object.keys(o).sort().join() === 'blocking,types' && o.blocking === true && o.types?.join() === 'Creature';
+
 /** The subject of an event: "~", "a creature you control", "another creature", "one or more creatures". */
 function subjectOf(f: ObjectFilter, st: RenderState, o: EventOpts, zoneless = false, head?: string): { text: string; plural: boolean } {
   const filter: ObjectFilter = zoneless ? { ...f, zone: 'any' } : f;
@@ -412,7 +415,7 @@ function eventParts(ev: EventPattern, st: RenderState, tense: Tense, o: EventOpt
   // edh-replace-3 (CR 603.2c; Contaminant Grafter): and "one or more creatures you control deal combat damage to one or more players" (parser/holes/event.ts, `whole`)
   const playersDealt = ev.ev === 'damage' && ev.source !== undefined && ev.amount === undefined && ev.excess !== true && (ev.recipient?.player === 'any' || ev.recipient?.player === 'opponent') && ev.recipient.object === undefined; // edh-replace-5: or "to your opponents" (Malcolm)
   // edh-next-51 (CR 603.2c; Briarbridge Patrol, parser/holes/event.ts): and one source's damage "to one or more creatures": the creatures dealt damage together, one occurrence
-  const creaturesDealt = ev.ev === 'damage' && ev.source !== undefined && ev.amount === undefined && ev.excess !== true && ev.recipient?.player === undefined && JSON.stringify(ev.recipient?.object) === '{"types":["Creature"]}';
+  const creaturesDealt = ev.ev === 'damage' && ev.source !== undefined && ev.amount === undefined && ev.excess !== true && ev.recipient?.player === undefined && (JSON.stringify(ev.recipient?.object) === '{"types":["Creature"]}' || blockingCreaturesDealt(ev.recipient?.object));
   if (o.wholeBatch === true && (o.batch !== true || (ev.ev !== 'action' && ev.ev !== 'attacks' && ev.ev !== 'life' && !counterWhole && !opponentsDealt && !playersDealt && !creaturesDealt) || (ev.ev === 'action' && (ev.actor ?? 'any') !== 'any') || tense !== 'present')) throw new NoRenderer('"one or more players" for another event');
   switch (ev.ev) {
     case 'zoneChange': {
@@ -473,8 +476,10 @@ function eventParts(ev: EventPattern, st: RenderState, tense: Tense, o: EventOpt
       }
       if (ev.nth !== undefined && ev.nthMatching === true) {
         // FAST5X E18 (CR 601.2i): "an opponent casts their first noncreature spell each turn": the spell's words without the article
-        if (ev.orCopy || ev.from || ev.via !== undefined || tense !== 'present' || ev.spell === undefined) throw new NoRenderer('the Nth spell of a kind with another condition');
-        const kind = K.np({ ...ev.spell, stackKind: ev.spell.stackKind ?? 'spell' }, st, { det: 'none' });
+        // edhe32 (CR 601.2i, 601.2a; Sevinne, the Chronoclasm): "you cast your first instant or sorcery spell from your graveyard each turn": your own spells only, cast from your graveyard
+        const fromGraveyard = ev.from === 'graveyard' && p.person === 'you';
+        if (ev.orCopy || (ev.from && !fromGraveyard) || ev.via !== undefined || tense !== 'present' || ev.spell === undefined) throw new NoRenderer('the Nth spell of a kind with another condition');
+        const kind = K.np({ ...ev.spell, stackKind: ev.spell.stackKind ?? 'spell' }, st, { det: 'none' }) + (fromGraveyard ? ' from your graveyard' : '');
         // edh-next-44 (CR 603.4, 601.2i; Vengevine; family cast-nth-of-kind-if): your Nth spell of a kind after the first is also "you cast a spell, if it's the second creature spell you cast this turn"
         const each = `${text} your ${ordinal(ev.nth)} ${kind} each turn`;
         if (p.person === 'you' && ev.nth >= 2 && Object.keys(ev).every((k) => ['ev', 'player', 'spell', 'nth', 'nthMatching'].includes(k))) return { subject: p.text, predicate: alt(each, `${text} a spell, if it's the ${ordinal(ev.nth)} ${kind} you cast this turn`), plural: false };
@@ -522,6 +527,9 @@ function eventParts(ev: EventPattern, st: RenderState, tense: Tense, o: EventOpt
       const namedSource = ev.source !== undefined && JSON.stringify(ev.source) === '{"zone":"any","chosen":{"link":"cardName","quality":"cardName"}}';
       // edh-next-11 (CR 606.3, 303.4; Rowan's Talent): "activate a loyalty ability of enchanted planeswalker" (the permanent the Aura is attached to, no article)
       const attachedSource = ev.ability === 'loyalty' && ev.source?.attachedToSource === true && ev.manaAbility === undefined;
+      // edh-e-43 (CR 702.107a; Herald of Anafenza): "activate ~'s outlast ability", the object's own outlast ability (said with the object, not "of")
+      const outlastSelf = ev.ability === 'outlast' && ev.manaAbility === undefined && ev.activated === undefined && JSON.stringify(ev.source) === '{"self":true}';
+      if (outlastSelf) src = '';
       const of = attachedSource ? ` of ${K.np(ev.source!, st, { det: 'none' })}` : src ? ` of ${namedSource ? alt(src, 'a source with the chosen name') : src}` : '';
       const mana = ev.manaAbility === false ? " that isn't a mana ability" : ev.manaAbility === true ? " that's a mana ability" : '';
       // FAST5X E20: "activate an exhaust ability" (CR 702.177a), "activate a loyalty ability" (CR 606.3)
@@ -529,10 +537,10 @@ function eventParts(ev: EventPattern, st: RenderState, tense: Tense, o: EventOpt
       const notMana = ev.ability === 'exhaust' && ev.manaAbility === false && ev.source === undefined;
       // edh-c-23 (CR 606.3; Keral Keep Disciples): "a loyalty ability of a Chandra planeswalker" (the source a planeswalker, the loyalty ability its own)
       const loyaltyOf = ev.ability === 'loyalty' && ev.manaAbility === undefined && ev.source?.types?.join() === 'Planeswalker' && ev.source.attachedToSource === undefined && ev.activated === undefined;
-      if (ev.ability !== undefined && !notMana && !attachedSource && !loyaltyOf && (ev.manaAbility !== undefined || ev.source !== undefined)) throw new NoRenderer('an exhaust or loyalty ability with another condition');
+      if (ev.ability !== undefined && !notMana && !attachedSource && !loyaltyOf && !outlastSelf && (ev.manaAbility !== undefined || ev.source !== undefined)) throw new NoRenderer('an exhaust or loyalty ability with another condition');
       // std-rx28 (CR 602.2, 115.9b): "an ability that targets a creature or player" (the ability itself described, parser/holes/event.ts)
       if (ev.activated !== undefined && (ev.ability !== undefined || ev.manaAbility !== undefined || ev.source !== undefined)) throw new NoRenderer('a described activated ability with another condition');
-      const kind = ev.activated !== undefined ? K.np({ ...ev.activated, stackKind: 'ability' }, st, { det: 'a' }) : ev.ability === 'exhaust' ? 'an exhaust ability' : ev.ability === 'loyalty' ? 'a loyalty ability' : ev.ability === 'ninjutsu' ? 'a ninjutsu ability' : ev.ability === 'boast' ? 'a boast ability' : 'an ability';
+      const kind = ev.activated !== undefined ? K.np({ ...ev.activated, stackKind: 'ability' }, st, { det: 'a' }) : ev.ability === 'exhaust' ? 'an exhaust ability' : ev.ability === 'loyalty' ? 'a loyalty ability' : ev.ability === 'ninjutsu' ? 'a ninjutsu ability' : ev.ability === 'boast' ? 'a boast ability' : outlastSelf ? `${K.obj({ ref: 'self' }, st, 'subject').text}'s outlast ability` : 'an ability';
       const plain = `${personVerb('activate', 'activated', tense, p.person)} ${kind}${of}${mana}`;
       // std-mana-1 (CR 106.12): a mana ability with {T} in its cost (`tapped`, parser/holes/event.ts): "you tap an artifact token for mana" says that and nothing else
       // std-mana-1 (CR 106.12): "you tap a land for {C}" (`produced`, a land's mana ability: every one has {T})
@@ -595,8 +603,18 @@ function eventParts(ev: EventPattern, st: RenderState, tense: Tense, o: EventOpt
         return { subject: '', predicate: `all ${K.np(ev.allAttack, st, { det: 'none', plural: true })} attack`, plural: true };
       }
       if (ev.withOther !== undefined) {
-        if (ev.attacker === undefined || !isSelfOnly(ev.attacker) || Object.keys(ev).some((k) => k !== 'ev' && k !== 'attacker' && k !== 'withOther') || tense !== 'present' || o.batch === true || o.wholeBatch === true) {
+        if (ev.attacker === undefined || !isSelfOnly(ev.attacker) || Object.keys(ev).some((k) => k !== 'ev' && k !== 'attacker' && k !== 'withOther' && k !== 'withOtherAtLeast' && k !== 'withOtherDifferentPlayer') || tense !== 'present' || o.batch === true || o.wholeBatch === true) {
           throw new NoRenderer('another declared attacker other than "you attack with ~ and another <creature>"');
+        }
+        // edh-d-109 (CR 508.1b, 506.2; Canal Courier): "~ and another creature attack different players" (one other creature of the description)
+        if (ev.withOtherDifferentPlayer === true) {
+          if (ev.withOtherAtLeast !== undefined) throw new NoRenderer('several other declared attackers attacking different players');
+          return { subject: '', predicate: `~ and another ${K.np(ev.withOther, st, { det: 'none' })} attack different players`, plural: true };
+        }
+        // edh-d-109 (CR 508.1, 603.2c; Enkira, Hostile Scavenger): "~ and at least two Zombies attack" (two or more others of the description; "at least two other Zombies" is the description's own "other")
+        if (ev.withOtherAtLeast !== undefined) {
+          if (ev.withOtherAtLeast !== 2) throw new NoRenderer('at least a number of other declared attackers other than two');
+          return { subject: '', predicate: `~ and at least two ${K.np(ev.withOther, st, { det: 'none', plural: true })} attack`, plural: true };
         }
         // edh-c-71 (CR 508.1, 603.2c; Paired Tactician, family attack-with-source-and-another): the same event said "~ and at least one other Warrior attack"
         const other = K.np(ev.withOther, st, { det: 'none' });
@@ -754,6 +772,13 @@ function eventParts(ev: EventPattern, st: RenderState, tense: Tense, o: EventOpt
       return { subject: subj.text, predicate: alone !== '' && defender !== '' ? `${attacks}${defender}${alone}` : `${attacks}${alone}${defender}`, plural: subj.plural };
     }
     case 'blocks': {
+      // edh-d-109 (CR 509.3a, 603.2c; Lairwatch Giant): "~ blocks two or more creatures" (the source itself, any attackers, present tense)
+      if (ev.attackerAtLeast !== undefined) {
+        if (ev.attackerAtLeast !== 2 || ev.attacker !== undefined || ev.blocker === undefined || !isSelfOnly(ev.blocker) || tense !== 'present' || o.batch === true) throw new NoRenderer('"blocks N or more creatures" other than "~ blocks two or more creatures"');
+        const one = subjectOf(ev.blocker, st, o);
+        st.mentioned.add('e:blocker');
+        return { subject: one.text, predicate: 'blocks two or more creatures', plural: false };
+      }
       const subj = ev.blocker ? subjectOf(ev.blocker, st, o) : o.batch ? { text: 'one or more creatures', plural: true } : { text: 'a creature', plural: false };
       st.mentioned.add('e:blocker');
       const blocked = ev.attacker ? ` ${K.np(ev.attacker, st, { det: 'a' })}` : '';
@@ -782,6 +807,11 @@ function eventParts(ev: EventPattern, st: RenderState, tense: Tense, o: EventOpt
       return { subject: subj.text, predicate: "attacks and isn't blocked", plural: false };
     }
     case 'becomesBlocked': {
+      // edh-e-19 (CR 509.3c, 603.2c; Hedron Blade): the object itself (or the creature it is attached to) "becomes blocked by one or more <described creatures>": the blockers that match, one occurrence (a batch)
+      if (o.batch === true && ev.by !== undefined && ev.byAtLeast === undefined && ev.attacker !== undefined && (ev.attacker.self === true || ev.attacker.attachedToSource === true) && tense === 'present') {
+        const one = subjectOf(ev.attacker, st, { ...o, batch: false });
+        return { subject: one.text, predicate: `becomes blocked by ${K.np(ev.by, st, { det: 'none', plural: true, count: 'one or more' })}`, plural: false };
+      }
       const subj = ev.attacker ? subjectOf(ev.attacker, st, o) : o.batch ? { text: 'one or more creatures', plural: true } : { text: 'a creature', plural: false };
       const by = ev.by ? ` by ${ev.byAtLeast !== undefined ? K.np(ev.by, st, { det: 'none', plural: true, count: `${K.qty(ev.byAtLeast, st)} or more` }) /* edh-c-48 (CR 509.3e) */ : K.np(ev.by, st, { det: 'a' })}` : '';
       const be = tense === 'past' ? 'became' : tense === 'would' ? 'would become' : subj.plural ? 'become' : 'becomes';
@@ -878,10 +908,20 @@ function eventParts(ev: EventPattern, st: RenderState, tense: Tense, o: EventOpt
       if (tense === 'present' && !r && ev.source !== undefined && !o.batch && o.wholeBatch !== true && !subj.plural && combat === '' && amount === '' && ev.excess !== true && ev.toSourceTarget !== true) toText = alt('', ' to one or more permanents and/or players');
       if (o.wholeBatch === true && ev.source !== undefined && creaturesDealt) {
         if (!o.batch || tense !== 'present') throw new NoRenderer('"one or more creatures" dealt damage other than by a batch');
-        toText = ' to one or more creatures';
+        toText = blockingCreaturesDealt(r?.object) ? ' to one or more blocking creatures' : ' to one or more creatures'; // edh-e-42 (Arashin War Beast)
       } else if (o.wholeBatch === true && ev.source !== undefined) {
         if (!o.batch || tense !== 'present' || (r?.player !== 'any' && r?.player !== 'opponent') || r.object !== undefined) throw new NoRenderer('"one or more players" dealt damage other than by the creatures of a batch');
         toText = r.player === 'any' ? ' to one or more players' : alt(' to your opponents', ' to one or more of your opponents'); // edh-players-18: family to-one-or-more-of-your-opponents
+      }
+      // edh-e-49 (CR 506.2, 510.2; Latulla's Orders): combat damage to the player the source attacks, "deals combat damage to defending player"
+      if (ev.toDefendingPlayer === true) {
+        if (o.batch || o.wholeBatch === true || tense !== 'present' || ev.combat !== true || r?.player !== 'any' || r.object !== undefined || ev.amount !== undefined || ev.excess === true) throw new NoRenderer('damage to the defending player other than combat damage of one source to a player');
+        toText = ' to defending player';
+      }
+      // edh-d-109 (CR 120.1, 108.3; The Beast, Deathless Prince): "a creature deals combat damage to its owner" (one source, to a player)
+      if (ev.toSourceOwner === true) {
+        if (o.batch || o.wholeBatch === true || tense !== 'present' || ev.combat !== true || r?.player !== 'any' || r.object !== undefined || ev.amount !== undefined || ev.excess === true || ev.toDefendingPlayer === true || subj.plural) throw new NoRenderer('damage to the owner of its source other than combat damage of one source to a player');
+        toText = ' to its owner';
       }
       // std-rx28 (CR 115.9b, 120.1; parser/holes/event.ts): "a spell that targets only a single creature deals damage to that creature": the one object the source
       // targets, of the description its "targets only" names
@@ -1233,6 +1273,16 @@ function eventParts(ev: EventPattern, st: RenderState, tense: Tense, o: EventOpt
       if (o.batch === true) {
         if (ev.result !== undefined) throw new NoRenderer('"one or more dice" with a result');
         return { subject: p.text, predicate: `${personVerb('roll', 'rolled', tense, p.person)} one or more dice`, plural: false };
+      }
+      // edhe34 (CR 701.52a, 603.2c; "Lifetime" Pass Holder): "whenever you roll to visit your Attractions", with the result stated as ", if you roll a 6" (only you roll your Attractions' die)
+      if (ev.visit === true) {
+        if (ev.player !== 'you' || ev.highest !== undefined || ev.natural !== undefined || ev.nth !== undefined || tense !== 'present' || (ev.result !== undefined && (ev.result.op !== '==' || typeof ev.result.value !== 'number'))) throw new NoRenderer('a roll to visit in another form');
+        return { subject: p.text, predicate: `roll to visit your Attractions${ev.result === undefined ? '' : `, if you roll a ${(ev.result as { value: number }).value}`}`, plural: false };
+      }
+      // edhe34 (CR 706.2, 603.2c; Resolute Veggiesaur): "whenever you roll your third die each turn": the Nth die the player rolled this turn, said alone
+      if (ev.nth !== undefined) {
+        if (ev.result !== undefined || ev.highest !== undefined || ev.natural !== undefined || tense !== 'present') throw new NoRenderer('an Nth die rolled with a result or in another tense');
+        return { subject: p.text, predicate: `${personVerb('roll', 'rolled', tense, p.person)} ${p.person === 'you' ? 'your' : 'their'} ${ordinal(ev.nth)} die each turn`, plural: false };
       }
       // edh-next-55 (CR 706.2, 603.2c; Netherese Puzzle-Ward): "whenever you roll a die's highest natural result"
       if (ev.highest === true) {
@@ -1655,11 +1705,23 @@ export function events(list: EventPattern[], st: RenderState, tense: Tense, o: E
   if (list.length === 2 && tense === 'present' && o.batch === true && o.wholeBatch !== true) {
     const [a, b] = list;
     if (a!.ev === 'blocks' && b!.ev === 'becomesBlocked' && Object.keys(a!).sort().join() === 'attacker,blocker,ev' && Object.keys(b!).sort().join() === 'attacker,by,ev'
-      && JSON.stringify(a!.attacker) === '{"types":["Creature"]}' && JSON.stringify(b!.by) === '{"types":["Creature"]}' && JSON.stringify(a!.blocker) === JSON.stringify(b!.attacker)
+      && b!.by !== undefined && JSON.stringify(a!.attacker) === JSON.stringify(b!.by) && JSON.stringify(a!.blocker) === JSON.stringify(b!.attacker)
       && (a!.blocker!.self === true || a!.blocker!.attachedToSource === true)) {
       const subj = subjectOf(a!.blocker!, st, { ...o, batch: false });
       st.mentioned.add('e:subject');
-      return `${subj.text} blocks or becomes blocked by one or more creatures`;
+      // edh-e-19: also a described group ("one or more Orcs"), worded as the blockers that match
+      return `${subj.text} blocks or becomes blocked by ${JSON.stringify(b!.by) === '{"types":["Creature"]}' ? 'one or more creatures' : K.np(b!.by, st, { det: 'none', plural: true, count: 'one or more' })}`;
+    }
+  }
+  // edh-d-112 (CR 603.2, 603.2c; parser/holes/event.ts#playerOr, Lo and Li, Royal Advisors): "an opponent discards a card or mills one or more cards": one single action event (`single`) and a
+  // "one or more" action of the same player, the batch trigger's two patterns (triggers/occurrences.ts#mixedActionOccurrences)
+  if (list.length === 2 && tense === 'present' && o.batch === true && o.wholeBatch !== true) {
+    const [a, b] = list;
+    if (a!.ev === 'action' && b!.ev === 'action' && a!.single === true && b!.single === undefined && a!.actor !== undefined && JSON.stringify(a!.actor) === JSON.stringify(b!.actor)) {
+      const { single: _s, ...one } = a!;
+      const pa = eventParts(one, st, tense, { ...o, batch: false });
+      const pb = eventParts(b!, st, tense, o);
+      if (pa.subject !== '' && pa.subject === pb.subject) return `${pa.subject} ${pa.predicate} or ${pb.predicate}`;
     }
   }
   // edh-players-11 (CR 122.1, 122.6, 603.2c; parser/holes/event.ts#youPutCounters; All Will Be One): "you put one or more counters on a permanent or player": the counters you put on a

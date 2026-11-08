@@ -337,6 +337,13 @@ function resolveDid(d: Draft, seq: Unit[], at: number, prefix: Unit[]): void {
         if (typeof mv['as'] !== 'string') mv['as'] = freshName(d, 'moved');
         return { cond: 'did', step: mv['as'], not: true, to: node['to'] };
       }
+      // edh-e-26 (CR 701.50a, 603.12; Psychic Pickpocket): "When it connives this way" names the connive right before it (an `action` step), and nothing else
+      if (node['$connive'] === true) {
+        const cv = previousInstruction(seq, at, i, path, prefix, false, true);
+        if (cv === null || isUnit(cv) || cv['op'] !== 'action' || cv['action'] !== 'connive') { ok = false; return undefined; }
+        if (typeof cv['as'] !== 'string') cv['as'] = freshName(d, 'connived');
+        return { cond: 'did', step: cv['as'] };
+      }
       // std-rj (CR 608.2c, 601.2; Solstice Revelations): "if you don't cast that card this way" names the cast right before it, or the one inside the `if` (no `else`, no
       // guard) that is the instruction right before it ("You may cast that card without paying its mana cost if C."): a cast that never ran (the condition false, or the
       // option declined) has no result, so the cast was not done; anything else is unresolved
@@ -483,7 +490,15 @@ function resolveDid(d: Draft, seq: Unit[], at: number, prefix: Unit[]): void {
       // edh-c-96 (CR 609.3, 608.2d; Egon, God of Death ruling 2021-02-05): "exile two cards from your graveyard. If you can't, ..." with one card in the graveyard exiles nothing and
       // counts as "can't"; the choose-and-exile reading of eff.edhv96.exile.nCardsFromYourGraveyard exiles the one card, so "if you can't" never follows it
       const exilesChosenN = !isUnit(p) && p['op'] === 'move' && isRec(p['what']) && p['what']['ref'] === 'bound' && p['what']['name'] === 'exiledChoice';
-      if (exilesChosenN) { ok = false; return undefined; }
+      // edh-d-107 (CR 608.2d, 609.3; Egon, God of Death ruling 2021-02-05): ... unless the choice is all or none: "exile two cards from your graveyard. If you can't, ..." exiles nothing when
+      // fewer than two cards are there, and the move then reports that it did nothing. Only right after the choice of a fixed number (two or more) of your own graveyard's cards, by you
+      const holderOf = exilesChosenN ? seq.find((x) => x.steps.includes(p as Rec)) : undefined;
+      const choice = holderOf !== undefined ? holderOf.steps[holderOf.steps.indexOf(p as Rec) - 1] : undefined;
+      const allOrNone = node['$cant'] === true && choice !== undefined && choice['op'] === 'chooseObjects' && choice['as'] === 'exiledChoice' && typeof choice['min'] === 'number' && choice['min'] >= 2
+        && choice['min'] === choice['max'] && isRec(choice['who']) && choice['who']['ref'] === 'you' && choice['guard'] === undefined && isRec(choice['from']) && isRec(choice['from']['filter'])
+        && choice['from']['filter']['zone'] === 'graveyard' && choice['from']['filter']['owner'] === 'you';
+      if (exilesChosenN && !allOrNone) { ok = false; return undefined; }
+      if (allOrNone) choice!['allOrNone'] = true;
       // edh-d-28 (CR 701.9a, 608.2d; Urgoros, the Empty One): or a discard of exactly one card by one player ("That player discards a card at random. If the player can't, ..."): the discard
       // reports nothing done when the hand was empty (effects/handlers/cards-draw.ts#discardHandler); a group of players, or several cards, is no reading of "can't" (which of them?)
       // edh-next-98 (CR 118.3, 107.14, 608.2d; Greenbelt Rampager): or a bare "Pay {E}{E}." (template ch.pay, not "you may pay"): an instruction, so it is made whenever it can be (`mandatory`,
@@ -954,6 +969,11 @@ function resolveVotes(d: Draft, seq: Unit[], at: number, prefix: Unit[]): void {
         const forPlayers = isRec(subject) && subject['who'] !== undefined;
         if (choices !== null || !isRec(subject) || (forPlayers ? of !== 'you' && of !== 'iterating' : of !== 'bound')) { ok = false; return undefined; }
         return { q: 'votesFor', step: name(), of: node['of'] };
+      }
+      // edhe35 (CR 701.38a-b, 702.16a; Council Guardian): "protection from each color with the most votes or tied for most votes": the vote is for the five color words only
+      if (node['step'] === '' && Object.keys(node).length === 2) {
+        if (choices === null || choices.length === 0 || !choices.every((c) => ['white', 'blue', 'black', 'red', 'green'].includes(c))) { ok = false; return undefined; }
+        return { step: name() };
       }
       if (node['ref'] === 'bound') {
         const subject = vote['subject'];
@@ -1476,7 +1496,10 @@ function lowerReflexive(d: Draft, u: Unit, all: readonly Unit[]): string | null 
     // edh-d-94 (CR 603.12, 701.20a; Yuna's Whistle): a template that reads the instruction and its reflexive trigger together names the step itself ("When you reveal a creature card this way":
     // `when: {did: <the move of the card found>}`, with an optional `if`); only a step of this unit, before the trigger
     const own = isRec(when) && typeof when['did'] === 'string' && Object.keys(when).every((x) => x === 'did' || x === 'if') && (when['if'] === undefined || isRec(when['if']))
-      && u.steps.slice(0, k).some((x) => x['as'] === when['did']) ? when : null;
+      && (u.steps.slice(0, k).some((x) => x['as'] === when['did'])
+        // edh-e-10 (CR 603.12, 701.20a; Calibrated Blast, eff.edhe10.whenRevealNonlandThisWay.damageMv): the step may be a `revealUntil` of an earlier sentence of the same ability (it names the
+        // card(s) it stopped at); only a reveal until of a unit before this one (`all` lists the sequences of the whole face, so it may also be an earlier ability's: fail closed, the render fold only accepts the adjacent reveal, move and reflexive of one ability and the engine finds no result of another ability)
+        || all.slice(0, Math.max(0, all.indexOf(u))).some((o) => o.steps.some((x) => x['op'] === 'revealUntil' && x['as'] === when['did']))) ? when : null;
     if (!flip && own === null && excess === null && moved === null && becomes === null && (!isRec(when) || when['cond'] !== 'did' || typeof when['step'] !== 'string' || when['step'] === '' || when['not'] === true || Object.keys(when).length !== 2)) {
       return 'a reflexive trigger that does not wait for "you do" (CR 603.12)';
     }

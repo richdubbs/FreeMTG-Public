@@ -100,6 +100,8 @@ const W_BLOCKED_BY = P('blocked by'); // p2-combat-flow-1
 const W_SELF_BLOCKING = [P('~ is blocking'), P('that ~ is blocking')]; // edh-c-34 (Wall of Corpses): "target creature this creature is blocking", the object itself
 const W_IT_BLOCKING = [P("it's blocking"), P("that it's blocking"), P('it is blocking'), P('that it is blocking')]; // edh-top-3
 const W_BLOCKING_OR_BLOCKED_BY = [P('blocking or blocked by'), P('blocking or being blocked by')]; // p2-combat-flow-1
+// edh-e-20 (CR 509.1g-h, 506.4): the block pairs of this turn (ObjectFilter.blockedWithThisTurn)
+const W_BLOCKED = P('blocked'); const W_BLOCKED_OR_WAS_BLOCKED_BY = [P('blocked or was blocked by'), P('blocked or were blocked by')]; const W_THIS_TURN = P('this turn'); const W_THIS_COMBAT = P('this combat');
 const W_THATS_ATTACKING_OR_BLOCKING = [P("that's attacking or blocking"), P('that is attacking or blocking'), P('that are attacking or blocking')]; // edh-c-69
 const W_ATTACKING_ALONE = [P("that's attacking alone"), P('that is attacking alone')]; // CLOUD std-msh (CR 506.5)
 // p2-combat-flow-1 (CR 506.3, 508.1b): "target creature without flying that's attacking you" (Hunting Kavu): attacking you, the player (never a planeswalker you control)
@@ -551,6 +553,7 @@ const W_NOT_NAMED = P('not named'); // edh-zones-13
 const W_THAT = P('that');
 const W_BARE_DEALT_DAMAGE = P('dealt damage this turn'); // edh-c-61
 const W_YOU_CONTROLLED_ATTACHED = P('you controlled that was attached to'); // edh-perms-20
+const W_THAT_WERE_ATTACHED_TO = P('that were attached to'); // edhe33
 const W_NOT_LEGENDARY = P('not legendary'); // edh-zones-3
 const W_LEGENDARY_WORD = P('legendary'); // edh-next-116
 const W_NOT_HISTORIC = P('not historic'); // edh-zones-3
@@ -646,6 +649,7 @@ const W_BASE_POWER_OR_TOUGHNESS = P('base power or toughness'); // edh-perms-11
 const W_BASE_POWER = P('base power'); // edh-next-23
 const W_BASE_POWER_AND_TOUGHNESS = P('base power and toughness'); // edh-next-19
 const W_MV_POWER_OR_TOUGHNESS = P('mana value , power , or toughness'); // std-rx5
+const W_POWER_TOUGHNESS_OR_MV = P('power , toughness , or mana value'); // edh-d-106
 const W_LESSER_MANA_VALUE = P('lesser mana value');
 const W_LESSER_POWER = P('lesser power'); // edh-c-86
 const W_LESSER_TOUGHNESS = P('lesser toughness'); // edh-next-86 (Colfenor, the Last Yew)
@@ -759,6 +763,16 @@ function featureAtAll(ctx: HoleCtx, pos: number, negate: boolean): { end: number
       if (JSON.stringify(n.filter).includes('"text":"their"')) continue; // edh-next-32: "a card in their graveyard" is the object's own ObjectFilter.nameInGraveyard (below), not a set whose owner is a pronoun
       out.push({ end: n.end, frag: { sharesWith: { with: { ref: 'each', filter: n.filter }, quality: 'name' } }, ...(n.weak ? { weak: n.weak } : {}) });
     }
+    // edh-e-42 (CR 201.2; Pattern Matcher): "a card with the same name as another creature you control": the name of any one OTHER object of that description (the source is never its own match)
+  }
+  // (review fix: "another" is "other than the source" here, so only where the tested object is a card in a library, hand or graveyard and can never be a member of the battlefield set)
+  if (same >= 0 && sameT === 'another' && ctx.toks.some((t) => t.norm === 'search' || t.norm === 'library')) {
+    for (const n of npAlts(ctx, same + 1)) {
+      if (n.number !== 'singular' || n.flags.some((x) => x !== 'zone-unstated') || n.filter.zone !== undefined && n.filter.zone !== 'battlefield') continue;
+      out.push({ end: n.end, frag: { sharesWith: { with: { ref: 'each', filter: { ...n.filter, other: true } }, quality: 'name' } }, ...(n.weak ? { weak: n.weak } : {}) });
+    }
+  }
+  if (same >= 0 && (sameT === 'a' || sameT === 'an')) {
     // edh-next-112 (CR 607.2a, 201.2; Circu, Dimir Lobotomist): and "a card exiled with ~", the cards the source's linked exile holds (the flag the target phrase reading marks, asked for here)
     for (const n of npAlts(ctx, same + 1, { differentNames: true })) {
       if (n.number !== 'singular' || !n.flags.includes('linked-exiled-target') || n.flags.some((x) => x !== 'zone-unstated' && x !== 'linked-exiled-target')) continue;
@@ -948,6 +962,9 @@ function featureAtAll(ctx: HoleCtx, pos: number, negate: boolean): { end: number
   // std-rx5 (CR 202.3, 208.1): "with mana value, power, or toughness equal to the chosen number" (Talion, the Kindly Lord): any of the three meets the one comparison
   const mpt = negate ? -1 : phraseAt(ctx, pos, W_MV_POWER_OR_TOUGHNESS);
   if (mpt >= 0) for (const c of cmpAt(ctx, mpt)) out.push({ end: c.end, frag: { anyOf: [{ manaValue: c.cmp }, { power: c.cmp }, { toughness: c.cmp }] } });
+  // edh-d-106 (CR 202.3, 208.1; The Fantastic Four): the same three statistics in the order "with power, toughness, or mana value 4" (kept in that order: render/np.ts says it back so)
+  const ptm = negate ? -1 : phraseAt(ctx, pos, W_POWER_TOUGHNESS_OR_MV);
+  if (ptm >= 0) for (const c of cmpAt(ctx, ptm)) out.push({ end: c.end, frag: { anyOf: [{ power: c.cmp }, { toughness: c.cmp }, { manaValue: c.cmp }] } });
   // FAST5 T45 (CR 115.9a): "a spell with a single target" (the number of times anything was chosen as a target); only "with", never "without"
   const st1 = negate ? -1 : phraseAt(ctx, pos, P('a single target'));
   if (st1 >= 0) out.push({ end: st1, frag: { targetCount: { op: '==', value: 1 } } });
@@ -1036,7 +1053,7 @@ function featureAtAll(ctx: HoleCtx, pos: number, negate: boolean): { end: number
       let p = at;
       for (;;) {
         let cost = '';
-        while (ctx.toks[p]?.kind === 'MANA' && ctx.toks[p]!.norm !== '{e}') cost += ctx.toks[p++]!.norm.toUpperCase();
+        while (ctx.toks[p]?.kind === 'MANA' && ctx.toks[p]!.norm !== '{e}' && ctx.toks[p]!.norm !== '{tk}') cost += ctx.toks[p++]!.norm.toUpperCase();
         if (cost === '' || costs.includes(cost)) break;
         costs.push(cost);
         if (phraseAt(ctx, p, P('or')) >= 0) p++;
@@ -1115,6 +1132,7 @@ const REL: [string[], ObjectFilter][] = [
   // edh-next-8 (CR 301.5; Hexgold Hoverwings, Long-Lost Lances): "creatures you control that are equipped", an Equipment is attached to each (the adjective "equipped creatures you control" says the same)
   [P('are equipped'), { equipped: true }],
   [P('is enchanted'), { enchanted: true }], // edh-c-55 (CR 303.4b; Necromancer's Magemark): "a creature you control that is enchanted" (the plural "that are enchanted" is edh-c-20's)
+  [P('entered since your last turn ended'), { enteredSinceYourLastTurn: true }], // edh-e-27 (CR 500.1; Premature Burial)
   [P('entered the battlefield this turn'), { enteredThisTurn: true }], [P('entered this turn'), { enteredThisTurn: true }],
   // edh-b-4 (CR 400.7; Let the Galaxy Burn): "each creature that didn't enter this turn": no entry onto the battlefield this turn (render/np.ts says it for `enteredThisTurn: false`)
   [P("didn't enter the battlefield this turn"), { enteredThisTurn: false }], [P("didn't enter this turn"), { enteredThisTurn: false }],
@@ -1428,6 +1446,21 @@ function relClause(ctx: HoleCtx, pos: number): Frag[] {
   out.push(...areColors(ctx, pos)); // edh-c-27
   out.push(...areOrNamed(ctx, pos)); // r5-mech
   for (const [ws, f] of REL) { const e = phraseAt(ctx, pos, ws); if (e >= 0) out.push({ end: e, frag: f }); }
+  // edh-e-20 (CR 509.1g-h, 506.4; Joven's Ferrets, You Cannot Pass!, Venomous Breath): "creatures that blocked ~ this turn", "that blocked or were blocked by a legendary creature this turn"
+  const bpair = (role: 'blocker' | 'either', e0: number): void => {
+    if (e0 >= 0) for (const o of ctx.call('Obj', e0)) { const tc = phraseAt(ctx, o.end, W_THIS_COMBAT); const t = phraseAt(ctx, o.end, W_THIS_TURN); if (t >= 0 || tc >= 0) out.push({ end: t >= 0 ? t : tc, frag: { blockedWithThisTurn: { role, with: o.value as ObjRef, ...(t < 0 ? { combat: true as const } : {}) } }, ...(o.flags ? { flags: o.flags } : {}) }); }
+  };
+  for (const ws of W_BLOCKED_OR_WAS_BLOCKED_BY) bpair('either', phraseAt(ctx, pos, ws));
+  // You Cannot Pass!: "blocked or was blocked by a legendary creature this turn": some one creature of a described kind (as "shares a color with a legendary creature")
+  for (const ws of W_BLOCKED_OR_WAS_BLOCKED_BY) {
+    const e = phraseAt(ctx, pos, ws), at = e >= 0 ? ctx.toks[e]?.norm : undefined;
+    if (e >= 0 && (at === 'a' || at === 'an')) for (const n of npAlts(ctx, e + 1)) {
+      if (n.number !== 'singular' || n.flags.some((x) => x !== 'zone-unstated')) continue;
+      const t = phraseAt(ctx, n.end, W_THIS_TURN);
+      if (t >= 0) out.push({ end: t, frag: { blockedWithThisTurn: { role: 'either', with: { ref: 'each', filter: n.filter } } } });
+    }
+  }
+  bpair('blocker', phraseAt(ctx, pos, W_BLOCKED));
   // std-rx12 (CR 122.6, 400.7): "each creature you control that you've put one or more +1/+1 counters on this turn" (Kid Loki): counters of that kind you put on it
   // this turn (the history's `by`, as CLOUD std-msh's "you've put one or more +1/+1 counters on ~ this turn")
   const putOn = phraseAt(ctx, pos, W_YOUVE_PUT_ONE_OR_MORE);
@@ -1578,6 +1611,23 @@ function controlForms(ctx: HoleCtx, pos: number): Frag[] {
       if (e >= 0) out.push({ end: e, frag: { controllerDealtCombatDamageBy: { atLeast, by } } });
     }
   }
+  // edh-e-50 (CR 302.6, 400.7; Nettling Imp, Norritt): "non-Wall creature the active player has controlled continuously since the beginning of the turn": controlled by that player, and
+  // by them since before this turn began (`controlledSinceTurnStart`, rules/filter.ts). Only "has/have controlled" with a player phrase and the turn's own beginning
+  for (const p of ctx.call('Player', pos)) {
+    for (const w of W_CONTROLLED_SINCE_TURN_START) {
+      const e = phraseAt(ctx, p.end, w);
+      if (e >= 0) out.push({ end: e, frag: { controller: predOf(p.value as PlayerRef), controlledSinceTurnStart: true } });
+    }
+  }
+  // edhe33 (CR 109.4; Seasinger): "whose controller controls an Island": the controller controls a permanent of a plain description (types, subtypes, colors)
+  const wcc = phraseAt(ctx, pos, W_WHOSE_CONTROLLER_CONTROLS);
+  if (wcc >= 0) {
+    const art = ctx.toks[wcc]?.norm === 'a' || ctx.toks[wcc]?.norm === 'an' ? wcc + 1 : -1;
+    if (art >= 0) for (const g of ctx.call('Filter', art)) {
+      const of = g.value as ObjectFilter;
+      if (Object.keys(of).length > 0 && Object.keys(of).every((k) => k === 'types' || k === 'subtypes' || k === 'colors' || k === 'supertypes')) out.push({ end: g.end, frag: { controllerControls: of } });
+    }
+  }
   // edh-c-73 (CR 108.3, 109.4; Telim'Tor's Edict): "target permanent you own or control": owned by you, or controlled by you (either one)
   const ooc = phraseAt(ctx, pos, W_YOU_OWN_OR_CONTROL);
   if (ooc >= 0) out.push({ end: ooc, frag: { anyOf: [{ owner: 'you' }, { controller: 'you' }] } });
@@ -1593,10 +1643,12 @@ function controlForms(ctx: HoleCtx, pos: number): Frag[] {
   return out;
 }
 const W_YOU_BOTH_OWN_AND_CONTROL_F = P('you both own and control'); // edh-c-69
+const W_CONTROLLED_SINCE_TURN_START = [P('has controlled continuously since the beginning of the turn'), P('have controlled continuously since the beginning of the turn')]; // edh-e-50
 const W_BUT_DONT_OWN = P("but don't own");
 const W_OWNED_BY = P('owned by'); // edh-b-10
 const W_CONTROLLED_BY_PLAYER_DEALT_COMBAT_BY = P('controlled by a player who was dealt combat damage by'); // edh-next-134
 const W_THIS_TURN_F134 = P('this turn'); // edh-next-134
+const W_WHOSE_CONTROLLER_CONTROLS = P('whose controller controls'); // edhe33
 const W_THAT_PLAYER_OR_PLANESWALKERS_CONTROLLER = P("that player or that planeswalker 's controller controls"); // p2-damage-3
 const W_YOU_OWN_BUT_DONT_CONTROL = P("you own but don't control");
 const W_YOU_OWN_OR_CONTROL = P('you own or control'); // edh-c-73
@@ -1656,6 +1708,23 @@ function abilitySourceForms(ctx: HoleCtx, pos: number): Frag[] {
       const a = ctx.vocab.types.get(word.norm);
       const b = ctx.toks[pos + 4]?.kind === 'WORD' ? ctx.vocab.types.get(ctx.toks[pos + 4]!.norm) : undefined;
       if (a !== undefined && b !== undefined && !a.plural && !b.plural && a.name !== b.name) out.push({ end: pos + 6, frag: { abilitySource: { types: [a.name, b.name] } } });
+    }
+  }
+  // edh-e-14 (CR 113.7a, 205.2; Interdict): "from an artifact, creature, enchantment, or land": a source of any of three or four card types, the list in Oracle's order with no "source"
+  // after it (the bare singular card types only; a list with "source" or with other words is not read)
+  if (word !== undefined && word.kind === 'WORD' && ctx.toks[pos + 3]?.norm === ',') {
+    const kinds: string[] = [];
+    let q = pos + 2;
+    for (;;) {
+      const w = ctx.toks[q];
+      const ty = w !== undefined && w.kind === 'WORD' ? ctx.vocab.types.get(w.norm) : undefined;
+      if (ty === undefined || ty.plural || kinds.includes(ty.name)) break;
+      kinds.push(ty.name);
+      const sep = ctx.toks[q + 1]?.norm;
+      if (sep === ',' && ctx.toks[q + 2]?.norm === 'or') { q += 3; continue; }
+      if (sep === ',') { q += 2; continue; }
+      if (kinds.length >= 3) out.push({ end: q + 1, frag: { abilitySource: { types: [...kinds], zone: 'battlefield' } } }); // no "source" in the words: a permanent of the types (CR 109.2), as it last existed on the battlefield
+      break;
     }
   }
   if (word === undefined || word.kind !== 'WORD' || ctx.toks[pos + 3]?.norm !== 'source') return out;
@@ -1780,6 +1849,10 @@ function postModAtAll(ctx: HoleCtx, pos: number): Frag[] {
   // known information, LastKnown.attached.ids) and that its controller then, you, controlled; it may have gone to a graveyard since, so it is looked for in every zone
   const yca = phraseAt(ctx, pos, W_YOU_CONTROLLED_ATTACHED);
   if (yca >= 0 && ctx.toks[yca]?.norm === 'it') out.push({ end: yca + 1, frag: { controller: 'you', zone: 'any', wasAttachedTo: anaphorObj({ sort: 'object', number: 'singular', text: 'it' }) as ObjRef } });
+  // edhe33 (CR 603.10a, 608.2h, 303.4, 301.5; Murderous Spoils): "all Equipment that were attached to it": the permanents that were attached to the object as it left the battlefield (their
+  // last known information, wasAttachedTo), whoever controlled them; the plural participle only (a card says "that was attached to it" of one)
+  const wat = phraseAt(ctx, pos, W_THAT_WERE_ATTACHED_TO);
+  if (wat >= 0 && ctx.toks[wat]?.norm === 'it') out.push({ end: wat + 1, frag: { zone: 'any', wasAttachedTo: anaphorObj({ sort: 'object', number: 'singular', text: 'it' }) as ObjRef } });
   // CLOUD std-ecl (CR 205.3m, 115.1): "two target creature cards that share a creature type from your graveyard": like "with different names", a property of the SET
   // chosen, so it adds nothing to the filter and leaves the flag `shared-creature-type` that only a target phrase of exactly two takes (parser/holes/object.ts)
   // edh-d-59 (CR 205.3m, 115.1, 601.2c; Aphetto Dredging): "up to three target creature cards of the creature type of your choice from your graveyard": one creature type is chosen and every target
@@ -1834,6 +1907,11 @@ function postModAtAll(ctx: HoleCtx, pos: number): Frag[] {
   // edh-c-55 (CR 303.4b; Necromancer's Magemark): "a creature you control that's enchanted" (not the start of "enchanted or equipped")
   if (ths >= 0) { const en = phraseAt(ctx, ths, P('enchanted')); if (en >= 0 && ctx.toks[en]?.norm !== 'or') out.push({ end: en, frag: { enchanted: true } }); }
   // CLOUD std-msh (CR 506.5): "target creature you control that's attacking alone" (Crowd of True Believers): attacking, and no other creature is
+  // edh-e-17 (CR 601.2i; Second Guess): "a spell that's the second spell cast this turn": the Nth spell cast by all players this turn (StackInfo.castOrdinal.all)
+  for (const [w, n] of [['first', 1], ['second', 2], ['third', 3]] as const) {
+    const e = phraseAt(ctx, pos, P(`that's the ${w} spell cast this turn`)); if (e >= 0) out.push({ end: e, frag: { castNthThisTurn: n } });
+    const e2 = phraseAt(ctx, pos, P(`that is the ${w} spell cast this turn`)); if (e2 >= 0) out.push({ end: e2, frag: { castNthThisTurn: n } });
+  }
   for (const ws of W_ATTACKING_ALONE) { const e = phraseAt(ctx, pos, ws); if (e >= 0) out.push({ end: e, frag: { attackingAlone: true } }); }
   // edh-c-69 (CR 506.4, 509.1; Gideon's Defeat): "target white creature that's attacking or blocking": the same filter as "attacking or blocking white creature"
   for (const ws of W_THATS_ATTACKING_OR_BLOCKING) { const e = phraseAt(ctx, pos, ws); if (e >= 0) out.push({ end: e, frag: { anyOf: [{ attacking: true }, { blocking: true }] } }); }
@@ -1911,6 +1989,11 @@ function postModAtAll(ctx: HoleCtx, pos: number): Frag[] {
   // edh-perms-2 (CR 301.5, 303.4; Sage's Reverie): also said with the relative pronoun, "each Aura you control that's attached to a creature"
   const att = anyPhraseAt(ctx, pos, [W_ATTACHED_TO, ...W_THATS_ATTACHED_TO]);
   if (att >= 0) for (const o of ctx.call('Obj', att)) if (isAttachHost(o.value)) out.push({ end: o.end, frag: { attachedToObject: o.value }, ...(o.flags ? { flags: o.flags } : {}) });
+  // edh-e-53 (CR 303.4, 301.5, 608.2c; Silence the Believers): "all Auras attached to them": attached to any of the objects a plural pronoun names (the targets of the
+  // sentence's earlier plural target phrase; `attachedToObject` reads every host of the reference, rules/filter.ts)
+  // The pronoun is also the players of the Curse reading below (Curse of Thirst): the noun before it decides, a Curse names the players, any other noun the objects (an Aura or Equipment).
+  const nounIsCurse = ctx.toks[pos - 1]?.norm === 'curses' || ctx.toks[pos - 1]?.norm === 'curse';
+  if (att >= 0 && !nounIsCurse && ctx.toks[att]?.norm === 'them') out.push({ end: att + 1, frag: { attachedToObject: anaphorObj({ sort: 'object', number: 'plural', text: 'them' }) as ObjRef } });
   // edh-d-24 (CR 303.4a, 702.5a, 702.5d; Sovereigns of Lost Alara, Auratouched Mage): "an Aura card that could enchant that creature": the Aura's enchant restriction accepts that one permanent
   // as the filter is read (`couldEnchant`, rules/filter.ts; no Aura with an enchant restriction the engine does not understand matches)
   for (const ws of W_COULD_ENCHANT) {
@@ -1938,10 +2021,12 @@ function postModAtAll(ctx: HoleCtx, pos: number): Frag[] {
     const e = phraseAt(ctx, pos, ws);
     if (e >= 0) for (const o of ctx.call('Obj', e)) if (isAttachHost(o.value)) out.push({ end: o.end, frag: { blockingOrBlockedBy: o.value }, ...(o.flags ? { flags: o.flags } : {}) });
   }
+  // edh-e-20 (CR 509.1g-h, 506.4; Defiant Vanguard): "all creatures it blocked this turn" (the `that` forms are relClause's)
+  for (const o of ctx.call('Obj', pos)) { const e1 = phraseAt(ctx, o.end, W_BLOCKED); const t = e1 >= 0 ? phraseAt(ctx, e1, W_THIS_TURN) : -1; const tc = e1 >= 0 ? phraseAt(ctx, e1, W_THIS_COMBAT) : -1; if (t >= 0 || tc >= 0) out.push({ end: t >= 0 ? t : tc, frag: { blockedWithThisTurn: { role: 'blocked', with: o.value as ObjRef, ...(t < 0 ? { combat: true as const } : {}) } }, ...(o.flags ? { flags: o.flags } : {}) }); }
   // p2-damage-2 (CR 303.4, 702.5d): "the number of Curses attached to them" (Curse of Thirst): attached to a player (an Aura with enchant player), as the filter is read
   // (the Player hole has no "them": here it is a player's pronoun, as "they" is, and an object "them" is a group, never one host above)
-  if (att >= 0) for (const p of ctx.call('Player', att)) if (p.value !== null && typeof p.value === 'object') out.push({ end: p.end, frag: { attachedToPlayer: p.value as PlayerRef }, ...(p.flags ? { flags: p.flags } : {}) });
-  if (att >= 0 && ctx.toks[att]?.norm === 'them') out.push({ end: att + 1, frag: { attachedToPlayer: anaphorObj({ sort: 'player', number: 'singular', head: 'player', text: 'them' }) as PlayerRef } });
+  if (att >= 0) for (const p of ctx.call('Player', att)) if ((nounIsCurse || ctx.toks[att]?.norm !== 'them') && p.value !== null && typeof p.value === 'object') out.push({ end: p.end, frag: { attachedToPlayer: p.value as PlayerRef }, ...(p.flags ? { flags: p.flags } : {}) });
+  if (att >= 0 && nounIsCurse && ctx.toks[att]?.norm === 'them') out.push({ end: att + 1, frag: { attachedToPlayer: anaphorObj({ sort: 'player', number: 'singular', head: 'player', text: 'them' }) as PlayerRef } });
   // std-ry5 (CR 303.4, 301.5): "target Aura attached to a creature [you control]", "an Aura attached to a land": attached to any one permanent of a plain
   // description (a card type and at most its controller), as the filter is read (`attachedToObject` naming every such permanent, rules/filter.ts)
   const article = att >= 0 ? ctx.toks[att]?.norm : undefined;

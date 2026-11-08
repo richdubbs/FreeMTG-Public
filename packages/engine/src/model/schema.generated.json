@@ -288,6 +288,10 @@
         "perCardType": {
           "type": "boolean"
         },
+        "perQuality": {
+          "type": "string",
+          "const": "color"
+        },
         "onlyIf": {
           "$ref": "#/definitions/Condition"
         },
@@ -562,6 +566,9 @@
           "type": "boolean",
           "const": true
         },
+        "castNthThisTurn": {
+          "type": "number"
+        },
         "attacking": {
           "anyOf": [
             {
@@ -681,6 +688,9 @@
         "couldEnchant": {
           "$ref": "#/definitions/ObjRef"
         },
+        "auraMovesTo": {
+          "$ref": "#/definitions/ObjRef"
+        },
         "attachedToPlayer": {
           "$ref": "#/definitions/PlayerPred"
         },
@@ -728,6 +738,10 @@
         "enteredThisTurn": {
           "type": "boolean"
         },
+        "enteredSinceYourLastTurn": {
+          "type": "boolean",
+          "const": true
+        },
         "countersPutThisTurn": {
           "type": "object",
           "properties": {
@@ -765,6 +779,14 @@
           "const": true
         },
         "dealtExcessDamageThisTurn": {
+          "type": "boolean",
+          "const": true
+        },
+        "dealtNoncombatDamageThisTurn": {
+          "type": "boolean",
+          "const": true
+        },
+        "controlledSinceTurnStart": {
           "type": "boolean",
           "const": true
         },
@@ -841,6 +863,9 @@
           ],
           "additionalProperties": false
         },
+        "controllerControls": {
+          "$ref": "#/definitions/ObjectFilter"
+        },
         "attackedThisTurn": {
           "type": "boolean"
         },
@@ -849,6 +874,31 @@
         },
         "wasBlockedThisTurn": {
           "type": "boolean"
+        },
+        "blockedWithThisTurn": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": [
+                "blocker",
+                "blocked",
+                "either"
+              ]
+            },
+            "with": {
+              "$ref": "#/definitions/ObjRef"
+            },
+            "combat": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": [
+            "role",
+            "with"
+          ],
+          "additionalProperties": false
         },
         "sharesWith": {
           "type": "object",
@@ -1753,6 +1803,60 @@
           "required": [
             "ref",
             "who"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string",
+              "const": "extremePlayer"
+            },
+            "stat": {
+              "type": "string",
+              "enum": [
+                "life",
+                "hand"
+              ]
+            },
+            "fewest": {
+              "type": "boolean",
+              "const": true
+            },
+            "tied": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": [
+            "ref",
+            "stat"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string",
+              "const": "coinSide"
+            },
+            "step": {
+              "$ref": "#/definitions/Name"
+            },
+            "side": {
+              "type": "string",
+              "enum": [
+                "heads",
+                "tails"
+              ]
+            }
+          },
+          "required": [
+            "ref",
+            "step",
+            "side"
           ],
           "additionalProperties": false
         }
@@ -3667,6 +3771,19 @@
           "properties": {
             "q": {
               "type": "string",
+              "const": "graveyardUsesThisTurn"
+            }
+          },
+          "required": [
+            "q"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "q": {
+              "type": "string",
               "const": "attacksThisTurn"
             },
             "of": {
@@ -4190,7 +4307,8 @@
                 "exhaust",
                 "loyalty",
                 "ninjutsu",
-                "boast"
+                "boast",
+                "outlast"
               ]
             },
             "activated": {
@@ -4264,6 +4382,13 @@
             "withOther": {
               "$ref": "#/definitions/ObjectFilter"
             },
+            "withOtherAtLeast": {
+              "type": "number"
+            },
+            "withOtherDifferentPlayer": {
+              "type": "boolean",
+              "const": true
+            },
             "otherThanAttacker": {
               "type": "boolean",
               "const": true
@@ -4286,6 +4411,9 @@
             },
             "attacker": {
               "$ref": "#/definitions/ObjectFilter"
+            },
+            "attackerAtLeast": {
+              "type": "number"
             }
           },
           "required": [
@@ -4379,6 +4507,14 @@
               "const": true
             },
             "toOtherThanSourceController": {
+              "type": "boolean",
+              "const": true
+            },
+            "toSourceOwner": {
+              "type": "boolean",
+              "const": true
+            },
+            "toDefendingPlayer": {
               "type": "boolean",
               "const": true
             }
@@ -4809,6 +4945,10 @@
             "n": {
               "type": "number"
             },
+            "single": {
+              "type": "boolean",
+              "const": true
+            },
             "from": {
               "$ref": "#/definitions/ZoneName"
             },
@@ -4885,6 +5025,13 @@
             },
             "natural": {
               "type": "number"
+            },
+            "nth": {
+              "type": "number"
+            },
+            "visit": {
+              "type": "boolean",
+              "const": true
             }
           },
           "required": [
@@ -5222,6 +5369,7 @@
         "recruit",
         "assimilate",
         "doubleEachKind",
+        "addOrRemoveEachKind",
         "anotherOfEachKind"
       ]
     },
@@ -5323,6 +5471,35 @@
           "required": [
             "cond",
             "of"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "cond": {
+              "type": "string",
+              "const": "graveyardPos"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "only",
+                "directlyAbove",
+                "above"
+              ]
+            },
+            "filter": {
+              "$ref": "#/definitions/ObjectFilter"
+            },
+            "atLeast": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "cond",
+            "mode",
+            "filter"
           ],
           "additionalProperties": false
         },
@@ -5502,6 +5679,9 @@
             "kept": {
               "type": "boolean",
               "const": true
+            },
+            "nth": {
+              "type": "number"
             }
           },
           "required": [
@@ -5914,12 +6094,32 @@
                 "you",
                 "opponent"
               ]
+            },
+            "among": {
+              "$ref": "#/definitions/PlayerRef"
             }
           },
           "required": [
             "cond",
             "who",
             "is"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "cond": {
+              "type": "string",
+              "const": "hasPlayer"
+            },
+            "who": {
+              "$ref": "#/definitions/PlayerRef"
+            }
+          },
+          "required": [
+            "cond",
+            "who"
           ],
           "additionalProperties": false
         },
@@ -6190,6 +6390,7 @@
         "combat",
         "game",
         "lastTurn",
+        "yourLastTurn",
         "sinceYourLastTurn"
       ]
     },
@@ -6549,6 +6750,18 @@
             "faceUp": {
               "type": "boolean",
               "const": true
+            },
+            "top": {
+              "type": "boolean",
+              "const": true
+            },
+            "anyGraveyard": {
+              "type": "boolean",
+              "const": true
+            },
+            "singleGraveyard": {
+              "type": "boolean",
+              "const": true
             }
           },
           "required": [
@@ -6664,6 +6877,10 @@
             "all": {
               "type": "boolean",
               "const": true
+            },
+            "oneOrMore": {
+              "type": "boolean",
+              "const": true
             }
           },
           "required": [
@@ -6769,7 +6986,8 @@
               "type": "string",
               "enum": [
                 "exile",
-                "hand"
+                "hand",
+                "graveyard"
               ]
             },
             "filter": {
@@ -6782,7 +7000,8 @@
               "type": "string",
               "enum": [
                 "graveyard",
-                "libraryTop"
+                "libraryTop",
+                "libraryBottom"
               ]
             }
           },
@@ -7032,6 +7251,23 @@
           "properties": {
             "kind": {
               "type": "string",
+              "const": "eachOtherGainsLife"
+            },
+            "amount": {
+              "$ref": "#/definitions/Quantity"
+            }
+          },
+          "required": [
+            "kind",
+            "amount"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
               "const": "exileTop"
             },
             "count": {
@@ -7238,6 +7474,9 @@
             },
             "times": {
               "$ref": "#/definitions/Quantity"
+            },
+            "manaCostOf": {
+              "$ref": "#/definitions/ObjRef"
             },
             "cumulativeUpkeep": {
               "type": "boolean",
@@ -7526,6 +7765,10 @@
               "type": "boolean",
               "const": true
             },
+            "allOrNone": {
+              "type": "boolean",
+              "const": true
+            },
             "guard": {
               "$ref": "#/definitions/Condition"
             },
@@ -7577,6 +7820,9 @@
             "link": {
               "$ref": "#/definitions/LinkId"
             },
+            "among": {
+              "$ref": "#/definitions/PlayerRef"
+            },
             "random": {
               "type": "boolean",
               "const": true
@@ -7600,11 +7846,7 @@
               }
             },
             "cardKind": {
-              "type": "string",
-              "enum": [
-                "land",
-                "nonland"
-              ]
+              "$ref": "#/definitions/CardNameKind"
             },
             "secret": {
               "type": "boolean",
@@ -8011,6 +8253,10 @@
             "count": {
               "$ref": "#/definitions/Quantity"
             },
+            "fateseal": {
+              "type": "boolean",
+              "const": true
+            },
             "as": {
               "$ref": "#/definitions/Name"
             },
@@ -8369,6 +8615,13 @@
               "type": "boolean",
               "const": true
             },
+            "reorderGraveyard": {
+              "type": "string",
+              "enum": [
+                "random",
+                "chosen"
+              ]
+            },
             "as": {
               "$ref": "#/definitions/Name"
             },
@@ -8478,6 +8731,9 @@
                 "what"
               ],
               "additionalProperties": false
+            },
+            "by": {
+              "$ref": "#/definitions/PlayerRef"
             },
             "as": {
               "$ref": "#/definitions/Name"
@@ -8791,6 +9047,10 @@
             "op": {
               "type": "string",
               "const": "copy"
+            },
+            "also": {
+              "type": "boolean",
+              "const": true
             },
             "attachTo": {
               "$ref": "#/definitions/ObjRef"
@@ -9532,7 +9792,8 @@
                 "lifePower",
                 "power",
                 "handLibrary",
-                "handGraveyard"
+                "handGraveyard",
+                "graveyardLibrary"
               ]
             },
             "duration": {
@@ -9752,6 +10013,9 @@
             "upTo": {
               "type": "boolean",
               "const": true
+            },
+            "maxTotal": {
+              "type": "number"
             },
             "kindOfChoice": {
               "$ref": "#/definitions/LinkId"
@@ -10035,6 +10299,10 @@
             },
             "duration": {
               "$ref": "#/definitions/Duration"
+            },
+            "divided": {
+              "type": "boolean",
+              "const": true
             },
             "as": {
               "$ref": "#/definitions/Name"
@@ -10525,7 +10793,10 @@
             },
             "sticker": {
               "type": "string",
-              "const": "name"
+              "enum": [
+                "name",
+                "any"
+              ]
             },
             "as": {
               "$ref": "#/definitions/Name"
@@ -10749,6 +11020,10 @@
             },
             "sides": {
               "type": "number"
+            },
+            "visit": {
+              "type": "boolean",
+              "const": true
             },
             "count": {
               "$ref": "#/definitions/Quantity"
@@ -11225,6 +11500,14 @@
               "type": "boolean",
               "const": true
             },
+            "tapped": {
+              "type": "boolean",
+              "const": true
+            },
+            "attacking": {
+              "type": "boolean",
+              "const": true
+            },
             "partner": {
               "$ref": "#/definitions/ObjectFilter"
             },
@@ -11277,6 +11560,10 @@
             },
             "chooser": {
               "$ref": "#/definitions/PlayerRef"
+            },
+            "top": {
+              "type": "boolean",
+              "const": true
             },
             "as": {
               "$ref": "#/definitions/Name"
@@ -11354,6 +11641,16 @@
         "bound"
       ],
       "additionalProperties": false
+    },
+    "CardNameKind": {
+      "type": "string",
+      "enum": [
+        "land",
+        "nonland",
+        "creature",
+        "artifact",
+        "nonartifactNonland"
+      ]
     },
     "Duration": {
       "anyOf": [
@@ -11483,6 +11780,9 @@
             },
             "whose": {
               "$ref": "#/definitions/PlayerPred"
+            },
+            "steps": {
+              "type": "number"
             }
           },
           "required": [
@@ -11523,7 +11823,8 @@
                 "tapped",
                 "counter",
                 "attached",
-                "kept"
+                "kept",
+                "enchanted"
               ]
             },
             "counter": {
@@ -11549,6 +11850,26 @@
             },
             "whose": {
               "$ref": "#/definitions/PlayerRef"
+            }
+          },
+          "required": [
+            "d",
+            "whose"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "d": {
+              "type": "string",
+              "const": "endOfCombatNextTurn"
+            },
+            "whose": {
+              "$ref": "#/definitions/PlayerRef"
+            },
+            "turn": {
+              "type": "number"
             }
           },
           "required": [
@@ -12315,6 +12636,15 @@
                 "$ref": "#/definitions/AbilityDef"
               }
             },
+            "protectionFromColorsAmong": {
+              "$ref": "#/definitions/ObjRef"
+            },
+            "removeAbilities": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/AbilityDef"
+              }
+            },
             "removeAll": {
               "type": "boolean"
             },
@@ -12389,6 +12719,18 @@
             },
             "protectionFromColorsOf": {
               "$ref": "#/definitions/ObjRef"
+            },
+            "protectionFromVotedColors": {
+              "type": "object",
+              "properties": {
+                "step": {
+                  "$ref": "#/definitions/Name"
+                }
+              },
+              "required": [
+                "step"
+              ],
+              "additionalProperties": false
             },
             "addChosen": {
               "$ref": "#/definitions/LinkId"
@@ -12627,6 +12969,10 @@
         "setFrom": {
           "$ref": "#/definitions/ObjRef"
         },
+        "setAll": {
+          "type": "boolean",
+          "const": true
+        },
         "removeAll": {
           "type": "string",
           "enum": [
@@ -12696,6 +13042,12 @@
         },
         "manaCost": {
           "$ref": "#/definitions/ManaCost"
+        },
+        "chosenColor": {
+          "$ref": "#/definitions/LinkId"
+        },
+        "chosenSubtype": {
+          "$ref": "#/definitions/LinkId"
         }
       },
       "additionalProperties": false
@@ -12996,6 +13348,23 @@
             },
             "of": {
               "$ref": "#/definitions/PlayerRef"
+            }
+          },
+          "required": [
+            "kind",
+            "of"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "manaCostOf"
+            },
+            "of": {
+              "$ref": "#/definitions/ObjRef"
             }
           },
           "required": [
@@ -13700,6 +14069,7 @@
         "castFromZone",
         "spendMana",
         "castAtInstantSpeed",
+        "phaseOut",
         "beTurnedFaceUp",
         "beSuspected",
         "becomeMonarch",
@@ -13751,6 +14121,10 @@
               "$ref": "#/definitions/Quantity"
             },
             "batch": {
+              "type": "boolean",
+              "const": true
+            },
+            "each": {
               "type": "boolean",
               "const": true
             }
@@ -14020,6 +14394,12 @@
               ],
               "additionalProperties": false
             },
+            "steps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/EffectStep"
+              }
+            },
             "counters": {
               "type": "array",
               "items": {
@@ -14078,11 +14458,7 @@
                     "type": "number"
                   },
                   "cardKind": {
-                    "type": "string",
-                    "enum": [
-                      "land",
-                      "nonland"
-                    ]
+                    "$ref": "#/definitions/CardNameKind"
                   },
                   "fromRevealed": {
                     "type": "boolean",
@@ -14091,6 +14467,10 @@
                   "chooser": {
                     "type": "string",
                     "const": "opponent"
+                  },
+                  "secret": {
+                    "type": "boolean",
+                    "const": true
                   }
                 },
                 "required": [
@@ -14275,6 +14655,9 @@
                 "times": {
                   "$ref": "#/definitions/Quantity"
                 },
+                "kind": {
+                  "$ref": "#/definitions/CounterKind"
+                },
                 "link": {
                   "$ref": "#/definitions/LinkId"
                 }
@@ -14394,6 +14777,10 @@
                 },
                 "times": {
                   "$ref": "#/definitions/Quantity"
+                },
+                "all": {
+                  "type": "boolean",
+                  "const": true
                 }
               },
               "required": [
@@ -14511,6 +14898,21 @@
                 ],
                 "additionalProperties": false
               }
+            },
+            "mill": {
+              "type": "object",
+              "properties": {
+                "count": {
+                  "$ref": "#/definitions/Quantity"
+                },
+                "if": {
+                  "$ref": "#/definitions/Condition"
+                }
+              },
+              "required": [
+                "count"
+              ],
+              "additionalProperties": false
             },
             "chooseObject": {
               "type": "object",
@@ -14682,6 +15084,16 @@
             "G"
           ]
         },
+        "asColor": {
+          "type": "string",
+          "enum": [
+            "W",
+            "U",
+            "B",
+            "R",
+            "G"
+          ]
+        },
         "lifeFor": {
           "type": "object",
           "properties": {
@@ -14725,6 +15137,10 @@
           "items": {
             "$ref": "#/definitions/EffectStep"
           }
+        },
+        "onCastLand": {
+          "type": "boolean",
+          "const": true
         },
         "fromTop": {
           "type": "boolean",
@@ -14884,6 +15300,10 @@
           "type": "boolean",
           "const": true
         },
+        "exiledByOnly": {
+          "type": "boolean",
+          "const": true
+        },
         "onlyTypes": {
           "type": "array",
           "items": {
@@ -14997,6 +15417,8 @@
             "rollReroll",
             "coinAdvantage",
             "tappedLandManaOnlyColorless",
+            "tappedLandManaByType",
+            "spendManaOnlyFrom",
             "tappedLandManaOnlyType",
             "tappedLandManaColorless"
           ]
@@ -15047,6 +15469,12 @@
         },
         "manaType": {
           "$ref": "#/definitions/ManaType"
+        },
+        "manaByLandType": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/ManaType"
+          }
         },
         "value": {
           "anyOf": [
@@ -15614,40 +16042,75 @@
           "type": "number"
         },
         "xIs": {
-          "type": "object",
-          "properties": {
-            "q": {
-              "type": "string",
-              "const": "stat"
-            },
-            "stat": {
-              "type": "string",
-              "const": "manaValue"
-            },
-            "of": {
+          "anyOf": [
+            {
               "type": "object",
               "properties": {
-                "ref": {
+                "q": {
                   "type": "string",
-                  "const": "linked"
+                  "const": "stat"
                 },
-                "link": {
-                  "$ref": "#/definitions/LinkId"
+                "stat": {
+                  "type": "string",
+                  "const": "manaValue"
+                },
+                "of": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string",
+                      "const": "linked"
+                    },
+                    "link": {
+                      "$ref": "#/definitions/LinkId"
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "link"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
-                "ref",
-                "link"
+                "q",
+                "stat",
+                "of"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "q": {
+                  "type": "string",
+                  "const": "counters"
+                },
+                "kind": {
+                  "$ref": "#/definitions/CounterKind"
+                },
+                "on": {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "type": "string",
+                      "const": "self"
+                    }
+                  },
+                  "required": [
+                    "ref"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "q",
+                "kind",
+                "on"
               ],
               "additionalProperties": false
             }
-          },
-          "required": [
-            "q",
-            "stat",
-            "of"
-          ],
-          "additionalProperties": false
+          ]
         },
         "uncopiable": {
           "type": "boolean",

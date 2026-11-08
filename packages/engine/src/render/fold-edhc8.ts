@@ -18,7 +18,7 @@ const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.str
 function revealNCardsYouChoose(list: EffectStep[], i: number, st: RenderState): Folded | null {
   const [a, b, c] = [list[i], list[i + 1], list[i + 2]];
   if (a?.op !== 'chooseObjects' || b?.op !== 'reveal' || c?.op !== 'chooseObjects' || a.as === undefined || c.as === undefined) return null;
-  if (a.random === true || a.guard !== undefined || a.groupLimit !== undefined || a.perPlayer !== undefined || a.startingWith !== undefined || typeof a.min !== 'number' || a.min < 2 || a.min !== a.max) return null;
+  if (a.random === true || a.guard !== undefined || a.groupLimit !== undefined || a.perPlayer !== undefined || a.startingWith !== undefined || !(typeof a.min === 'number' ? a.min >= 2 : same(a.min, { q: 'X' })) || !same(a.min, a.max)) return null; // edh-e-9: also X (Cabal Interrogator, "reveals X cards from their hand")
   if (b.guard !== undefined || b.to !== undefined || b.what.ref !== 'bound' || b.what.name !== a.as || !same(a.who, b.who) || b.as === undefined) return null;
   const f = a.from.ref === 'each' && 'filter' in a.from ? a.from.filter : null;
   if (f === null || Object.keys(f).filter((k) => (f as Record<string, unknown>)[k] !== undefined).sort().join() !== 'owner,zone' || f.zone !== 'hand' || !same(f.owner, a.who) || a.who.ref === 'you') return null;
@@ -30,7 +30,8 @@ function revealNCardsYouChoose(list: EffectStep[], i: number, st: RenderState): 
   bind(st, a.as, { nouns: ['card'], plural: true });
   bind(st, b.as, { nouns: ['card'], plural: true, sameAs: `b:${a.as}` });
   bind(st, c.as, { nouns: ['card'], plural: false });
-  return { clauses: [plain(`${who.text} reveals ${numWord(a.min)} cards from their hand and you choose one of them`, { standalone: true })], consumed: 3 };
+  const shown = typeof a.min === 'number' ? numWord(a.min) : 'x';
+  return { clauses: [plain(`${who.text} reveals ${shown} cards from their hand and you choose one of them`, { standalone: true })], consumed: 3 };
 }
 
 /**

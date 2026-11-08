@@ -81,7 +81,7 @@ function couldProduceTypes(cx: ExecCtx, ref: Parameters<typeof resolveObjs>[1]):
         if (st.units !== undefined) { for (const u of st.units) for (const t of u) node.types.add(t); continue; }
         const dy = st.dynamic!;
         if (dy.kind === 'eachColorAmong') { for (const t of colorsOfObjects(here, dy.among)) node.types.add(t); continue; }
-        if (dy.kind === 'devotionColor' || dy.kind === 'sameAsSpent' || dy.kind === 'eventProduced') { unreadable = true; continue; }
+        if (dy.kind === 'devotionColor' || dy.kind === 'sameAsSpent' || dy.kind === 'eventProduced' || dy.kind === 'manaCostOf') { unreadable = true; continue; }
         const n = cardCount(here, dy.count);
         if (n === undefined) { unreadable = true; continue; }
         if (n === 0) continue; // CR 106.7: a permanent that wouldn't produce any mana now has no type it could produce
@@ -151,6 +151,32 @@ export function plannedProduction(cx: ExecCtx, st: AddMana): { units: ManaType[]
   return { units: Array.from({ length: n }, () => [...options]), oneType: d.kind === 'couldProduce' && d.oneType === true };
 }
 
+/**
+ * edh-e-21 (CR 106.1, 202.1, 107.4, 107.3h): the mana "equal to" a mana cost: {W} adds {W}, {C} and each generic mana add {C}, {X} nothing (X is 0 away from the stack), a hybrid symbol one of its two
+ * colors (the player chooses), a Phyrexian symbol its color. Any other symbol (generic-hybrid, colorless-hybrid, snow) is left to the players (no guess). The object's mana cost as it is now (a reference that resolves to nothing, e.g. an Aura that left, gives no mana: a known limit);
+ * no object, or one without a mana cost (CR 202.1b): no mana.
+ */
+function manaOfCost(cx: ExecCtx, st: AddMana, p: PlayerId, of: Parameters<typeof resolveObjs>[1]): ManaType[] | undefined {
+  const handles = resolveObjs(cx, of);
+  if (handles.length !== 1) return handles.length === 0 ? [] : undefined;
+  const cost = readInfo(cx, handles[0]!)?.chars?.manaCost ?? null;
+  if (cost === null) return [];
+  const out: ManaType[] = [];
+  for (const sym of cost) {
+    switch (sym.kind) {
+      case 'generic': for (let i = 0; i < sym.amount; i++) out.push('C'); break;
+      case 'colorless': out.push('C'); break;
+      case 'colored': case 'phyrexian': out.push(sym.color); break;
+      case 'variable': break;
+      case 'hybrid': out.push(chooseType(cx.g, p, [...sym.colors], `mana for the hybrid symbol {${sym.colors.join('/')}}`)); break;
+      default:
+        askManual(cx, st.span ?? "Add mana equal to the object's mana cost.", 'the mana cost has a symbol the engine does not add mana for (CR 202.1, 107.4)');
+        return undefined;
+    }
+  }
+  return out;
+}
+
 /** The types of the units `p` adds, in order; undefined when the amount fails to determine (CR 608.2b) or the engine has to ask the players. */
 function produce(cx: ExecCtx, st: AddMana, p: PlayerId): ManaType[] | undefined {
   const g = cx.g;
@@ -176,6 +202,8 @@ function produce(cx: ExecCtx, st: AddMana, p: PlayerId): ManaType[] | undefined 
     const k = cardCount(cx, { q: 'devotion', to: [t as Color], of: d.of });
     return k === undefined ? undefined : Array.from({ length: k }, () => t);
   }
+  // edh-e-21 (CR 106.1, 202.1, 107.4, 107.3h; Elemental Resonance): one mana for each symbol of the mana cost of the object, read as the ability resolves
+  if (d.kind === 'manaCostOf') return manaOfCost(cx, st, p, d.of);
   const n = cardCount(cx, d.count);
   if (n === undefined) return undefined;
   switch (d.kind) {

@@ -74,6 +74,7 @@ function CurrentScreen({ route }: { route: Route }) {
           {...(route.online ? { online: route.online } : {})}
           {...(route.hosted ? { hosted: route.hosted } : {})}
           {...(route.sleeves ? { sleeves: route.sleeves } : {})}
+          {...(route.printings ? { printings: route.printings } : {})}
           {...(route.setup ? { setup: route.setup } : {})}
         />
       );

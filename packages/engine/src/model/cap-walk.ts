@@ -26,7 +26,7 @@
  * `feature:class.level`, `feature:leveler.bracket`, and `feature:mana.restriction` for a restricted addMana. Registered by the package that implements
  * them (triggers/normalize.ts, statics/layers.ts, and the owner of the addMana handler); until then abilities that use them degrade to manual.
  */
-import { isPlayerOnlyRefKind, type ActivatedAbilityDef, type Condition, type CostPart, type ModeSpec, diesCause, isAnyDrawCause, isLifeGainCause, isTurnedFaceUpCause, type EventPattern, type ObjectFilter, type TargetSpec } from '../types/ability';
+import { isPlayerOnlyRefKind, type ActivatedAbilityDef, type Condition, type CostPart, type ModeSpec, diesCause, isAnyDrawCause, isLifeGainCause, isTurnedFaceUpCause, type EventPattern, type ObjectFilter, type TargetSpec, isMixedActionList } from '../types/ability';
 import { activatedForms, announceCondForms, costPartForms, filterForms, modeSpecForms, targetSpecForms } from './forms';
 import { ABILITY_DEFS, ancestors, isNestedAbility, walkAbility, type WalkNode } from './walk';
 import { isNextCastRider } from './next-cast-rider';
@@ -40,11 +40,17 @@ type Rec = Record<string, unknown>;
  * The keywords whose cost may be "equal to its mana cost" (`KeywordAbilityDef.costIsManaCost`): flashback (FAST5 T56, actions/cast-options.ts), mayhem (cloud r3-mech) and, r5-cost,
  * harmonize and embalm (keywords/expand.ts substitutes the object's mana cost, CR 702.180a, 702.128a). Any other keyword with it still misses its cost.
  */
-const COST_IS_MANA_COST: ReadonlySet<string> = new Set(['flashback', 'mayhem', 'harmonize', 'embalm', 'beam me up' /* trek-7 */, 'escape' /* edh-zones-5 */, 'offering' /* edh-combat-7 */, 'scavenge' /* edh-next-59 */, 'replicate' /* edh-next-65 */, 'blitz' /* edh-next-144 */, 'emerge' /* edh-d-97 */]);
+const COST_IS_MANA_COST: ReadonlySet<string> = new Set(['flashback', 'mayhem', 'harmonize', 'embalm', 'beam me up' /* trek-7 */, 'escape' /* edh-zones-5 */, 'offering' /* edh-combat-7 */, 'scavenge' /* edh-next-59 */, 'encore' /* edh-e-39 */, 'replicate' /* edh-next-65 */, 'blitz' /* edh-next-144 */, 'emerge' /* edh-d-97 */]);
 
 const rec = (x: unknown): Rec => (typeof x === 'object' && x !== null ? (x as Rec) : {});
 
 /** edh-c-41 (CR 119.4, 107.1a, 602.2b; Lurking Evil): "Pay half your life, rounded up", read as the activation is planned (actions/activate.ts#abilityPlan). */
+/** edh-e-14: the counters of one kind on the source itself, `{q:'counters', on: self, kind}`, or a whole number of life times it (`math *`): "Pay 3 life for each velocity counter on ~" (Tornado). */
+function isOwnCounters(q: unknown): boolean {
+  const r = rec(q);
+  if (r['q'] === 'math' && r['op'] === '*' && Array.isArray(r['args']) && r['args'].length === 2 && typeof r['args'][0] === 'number') return isOwnCounters(r['args'][1]);
+  return r['q'] === 'counters' && JSON.stringify(r['on']) === '{"ref":"self"}' && typeof r['kind'] === 'string';
+}
 /** edh-next-145: the size of one of your own zones, `{q:'zoneSize', zone, of: you}`, or a whole number of life times it (`math *`), as the cost parser reads "1 life for each card in your hand". */
 function isYourZoneSize(q: unknown): boolean {
   const r = rec(q);
@@ -69,6 +75,9 @@ function throughNextUntapForms(step: Rec): string[] {
   const plain = effects.length > 0 && effects.every((e) => e['s'] === 'restrict' && e['mode'] === 'cant' && e['action'] === 'untapDuringUntapStep'
     && e['other'] === undefined && e['max'] === undefined && e['when'] === undefined);
   const perObject = rec(step['duration'])['whose'] === undefined;
+  // edh-e-25 (CR 502.3; Telekinesis): a count of untap steps, on the per-object form only (effects/handlers/lasting.ts stores one record per object; core/durations.ts#expireAfterUntapStep counts)
+  const steps = rec(step['duration'])['steps'];
+  if (steps !== undefined && (!Number.isInteger(steps) || (steps as number) < 2 || !perObject)) return ['feature:throughNextUntap.other'];
   // edh-next-6 (CR 611.2a, 502.3; Tangle): an `each` subject is locked as the effect begins (effects/handlers/lasting.ts#effectsToStore, lockSet: one record per object); a `union` is still a live group
   const live = effects.some((e) => String(rec(e['subject'])['ref']) === 'union');
   return plain && !(perObject && live) ? [] : ['feature:throughNextUntap.other'];
@@ -174,6 +183,7 @@ const RESOLVED_DYNAMIC: ReadonlySet<string> = new Set([
   'commanderIdentity', // M11-0: gated by feature:mana.commanderIdentity
   'couldProduce', // p2-mana-1: CR 106.7, gated by feature:mana.couldProduce
   'devotionColor', // p2-mana-2: CR 700.5, gated by feature:mana.devotionColor
+  'manaCostOf', // edh-e-21: CR 106.1, 202.1, gated by feature:mana.manaCostOf
 ]);
 
 /** A dynamic production that reads nothing of its source: any color or any one color, a fixed number of times ("three mana of any one color"). */
@@ -190,7 +200,7 @@ function nativeManaEffect(effect: unknown, dynamic: 'all' | 'sourceFree' = 'sour
     // edh-mana-keywords-10 (CR 608.2h, 605.3b): after "Sacrifice ~" the amount may be the counters the sacrificed source had (last known information: Glittering Stockpile)
     const countOnSelf = rec(d['count']);
     const lastKnownCounters = countOnSelf['q'] === 'counters' && rec(countOnSelf['on'])['ref'] === 'self' && Object.keys(rec(countOnSelf['on'])).length === 1 && typeof countOnSelf['kind'] === 'string' && countOnSelf['kind'] !== 'any';
-    const dynamicRuns = dynamic === 'all' ? RESOLVED_DYNAMIC.has(kind) : SOURCE_FREE_DYNAMIC.has(kind) && (typeof d['count'] === 'number' || lastKnownCounters);
+    const dynamicRuns = dynamic === 'all' ? RESOLVED_DYNAMIC.has(kind) : (SOURCE_FREE_DYNAMIC.has(kind) && (typeof d['count'] === 'number' || lastKnownCounters)) || (kind === 'ofType' && lastKnownCounters /* edh-e-21: "Add {C} for each charge counter on ~" after "Sacrifice ~" (Shrine of Boundless Growth), the counters as the sacrificed source last had them */);
     const produces = (Array.isArray(st['units']) && st['dynamic'] === undefined) || (st['units'] === undefined && st['dynamic'] !== undefined && dynamicRuns);
     // r3-cost: an addMana named only for the reflexive trigger that waits for it ("Add {R}. When you do, ...", below)
     const named = st['as'] === undefined || steps.some((x) => rec(x)['op'] === 'reflexive' && rec(rec(x)['when'])['did'] === st['as']);
@@ -282,6 +292,16 @@ function nativeManaEffect(effect: unknown, dynamic: 'all' | 'sourceFree' = 'sour
     return st['op'] === 'if' && st['guard'] === undefined && st['as'] === undefined && st['else'] === undefined && youControlExists(st['cond']) && then.length === 1
       && g['op'] === 'gainLife' && JSON.stringify(g['who']) === '{"ref":"you"}' && typeof g['amount'] === 'number' && g['guard'] === undefined && g['as'] === undefined;
   };
+  // edh-e-21 (CR 605.3b, 608.2c, 120.3; mirrors parser/lower/ability.ts#damageIfYouControlNo; Tomb of Urami): "~ deals 1 damage to you if you don't control an Ogre.": an `if` with no else whose condition is the
+  // negation of "you control a permanent of a description" and whose one instruction is a fixed amount of damage from the source to its controller
+  const damageIfNot = (s: unknown): boolean => {
+    const st = rec(s);
+    const then = Array.isArray(st['then']) ? st['then'] : [];
+    const g = rec(then[0]);
+    const c = rec(st['cond']);
+    return st['op'] === 'if' && st['guard'] === undefined && st['as'] === undefined && st['else'] === undefined && c['cond'] === 'not' && youControlExists(c['of']) && then.length === 1
+      && g['op'] === 'damage' && JSON.stringify(g['source']) === '{"ref":"self"}' && JSON.stringify(g['to']) === '{"ref":"you"}' && typeof g['amount'] === 'number' && g['guard'] === undefined && g['as'] === undefined && g['also'] === undefined;
+  };
   // edh-next-140 (CR 605.3b, 122.1; mirrors parser/lower/ability.ts#youGetPlayerCounters; Harold and Bob): "You get two rad counters.": a fixed number of counters of a player's kind on its controller
   const playerCounters = (s: unknown): boolean => {
     const st = rec(s);
@@ -342,7 +362,7 @@ function nativeManaEffect(effect: unknown, dynamic: 'all' | 'sourceFree' = 'sour
     const st = rec(s);
     return st['op'] === 'nextSpell' && JSON.stringify(st['who']) === '{"ref":"you"}' && st['rider'] === 'keyword' && rec(st['keyword'])['keyword'] === 'sunburst' && st['guard'] === undefined && st['as'] === undefined;
   };
-  return steps.some((s) => plain(s) || branch(s)) && steps.every((s) => plain(s) || selfCounters(s) || pain(s) || life(s) || lifeIf(s) /* edh-next-140 */ || playerCounters(s) /* edh-next-140 */ || loss(s) || sacNoCounters(s) || delayedDraw(s) || delayedControl(s) || noUntapNext(s) || branch(s) || reflexive(s) || manaColor(s) || roll(s) || handReveal(s) || nextSpellSunburst(s) || isNextCastRider(s));
+  return steps.some((s) => plain(s) || branch(s)) && steps.every((s) => plain(s) || selfCounters(s) || pain(s) || life(s) || lifeIf(s) /* edh-next-140 */ || damageIfNot(s) /* edh-e-21 */ || playerCounters(s) /* edh-next-140 */ || loss(s) || sacNoCounters(s) || delayedDraw(s) || delayedControl(s) || noUntapNext(s) || branch(s) || reflexive(s) || manaColor(s) || roll(s) || handReveal(s) || nextSpellSunburst(s) || isNextCastRider(s));
 }
 
 /**
@@ -436,6 +456,12 @@ function inStep(n: WalkNode): boolean {
   return false;
 }
 
+/** edh-e-66 (CR 111.4, 201.5a): is this node inside an ability of the token a `createToken` step makes (effects/handlers/tokens-create.ts#bindCreator rewrites its `grantor` before the token exists)? */
+function inCreatedToken(n: WalkNode): boolean {
+  for (let a = n.parent; a !== null; a = a.parent) if (a.def === 'EffectStep' && a.value['op'] === 'createToken' && n.path.startsWith(`${a.path}/token/abilities/`) && !n.path.includes('/add/')) return true;
+  return false;
+}
+
 function staticallyEvaluated(n: WalkNode): boolean {
   let inContinuous = false;
   for (let child = n, a = n.parent; a !== null; child = a, a = a.parent) {
@@ -507,6 +533,26 @@ function identityQualityForm(n: WalkNode): string {
   return 'feature:quality.identity.printed';
 }
 
+/**
+ * trek-23 (CR 608.2c; Vulcan Mind-Meld): the cards a play permission with `exiledByOnly` names (one bound name, or a union of them) are each the result of an EARLIER move into exile of the
+ * same list of instructions that names ONE player who exiles (`by`: you, a single target, an opponent chosen, ...; never a group such as "each opponent", for which nobody is remembered), so
+ * effects/handlers/lasting.ts#exiledByPermits knows the exiler of every one of them; and the duration names no player but you (a duration of "their next turn" would be the same turn for every
+ * exiler, trek-23 review): only then is the reading automated.
+ */
+function exiledByNamesKnown(n: WalkNode): boolean {
+  const is = rec(rec(n.value['of'])['is']);
+  const parts = is['ref'] === 'union' ? (Array.isArray(is['of']) ? (is['of'] as unknown[]).map(rec) : []) : [is];
+  const step = n.parent;
+  const holder = step?.parent ?? null;
+  if (step === null || holder === null || step.slot !== 'steps' || step.index === null || !Array.isArray(holder.value['steps']) || parts.length === 0) return false;
+  if ([...JSON.stringify(step.value['duration'] ?? null).matchAll(/"ref":"([^"]*)"/g)].some((m) => m[1] !== 'you')) return false;
+  const targets = Array.isArray(holder.value['targets']) ? (holder.value['targets'] as unknown[]).map(rec) : [];
+  const onePlayer = (by: Record<string, unknown>): boolean => by['ref'] === 'you' || by['ref'] === 'anOpponent'
+    || (by['ref'] === 'target' && targets.some((t) => t['id'] === by['id'] && t['kind'] === 'player' && t['min'] === 1 && t['max'] === 1)); // trek-23 re-review: never "up to one"
+  const before = (holder.value['steps'] as unknown[]).slice(0, step.index).map(rec);
+  return parts.every((p) => p['ref'] === 'bound' && before.some((s) => s['op'] === 'move' && s['as'] === p['name'] && onePlayer(rec(s['by'])) && rec(s['to'])['zone'] === 'exile'));
+}
+
 /** Where a node sits when it is not part of a printed ability: inside a resolved `effect` step, or inside a grant (a layer 6 effect, a token, a nested ability). */
 function notPrinted(n: WalkNode): 'lasting' | 'granted' | null {
   for (const a of ancestors(n)) {
@@ -527,7 +573,7 @@ function castStaticForms(n: WalkNode): string[] {
 }
 
 /** The optional fields of a PermissionDef: each wired permission declares the ones it honors (`feature:permit.<action>.<field>`). */
-const PERMIT_FIELDS = ['of', 'from', 'asThough', 'count', 'costChange', 'grants', 'laterTurn', 'oncePerTurn', 'anyManaType', 'anyManaColor', 'while', 'addCost', 'entersWith', 'graveyardInstead', 'asAdventure', 'exileOnLeave', 'single', 'exceptTypes' /* edh-d-56 */, 'entersWithIf', 'entersSubtypes', 'ownOnly', 'landsEnterTapped', 'attacker', 'alsoOutside', 'offTimingSacrifice', 'ifTargets' /* edht4 */, 'ifXAtMost' /* edh-d-44 */, 'firstOfKind' /* edh-d-44 */, 'flashThisWay' /* edh-d-44 */, 'onlyTypes' /* edh-zones-11 */, 'onlyColors' /* edh-next-100 */, 'freeSubtypes' /* edh-d-58 */, 'increaseIfOpponent' /* edh-d-58 */, 'gainsThisTurn' /* edh-cast-12 */, 'entersAbilities' /* edh-zones-22 */, 'attackedYouLastTurn' /* edh-combat-6 */, 'anyGraveyard' /* edh-zones-27 */, 'opponentsOnly' /* edh-b-14 */, 'addGeneric' /* edh-next-50 */, 'mandatory' /* edh-d-25 */, 'entersTapped' /* edh-next-68 */, 'onCast' /* edh-next-127 */, 'colorlessAnyColor' /* edh-d-97 */, 'uses' /* edh-d-96 */, 'spellKeyword' /* edh-d-91 */] as const; // FAST5X E2: laterTurn (CR 702.185a); E14: oncePerTurn; E29: anyManaType (CR 609.4b), while; C10: addCost, entersWith; r5-repl: graveyardInstead (CR 614.1a); r5-dig: asAdventure (CR 715.3)
+const PERMIT_FIELDS = ['of', 'from', 'asThough', 'count', 'costChange', 'grants', 'laterTurn', 'oncePerTurn', 'anyManaType', 'anyManaColor', 'while', 'addCost', 'entersWith', 'graveyardInstead', 'asAdventure', 'exileOnLeave', 'single', 'exceptTypes' /* edh-d-56 */, 'entersWithIf', 'entersSubtypes', 'ownOnly', 'exiledByOnly' /* trek-23 */, 'landsEnterTapped', 'attacker', 'alsoOutside', 'offTimingSacrifice', 'ifTargets' /* edht4 */, 'ifXAtMost' /* edh-d-44 */, 'firstOfKind' /* edh-d-44 */, 'flashThisWay' /* edh-d-44 */, 'onlyTypes' /* edh-zones-11 */, 'onlyColors' /* edh-next-100 */, 'freeSubtypes' /* edh-d-58 */, 'increaseIfOpponent' /* edh-d-58 */, 'gainsThisTurn' /* edh-cast-12 */, 'entersAbilities' /* edh-zones-22 */, 'attackedYouLastTurn' /* edh-combat-6 */, 'anyGraveyard' /* edh-zones-27 */, 'opponentsOnly' /* edh-b-14 */, 'addGeneric' /* edh-next-50 */, 'mandatory' /* edh-d-25 */, 'entersTapped' /* edh-next-68 */, 'onCast' /* edh-next-127 */, 'colorlessAnyColor' /* edh-d-97 */, 'uses' /* edh-d-96 */, 'spellKeyword' /* edh-d-91 */, 'onCastLand' /* edh-d-104 */] as const; // FAST5X E2: laterTurn (CR 702.185a); E14: oncePerTurn; E29: anyManaType (CR 609.4b), while; C10: addCost, entersWith; r5-repl: graveyardInstead (CR 614.1a); r5-dig: asAdventure (CR 715.3)
 
 /** std-rx3: `{kind:'set', cost:{}}` and nothing else, "without paying its mana cost" (statics/play-permits.ts#isFreeCost, which the walker cannot import, design 5.4). */
 /**
@@ -823,8 +869,8 @@ export interface CapUse {
   path: string;
 }
 
-const HISTORY_FILTERS: ReadonlySet<string> = new Set(['foughtThisTurn' /* edh-next-139 */, 'enteredThisTurn', 'enteredUnderYourControl' /* edh-next-109 */, 'dealtDamageThisTurn', 'attackedThisTurn', 'blockedThisTurn', 'wasBlockedThisTurn', 'dealtDamageBySourceThisTurn', 'dealtDamageByAttachedThisTurn' /* edh-c-113 */, 'controllerDealtCombatDamageBySourceThisTurn',
-  'dealtDamageAsSourceThisTurn' /* std-mkm */, 'dealtDamageToYouThisTurn' /* edh-players-9 */, 'dealtExcessDamageThisTurn' /* edh-d-38 */, 'dealtDamageByYourSourceThisTurn' /* edh-c-48 */, 'putThereThisTurn' /* r3-choose */, 'putThereThisCombat' /* edh-next-116 */, 'crewedBySourceThisTurn' /* r5-trig */, 'enteredFrom' /* r5-trig */, 'putThereFrom' /* r5-fxz */, 'countersPutThisTurn' /* std-rx12 */, 'controllerDealtCombatDamageBy' /* edh-next-134 */, 'dealtDamageThisTurnBy' /* edh-next-130 */]);
+const HISTORY_FILTERS: ReadonlySet<string> = new Set(['foughtThisTurn' /* edh-next-139 */, 'enteredThisTurn', 'enteredUnderYourControl' /* edh-next-109 */, 'dealtDamageThisTurn', 'attackedThisTurn', 'blockedThisTurn', 'wasBlockedThisTurn', 'blockedWithThisTurn', 'dealtDamageBySourceThisTurn', 'dealtDamageByAttachedThisTurn' /* edh-c-113 */, 'controllerDealtCombatDamageBySourceThisTurn',
+  'dealtDamageAsSourceThisTurn' /* std-mkm */, 'dealtDamageToYouThisTurn' /* edh-players-9 */, 'dealtExcessDamageThisTurn' /* edh-d-38 */, 'dealtNoncombatDamageThisTurn' /* edh-e-50 */, 'dealtDamageByYourSourceThisTurn' /* edh-c-48 */, 'putThereThisTurn' /* r3-choose */, 'putThereThisCombat' /* edh-next-116 */, 'crewedBySourceThisTurn' /* r5-trig */, 'enteredFrom' /* r5-trig */, 'putThereFrom' /* r5-fxz */, 'countersPutThisTurn' /* std-rx12 */, 'controllerDealtCombatDamageBy' /* edh-next-134 */, 'dealtDamageThisTurnBy' /* edh-next-130 */, 'enteredSinceYourLastTurn' /* edh-e-27 */]);
 
 /**
  * edh-next-130 (rules/history.ts#ANSWERABLE_FIELDS, which the model may not import, design 5.4): can the facts of a history entry answer this filter? The same fields as that list
@@ -881,7 +927,10 @@ function bodyForms(v: Rec): string[] {
   if (v['b'] === 'enters') {
     if (Array.isArray(v['choose']) && v['choose'].some((c) => rec(c)['cardKind'] !== undefined)) out.push('feature:choose.cardKind'); // std-rx28 (CR 201.3)
     if (Array.isArray(v['choose']) && v['choose'].some((c) => rec(c)['chooser'] !== undefined)) out.push('feature:choose.chooser'); // edh-d-72 (CR 614.12a, 608.2d)
-    for (const k of present(v, 'copy', 'faceDown', 'transformed', 'under', 'attachTo', 'prepared' /* M6-0: CR 722.3a */, 'choice' /* FAST5X E28: CR 702.136a */, 'countersIf' /* CMD3: CR 702.44a */, 'untapped' /* r5-fxb: CR 614.1d */, 'lookAtHand' /* std-rx6: CR 614.12a, 402.3 */, 'devour' /* std-rx15: CR 702.82a */, 'revealHand' /* edh-c-42: CR 702.38a */, 'exileCards' /* std-cardcopy-3: CR 614.12a, 607.2a */, 'putToGraveyard' /* edh-d-54: CR 614.12a, 400.3 */, 'turnFaceDown' /* edh-d-73: CR 614.12a, 708.2 */, 'tappedMay' /* edh-next-106: CR 614.12a */, 'countersIfPay' /* edh-d-54: CR 614.12a, 701.20a */, 'subtypes' /* std-freecast-2: CR 614.1c, written by rules only (unregistered) */, 'dayIfNeither' /* p2-misc-1: CR 731.1 */, 'attacking' /* trek-8: CR 508.4 */, 'becomes' /* edh-perms-21: CR 614.1c, 205.1b */, 'tribute' /* edh-c-37: CR 702.104a */, 'revealHands' /* edh-c-84: CR 701.20a, 614.12a */, 'exchangeText' /* edh-next-120: CR 614.12a, 701.12h */, 'removeCounters' /* edh-d-78: CR 614.12a, 122.1 */, 'payLifeAny' /* edh-next-138: CR 614.12a, 119.4 */, 'roll' /* edh-next-128: CR 614.12a, 706.2 */, 'emblem' /* edh-next-137: CR 614.12, 114.2 */, 'becomesOneOf' /* edh-next-146: CR 614.1c, 613.2a */, 'chooseObject' /* edh-next-146: CR 614.12a, 607.2d */)) out.push(`body:enters.${k}`);
+    if (Array.isArray(v['choose']) && v['choose'].some((c) => rec(c)['secret'] === true)) out.push('feature:choose.secret'); // edhe35 (CR 614.12a, 608.2d)
+    for (const k of present(v, 'copy', 'faceDown', 'transformed', 'under', 'attachTo', 'prepared' /* M6-0: CR 722.3a */, 'choice' /* FAST5X E28: CR 702.136a */, 'countersIf' /* CMD3: CR 702.44a */, 'untapped' /* r5-fxb: CR 614.1d */, 'lookAtHand' /* std-rx6: CR 614.12a, 402.3 */, 'devour' /* std-rx15: CR 702.82a */, 'revealHand' /* edh-c-42: CR 702.38a */, 'exileCards' /* std-cardcopy-3: CR 614.12a, 607.2a */, 'putToGraveyard' /* edh-d-54: CR 614.12a, 400.3 */, 'turnFaceDown' /* edh-d-73: CR 614.12a, 708.2 */, 'tappedMay' /* edh-next-106: CR 614.12a */, 'steps' /* edh-e-23: CR 614.12a */, 'countersIfPay' /* edh-d-54: CR 614.12a, 701.20a */, 'subtypes' /* std-freecast-2: CR 614.1c, written by rules only (unregistered) */, 'dayIfNeither' /* p2-misc-1: CR 731.1 */, 'attacking' /* trek-8: CR 508.4 */, 'becomes' /* edh-perms-21: CR 614.1c, 205.1b */, 'tribute' /* edh-c-37: CR 702.104a */, 'revealHands' /* edh-c-84: CR 701.20a, 614.12a */, 'exchangeText' /* edh-next-120: CR 614.12a, 701.12h */, 'removeCounters' /* edh-d-78: CR 614.12a, 122.1 */, 'payLifeAny' /* edh-next-138: CR 614.12a, 119.4 */, 'roll' /* edh-next-128: CR 614.12a, 706.2 */, 'emblem' /* edh-next-137: CR 614.12, 114.2 */, 'becomesOneOf' /* edh-next-146: CR 614.1c, 613.2a */, 'chooseObject' /* edh-next-146: CR 614.12a, 607.2d */, 'mill' /* edhe28: CR 614.12a, 701.17a */)) out.push(`body:enters.${k}`);
+    if (rec(v['removeCounters'])['all'] === true) out.push('body:enters.removeCounters.all'); // edh-e-66: "remove all counters from all permanents" (CR 614.12a, 122.1)
+    if (rec(v['devour'])['kind'] !== undefined) out.push('body:enters.devour.kind'); // edh-e-13: "enters with twice that many K counters" (CR 614.12a, 701.21a)
     if (v['copy'] !== undefined) out.push('layer:1a'); // CR 614.12, 707.9, 616.1c
     if (rec(v['copy'])['then'] !== undefined) out.push('body:enters.copy.then'); // r4-copy: "When you do, exile that card." (CR 603.12)
     if (rec(v['copy'])['copiedCounters'] !== undefined) out.push('body:enters.copy.copiedCounters'); // trek-4: "If you do, it enters with additional counters ... the copied permanent has" (CR 614.1c)
@@ -1075,6 +1124,7 @@ function stepForms(v: Rec): string[] {
       if (v['afterRoll'] !== undefined) forms.push('op:rollDie.afterRoll');
       if (v['highest'] !== undefined) forms.push('op:rollDie.highest'); // edh-top-16
       if (v['keepHighest'] !== undefined) forms.push('op:rollDie.keepHighest'); // edh-d-49
+      if (v['visit'] !== undefined) forms.push('op:rollDie.visit'); // edhe34 (CR 701.52a)
       if (table && (v['table'] as unknown[]).some((r) => rec(r)['again'] !== undefined)) forms.push('op:rollDie.again'); // edh-next-121
       return table && (!oneDie || !onePlayer) ? ['op:rollDie.multiTable', ...forms] : forms;
     }
@@ -1088,6 +1138,7 @@ function stepForms(v: Rec): string[] {
         // runs it); any other `until` is `op:move.until.other`, never registered (the handler resolves it by hand)
         ...(v['until'] !== undefined ? [moveUntilForm(v['until'], v['to'])] : []),
         ...(v['remember'] !== undefined ? ['op:move.remember'] : []), // FAST5X E13 (craft, CR 702.167c)
+        ...(v['by'] !== undefined ? [to['zone'] === 'exile' ? 'op:move.by' : 'op:move.by.other'] : []), // trek-23 (CR 608.2c, 406.3): who exiles, read by `exiledByOnly`
         ...(to['zone'] === 'stack' ? ['op:move.stack'] : []),
         ...(to['faceDown'] === true ? ['layer:1b'] : []),
         ...(to['faceUpOrDown'] !== undefined ? ['layer:1b', to['faceUpOrDown'] === true && to['zone'] === 'battlefield' && to['faceDown'] === undefined ? 'op:move.faceUpOrDown' : 'op:move.faceUpOrDown.other'] : []), // edh-next-80 (CR 708.3)
@@ -1113,7 +1164,7 @@ function stepForms(v: Rec): string[] {
       return v['what'] !== 'life' ? [`op:exchange.${String(v['what'])}`] : [];
     // CLOUD std-tmt INTERFACE CHANGE (additive): a continuous effect that names the objects it affects (effects/handlers/lasting.ts#EFFECT_OP_FORMS)
     case 'effect':
-      return v['as'] !== undefined ? ['op:effect.as'] : [];
+      return [...(v['as'] !== undefined ? ['op:effect.as'] : []), ...(v['divided'] !== undefined ? ['op:effect.divided' /* edh-e-68 */] : [])];
     // FAST5 T42 INTERFACE CHANGE (additive): "... cards with different names" (effects/handlers/cards-library.ts#OP_FORMS)
     // std-rx31 INTERFACE CHANGE (additive): a total of mana values as the stop (effects/handlers/actions-native.ts#EXILE_UNTIL_OP_FORMS)
     case 'exileUntil':
@@ -1135,8 +1186,10 @@ function stepForms(v: Rec): string[] {
         ...(rec(v['to'])['ref'] === 'each' && JSON.stringify(v['amount'] ?? null).includes('"ref":"iterating"') ? ['op:damage.perPlayerAmount'] : [])]; // edh-players-12: an amount read for each player of the group
     case 'fight':
       return [...(v['pairs'] === true ? ['op:fight.pairs'] : []), ...(v['by'] === 'toughness' ? ['op:fight.toughness'] : [])]; // p2-damage-2; edh-c-111: each of one group fights a different one of another (effects/handlers/lifedamage.ts#OP_FORMS)
+    case 'scry':
+      return v['fateseal'] === true ? ['op:scry.fateseal'] : []; // edhe58
     case 'shuffle':
-      return v['ifSearched'] === true ? ['op:shuffle.ifSearched'] : [];
+      return [...(v['ifSearched'] === true ? ['op:shuffle.ifSearched'] : []), ...(v['reorderGraveyard'] !== undefined ? ['op:shuffle.reorderGraveyard'] : [])]; // edhe34
     case 'reveal': return v['anyNumber'] === true ? ['op:reveal.anyNumber'] : []; // edh-next-135 (CR 603.12): a reveal of any number is done with none too (effects/handlers/control.ts#OP_FORMS)
     case 'look': return v['rebind'] === true ? ['op:look.rebind'] : []; // edh-next-126 (CR 608.2c): a look that names an earlier look's group again (effects/handlers/control.ts#OP_FORMS)
     // FAST5 T66 INTERFACE CHANGE (additive): a total over the objects chosen together (effects/handlers/choose.ts#OP_FORMS)
@@ -1151,6 +1204,7 @@ function stepForms(v: Rec): string[] {
         // audit-fix-1: "a source of your choice" (CR 609.7a); only of an `each` reference chosen by one chooser (effects/handlers/choose.ts#abilitiesForSources)
         ...(v['damageSource'] === true ? [rec(v['from'])['ref'] === 'each' && v['perPlayer'] === undefined && v['startingWith'] === undefined ? 'op:chooseObjects.damageSource' : 'op:chooseObjects.damageSource.other'] : []),
         ...(v['cardTypesAtLeast'] !== undefined ? [v['perPlayer'] === undefined && v['startingWith'] === undefined && v['eachCardType'] === undefined && v['distinct'] === undefined && v['random'] === undefined ? 'op:chooseObjects.cardTypesAtLeast' : 'op:chooseObjects.cardTypesAtLeast.other'] : []), // edh-d-85: card types among the chosen set (CR 205.2a)
+        ...(v['allOrNone'] === true ? [v['perPlayer'] === undefined && v['startingWith'] === undefined && v['random'] === undefined && v['distinct'] === undefined && v['eachCardType'] === undefined && v['eachColorPair'] === undefined && v['groupLimit'] === undefined && v['cardTypesAtLeast'] === undefined && typeof v['min'] === 'number' && v['min'] === v['max'] ? 'op:chooseObjects.allOrNone' : 'op:chooseObjects.allOrNone.other'] : []), // edh-d-107: none chosen when fewer than the number can be (CR 608.2d)
         ...(v['link'] !== undefined ? ['op:chooseObjects.link'] : [])]; // std-control-1: the chosen object remembered for a linked ability (CR 607.2d)
     // edh-players-8 INTERFACE CHANGE (additive): "choose a player with the most life or tied for most life" (effects/handlers/choose.ts#OP_FORMS); only a choice of a player (CR 119.1)
     // edh-mana-keywords-12 (CR 701.3a): "Equip planeswalker" attaches as though the host were a creature
@@ -1167,6 +1221,7 @@ function stepForms(v: Rec): string[] {
         // edh-next-143 (CR 608.2d; Pir's Whim, Khorvath's Fury): "For each player, choose friend or foe.": one chooser (you), a word of a list for each player, remembered by player with a link
         ...(v['forEachPlayer'] !== undefined ? [v['what'] === 'option' && Array.isArray(v['options']) && rec(v['who'])['ref'] === 'you' && v['link'] !== undefined && v['secret'] === undefined && v['random'] === undefined ? 'op:chooseValue.forEachPlayer' : 'op:chooseValue.forEachPlayer.other'] : []),
         ...(v['mostLife'] === true ? [v['what'] === 'player' ? 'op:chooseValue.mostLife' : 'op:chooseValue.mostLife.other'] : []),
+        ...(v['among'] !== undefined ? [v['what'] === 'player' ? 'op:chooseValue.among' : 'op:chooseValue.among.other'] : []), // edh-e-62
         ...(v['notAttackedLastCombat'] === true ? [v['what'] === 'opponent' ? 'op:chooseValue.notAttackedLastCombat' : 'op:chooseValue.notAttackedLastCombat.other'] : []), // edh-next-129 (CR 506.1, 608.2d)
         // edh-next-140 (CR 105.1, 608.2d; Scuttlemutt): "the color or colors of your choice": one chooser picks one or more colors (`min` 1, `max` 5), remembered by a link
         ...(v['what'] === 'color' && (v['min'] !== undefined || v['max'] !== undefined) ? [v['min'] === 1 && v['max'] === 5 && rec(v['who'])['ref'] === 'you' && v['link'] !== undefined && v['options'] === undefined && v['exclude'] === undefined && v['random'] === undefined ? 'op:chooseValue.colors' : 'op:chooseValue.colors.other'] : []),
@@ -1212,7 +1267,7 @@ function stepForms(v: Rec): string[] {
     // std-rx24 INTERFACE CHANGE (additive): an exile cost part with a `link` (champion, CR 607.2k, 702.72a): the source remembers the exiled card
     // (effects/handlers/pay.ts#OP_FORMS); an engine without it would never return the card
     case 'pay':
-      return [...(JSON.stringify(v['cost'] ?? null).includes('"link":') ? ['op:pay.costLink'] : []), ...(v['cumulativeUpkeep'] === true ? ['op:pay.cumulativeUpkeep'] : []) /* edh-d-74 */, ...(v['upTo'] !== undefined ? ['op:pay.upTo'] : []), ...(v['reduceBy'] !== undefined ? ['op:pay.reduceBy'] : []), ...(v['anyAmount'] === true ? ['op:pay.anyAmount'] : []), ...(v['startingWith'] !== undefined ? ['op:pay.eachStartingWith'] : []), ...(v['xMax'] !== undefined ? ['op:pay.xMax'] : []), ...(v['everyPlayer'] === true ? ['op:pay.everyPlayer'] : []), ...(v['link'] !== undefined ? ['op:pay.byPlayerLink'] : [])]; // edh-next-139: link (what each player paid); edh-c-57: everyPlayer; std-combat-2: upTo; edh-replace-5: anyAmount; edh-players-6: xMax
+      return [...(JSON.stringify(v['cost'] ?? null).includes('"link":') ? ['op:pay.costLink'] : []), ...(v['cumulativeUpkeep'] === true ? ['op:pay.cumulativeUpkeep'] : []) /* edh-d-74 */, ...(v['upTo'] !== undefined ? ['op:pay.upTo'] : []), ...(v['reduceBy'] !== undefined ? ['op:pay.reduceBy'] : []), ...(v['anyAmount'] === true ? ['op:pay.anyAmount'] : []), ...(v['startingWith'] !== undefined ? ['op:pay.eachStartingWith'] : []), ...(v['xMax'] !== undefined ? ['op:pay.xMax'] : []), ...(v['everyPlayer'] === true ? ['op:pay.everyPlayer'] : []), ...(v['link'] !== undefined ? ['op:pay.byPlayerLink'] : []), ...(v['manaCostOf'] !== undefined ? ['op:pay.manaCostOf'] : []) /* edh-e-21 */]; // edh-next-139: link (what each player paid); edh-c-57: everyPlayer; std-combat-2: upTo; edh-replace-5: anyAmount; edh-players-6: xMax
     // FAST5 MX6 INTERFACE CHANGE (additive): mana that lasts until end of combat (firebending, CR 702.189a; effects/handlers/cards-mana.ts#OP_FORMS)
     case 'addMana':
       // CMD3: "Add {W} or one mana of the chosen color" (effects/handlers/cards-mana.ts#OP_FORMS)
@@ -1228,6 +1283,7 @@ function stepForms(v: Rec): string[] {
       // std-mana-2: "put up to N counters on <one object>" (a target, a bound or event object, or ~; never a group: one number is chosen)
       return [...(v['distribute'] === true ? ['op:putCounters.distribute'] : v['upTo'] === true ? [rec(v['on'])['ref'] === 'each' ? 'op:putCounters.upTo.group' : 'op:putCounters.upTo'] : []),
         ...(v['evolve'] === true ? ['op:putCounters.evolve'] : []), // edh-c-48 (effects/handlers/counters.ts)
+        ...(v['maxTotal'] !== undefined ? ['op:putCounters.maxTotal'] : []), // edh-e-14 (effects/handlers/counters.ts)
         ...(v['ofEvent'] !== undefined ? ['op:putCounters.ofEvent'] : []), // edhn63 (effects/handlers/counters.ts)
         ...(v['copyFrom'] !== undefined ? ['op:putCounters.copyFrom'] : []), // edhn63 (effects/handlers/counters.ts)
         ...(v['kindOfChoice'] !== undefined ? ['op:putCounters.kindOfChoice'] : []), ...(v['ifNone'] === true ? ['op:putCounters.ifNone'] : []) /* edh-d-89 */, ...(v['by'] !== undefined ? [(rec(v['by'])['ref'] === 'target' || rec(v['by'])['ref'] === 'event' || rec(v['by'])['ref'] === 'iterating' /* edh-next-52: the opponent of "each opponent may put" (Tempt with Glory) */ || rec(v['by'])['ref'] === 'bound' /* edh-next-110 (CR 122.6, 608.2d; Gluntch): the player an earlier choice bound */) /* edh-top-5: the player of the trigger's event (Alexios) */ ? 'op:putCounters.by' : 'op:putCounters.by.other'] : [])]; // edh-perms-15 (CR 122.1); edh-players-19 (CR 122.6)
@@ -1284,13 +1340,20 @@ function stepForms(v: Rec): string[] {
         return playersOnly ? ['feature:vote.players', ...secret] : secret; // edhd27: a secret vote for objects, "up to one creature"
       }
       if (v['choices'] !== undefined) return ['action:choices.notVote']; // M12-3: only a vote has choices (never registered)
+      // edh-d-105 (CR 701.36a, 508.4; Ghired, Conclave Exile): "populate. The token enters tapped and attacking." (keywords/actions/tokens.ts#POPULATE): a single populate with both flags;
+      // any other action with them, or only one of them, is resolved by hand (never registered)
+      // (bundle merge with edh-e-4: a cloak or manifest with `tapped` alone is edh-e-4's "They enter tapped." below, not this form)
+      if ((v['tapped'] !== undefined || v['attacking'] !== undefined) && !((v['action'] === 'cloak' || v['action'] === 'manifest') && v['attacking'] === undefined)) return v['action'] === 'populate' && v['n'] === undefined && v['tapped'] === true && v['attacking'] === true ? ['feature:populate.tappedAttacking'] : ['action:tappedAttacking.notPopulate'];
       if (v['action'] === 'discover' && v['n'] === undefined) return ['action:discover.noN'];
       // FAST5X E25: "manifest dread X times" (CR 701.62a; effects/handlers/face-ops.ts#manifestDread)
       // FAST5X E25: "each player manifests dread" (several players at once, CR 101.4) is resolved by hand (effects/handlers/face-ops.ts): never registered
       if (v['action'] === 'manifestDread' && rec(v['who'])['ref'] === 'each' && rec(v['who'])['who'] === 'player') return ['feature:action.manifestDread.eachPlayer'];
       if (v['action'] === 'manifestDread' && v['n'] !== undefined) return ['feature:action.manifestDread.n'];
       // FAST5X E25: "shuffle that pile, then cloak them" (CR 701.58e; any other `arg` of manifest or cloak is resolved by hand)
-      if ((v['action'] === 'cloak' || v['action'] === 'manifest') && v['arg'] !== undefined) return [`feature:action.${String(v['action'])}.${String(v['arg'])}`];
+      if ((v['action'] === 'cloak' || v['action'] === 'manifest') && (v['arg'] !== undefined || v['tapped'] === true)) {
+        // edh-e-4 (CR 614.1c): "..., then cloak those cards. They enter tapped." (`tapped`)
+        return [...(v['arg'] !== undefined ? [`feature:action.${String(v['action'])}.${String(v['arg'])}`] : []), ...(v['tapped'] === true ? ['feature:action.faceDown.tapped'] : [])];
+      }
       return [];
     }
     default:
@@ -1581,6 +1644,9 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
       // when the event's player is "you"; any other player there is `feature:each.otherPlayer.eventPlayer` (unregistered: fail closed).
       // edh-mana-keywords-7 (CR 603.2, 601.2i): a cast event names the player who cast the spell (effects/refs.ts, `feature:each.otherPlayer.castPlayer`); no other event does here
       if (triggerOnOthers(v) && mentionsEachOtherPlayer(v['effect'])) add(((): boolean => { const on = rec(v['trigger'])['on']; return Array.isArray(on) && on.every((e) => rec(e)['ev'] === 'cast'); })() ? 'feature:each.otherPlayer.castPlayer' : 'feature:each.otherPlayer.eventPlayer');
+      // edh-d-105 (CR 603.2, 601.2i, 102.1; Curse of Echoes): "each other player" fixed as other than the event's player (`than: {ref:'event', role:'player'}`) is the caster only in a cast
+      // trigger; in any other trigger which player that is, and which spell "that spell" is, is not this reading (`feature:each.otherPlayer.thanEventNotCast`, never registered: fail closed)
+      if (JSON.stringify(v['effect'] ?? null).includes('"than":{"ref":"event","role":"player"}') && !((): boolean => { const on = rec(v['trigger'])['on']; return Array.isArray(on) && on.every((e) => rec(e)['ev'] === 'cast'); })()) add('feature:each.otherPlayer.thanEventNotCast');
       // p2-c-dieroll-1 (CR 706.2, 603.2c, unverified) left "whenever you roll one or more dice, ... equal to the result" unregistered (`feature:dieResult.batch`: which result, one die's
       // or their total, was not modeled). edh-mana-keywords-9 (Vexing Puzzlebox ruling 2022-06-10: "If an effect instructs you to roll one or more dice and add some number to that
       // roll, the result is the total after adding that number"; "... roll more than one die and ignore one or more of them, the result is only what wasn't ignored"): the result of
@@ -1595,6 +1661,9 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
     case 'TriggerDef':
       if (v['batch'] === true) add('feature:trigger.batch');
       if (v['wholeBatch'] === true) add('feature:trigger.batch.whole'); // CLOUD std-misc (CR 603.2c): triggers/collect.ts
+      // edh-d-112 (CR 603.2c; Lo and Li, Royal Advisors): a single action pattern beside "one or more" ones in one batch trigger (triggers/occurrences.ts#mixedActionOccurrences); without
+      // the batch flag, or in any other mix, the pattern's `single` is a form nothing reads (fail closed: the feature below is registered for that mix only)
+      if (Array.isArray(v['on']) && (v['on'] as unknown[]).some((p) => typeof p === 'object' && p !== null && (p as Record<string, unknown>)['single'] === true)) add(v['batch'] === true && isMixedActionList(v['on'] as never) ? 'feature:trigger.batch.mixedAction' : 'feature:trigger.batch.mixedAction.other');
       // FAST4 T27 INTERFACE CHANGE: a condition of the trigger event and "for the first time each turn" (triggers/collect.ts; `first` reads the history)
       if (v['while'] !== undefined) add('feature:trigger.while');
       if (v['first'] !== undefined) { add('feature:trigger.first'); add('feature:history'); }
@@ -1641,6 +1710,7 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
         if (v['op'] === 'createToken' && typeof v['attacking'] === 'object' && v['attacking'] !== null) add('feature:createToken.attackingWhom'); // cmd1 (CR 508.4)
         if (v['op'] === 'createToken' && v['blocking'] !== undefined) add('feature:createToken.blocking'); // edh-combat-4 (CR 506.3e)
         if (v['op'] === 'createToken' && v['token'] !== undefined && rec(v['token'])['manaCost'] !== undefined) add('feature:createToken.manaCost'); // edh-next-64 (CR 111.3)
+        if (v['op'] === 'createToken' && v['token'] !== undefined && (rec(v['token'])['chosenColor'] !== undefined || rec(v['token'])['chosenSubtype'] !== undefined)) add('feature:createToken.chosen'); // edh-e-12 (CR 607.2d)
         if (v['op'] === 'createToken' && rec(v['who'])['ref'] === 'each' && JSON.stringify(v['count'] ?? null).includes('"ref":"iterating"')) add('feature:createToken.perPlayerCount'); // edh-c-27 (CR 608.2e)
       }
       break;
@@ -1651,10 +1721,12 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
       if (v['cond'] !== 'ask') add(`cond:${String(v['cond'])}`);
       if (v['cond'] === 'happened') add('feature:history');
       if (v['scope'] === 'sinceYourLastTurn') add('feature:history.sinceYourLastTurn'); // edh-next-135 (CR 500.1): "since your last turn" (rules/history.ts#historyInScope)
+      if (v['scope'] === 'yourLastTurn') add('feature:history.yourLastTurn'); // edh-d-109 (CR 500.1): "during your last turn" (rules/history.ts#historyInScope)
       if (v['cond'] === 'wasCast' && v['spent'] !== undefined) add('feature:wasCast.spent'); // FAST5 T37 INTERFACE CHANGE: adamant, "if at least three white mana was spent to cast ~" (CR 601.2h)
       if (v['cond'] === 'did' && v['which'] !== undefined) add('feature:did.which'); // FAST5X E17: "if a creature you controlled was destroyed this way" (CR 608.2h)
       if (v['cond'] === 'did' && v['to'] !== undefined) add('feature:did.which.move'); // FAST5 T75: "if you put a Town card into your hand this way" (CR 608.2c, 608.2h)
       if (v['cond'] === 'wasCast' && v['fromOwner'] !== undefined) add('feature:wasCast.fromOwner'); // Standard round 4, r4-trig INTERFACE CHANGE: "cast from your graveyard" (CR 400.3)
+      if (v['cond'] === 'wasCast' && v['nth'] !== undefined) add('feature:wasCast.nth'); // edh-d-111 INTERFACE CHANGE: "if it was the second spell you cast this turn" (CR 601.2i)
       if (v['cond'] === 'wasCast' && v['by'] !== undefined) add('feature:wasCast.by'); // FAST4 T27 INTERFACE CHANGE: "if you cast it" (the cast record's caster)
       if (v['cond'] === 'wasCast' && v['object'] !== undefined) add('feature:wasCast.object'); // std-tdm INTERFACE CHANGE: "if you cast it" of the object that entered
       // FAST5 T36: the one history reading a restriction's `when` has (statics/hooks.ts#isAttackedHistory): "a creature attacked a player this combat / turn"
@@ -1739,8 +1811,8 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
       // r4-cost (CR 601.2c, 601.2f): "the creature it targets" in an activated ability's cost change: its announced target (statics/costmods.ts#targetObjects)
       if (n.def === 'ObjRef' && v['ref'] === 'target' && ruleEffectOf(n)?.costAmount === true) add(abilityCost(n) ? 'feature:cost.abilityTargets' : 'feature:cost.targetRef');
       // C6: "each player who controls the most ..." is resolved by the effect resolver only (effects/refs.ts); a static or a rule effect reads it as nobody
-      if ((v['ref'] === 'controlsMost' || v['ref'] === 'controlsAny' || v['ref'] === 'attackedBySource' || v['ref'] === 'attacked' || v['ref'] === 'votedFor' || v['ref'] === 'withLife' /* edh-next-72 */) && (staticallyEvaluated(n) || ruleEffectOf(n)) && !fixedCostAmount(n) /* edh-d-88 */) add('feature:player.controlsMost.static');
-      if (n.def === 'ObjRef' && staticallyEvaluated(n)) add(`sref:${String(v['ref'])}`); // WP22 review fix
+      if ((v['ref'] === 'controlsMost' || v['ref'] === 'controlsAny' || v['ref'] === 'attackedBySource' || v['ref'] === 'attacked' || v['ref'] === 'votedFor' || v['ref'] === 'withLife' /* edh-next-72 */ || v['ref'] === 'extremePlayer' /* edh-e-62 */ || v['ref'] === 'coinSide' /* edh-e-62 */) && (staticallyEvaluated(n) || ruleEffectOf(n)) && !fixedCostAmount(n) /* edh-d-88 */) add('feature:player.controlsMost.static');
+      if (n.def === 'ObjRef' && staticallyEvaluated(n) && !(v['ref'] === 'grantor' && inCreatedToken(n))) add(`sref:${String(v['ref'])}`); // WP22 review fix; edh-e-66: the creating permanent of a token's ability is written as `fixed` as the token is created
       // edh-next-134 (CR 102.1, 608.2c): "each other player" than a named player is read by the effect resolver only (effects/refs.ts); a static, rule effect, target or filter reads it as nothing
       if (n.def === 'PlayerRef' && v['ref'] === 'each' && v['than'] !== undefined) add(v['who'] === 'otherPlayer' && inStep(n) && !staticallyEvaluated(n) && ruleEffectOf(n) === null ? 'feature:each.otherPlayer.than' : 'feature:each.than.other');
       // edhd63 (CR 101.4, 607.2d): "the next player in the chosen direction" is read by the effect resolver (effects/refs.ts) and by a static or rule effect (statics/match.ts); a target, a trigger's filter or a condition reads nobody
@@ -1860,7 +1932,9 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
         const handLife = v['kind'] === 'payLife' && isYourZoneSize(v['amount']) && n.parent?.def === 'CostDef'
           && ((n.parent.parent?.def === 'ActivatedAbilityDef' && n.parent.parent.value['isMana'] !== true && !JSON.stringify(n.parent.parent.value['effect'] ?? null).includes('"op":"addMana"') /* a mana ability's cost is paid elsewhere (rules/mana.ts) */) || (n.parent.parent?.def === 'KeywordAbilityDef' && n.parent.parent.value['keyword'] === 'equip'));
         const identityLife = handLife || (v['kind'] === 'payLife' && (rec(v['amount'])['q'] === 'commanderIdentitySize' || isHalfLifeUp(v['amount'])) && n.parent?.def === 'CostDef' && n.parent.parent?.def === 'ActivatedAbilityDef' && n.parent.parent.value['isMana'] !== true);
-        addAll(paidOnResolution(n) || identityLife ? forms.filter((f) => f !== 'cost:count.quantity') : forms);
+        // edh-e-14 (CR 118.3, 602.2b, 122.1; Tornado): or "Pay 3 life for each velocity counter on ~" (the counters on the source, worked out when the cost is determined, actions/activate.ts)
+        const counterLife = v['kind'] === 'payLife' && isOwnCounters(v['amount']) && n.parent?.def === 'CostDef' && n.parent.parent?.def === 'ActivatedAbilityDef' && n.parent.parent.value['isMana'] !== true;
+        addAll(paidOnResolution(n) || identityLife || counterLife ? forms.filter((f) => f !== 'cost:count.quantity') : forms);
         if (v['kind'] === 'putCounters') addAll(counterForms(v['counter'])); // CR 122.1 (WP21 review)
         // FAST5X E10: a keyword action that exists only as a cost (waterbend, CR 701.67a: "pay [cost]") is paid by rules/cost.ts and has no macro
         if (v['kind'] === 'action' && !COST_ONLY_ACTIONS.has(String(v['action']))) add(`action:${String(v['action'])}`);
@@ -1877,9 +1951,12 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
       if (String(v['layer']) === '2') add('feature:control.layered');
       if (String(v['layer']) === '6' && v['addActivatedOf'] !== undefined) add('feature:layer6.addActivatedOf'); // r5-static: statics/mods.ts#activatedOf (CR 613.1f)
       if (String(v['layer']) === '6' && v['spendColorAsAny'] !== undefined) add('feature:layer6.addActivatedOf.spendColorAsAny'); // edh-next-141: effects/handlers/lasting.ts#expandVariants (CR 609.4b)
+      if (String(v['layer']) === '6' && v['protectionFromColorsAmong'] !== undefined) add('feature:layer6.protectionFromColorsAmong'); // edh-e-61: statics/mods.ts#layer6 (CR 702.16a, 613.1f)
       if (String(v['layer']) === '6' && v['keywordsOf'] !== undefined) add('feature:layer6.keywordsOf'); // edh-d-102: statics/mods.ts#keywordsOf (CR 613.1f)
+      if (String(v['layer']) === '6' && v['protectionFromVotedColors'] !== undefined) add('feature:mod.protectionFromVotedColors'); // edhe35 (CR 702.16a, 701.38a): a resolved effect only (effects/handlers/lasting.ts#expandVariants)
       if (String(v['layer']) === '6' && v['protectionFromColorsOf'] !== undefined) add(staticallyEvaluated(n) || ruleEffectOf(n) ? ((v['protectionFromColorsOf'] as { ref?: string }).ref === 'subject' ? 'feature:layer6.protectionFromOwnColors' /* edh-c-59: statics/mods.ts#layer6 */ : 'feature:mod.protectionFromColorsOf.static') : 'feature:mod.protectionFromColorsOf'); // edh-players-15: a resolved effect only (effects/handlers/lasting.ts#expandVariants), but for the subject itself in a static ability
       if (String(v['layer']) === '6' && v['addChosen'] !== undefined) add(staticallyEvaluated(n) ? 'feature:layer6.addChosen' : 'feature:layer6.addChosen.resolved'); // edhd63: statics/mods.ts#layer6 reads the source's link (a resolved effect never does)
+      if (String(v['layer']) === '6' && Array.isArray(v['removeAbilities']) && v['removeAbilities'].length > 0) add('feature:layer6.removeAbilities'); // edh-e-48: statics/mods.ts#abilityIdentity
       if (String(v['layer']) === '6' && v['exceptMana'] === true) add(v['removeAll'] === true ? 'feature:layer6.removeAll.exceptMana' : 'feature:layer6.exceptMana.other'); // edh-d-46: statics/mods.ts#layer6 (CR 613.1f, 605.1a)
       if (String(v['layer']) === '6' && v['removeEnchant'] !== undefined) add('feature:layer6.removeEnchant'); // edh-perms-4: statics/mods.ts#layer6 (CR 702.5a, 613.1f)
       if (String(v['layer']) === '6' && v['activatedOfLimit'] !== undefined) add('feature:layer6.addActivatedOf.limit'); // std-craft-2: statics/mods.ts#limitedEachTurn (CR 602.5b)
@@ -2163,6 +2240,10 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
       const anyColorWith = notPrinted(n) !== 'lasting' && v['action'] === 'spendMana' && v['asThough'] === 'any color' && v['abilities'] === true && v['of'] !== undefined && typeof v['spentType'] === 'string'
         && Object.keys(v).every((k) => ['s', 'who', 'action', 'asThough', 'of', 'abilities', 'spentType'].includes(k));
       if (anyColorWith) { add('permit:spendMana.anyColorWithAbilities'); break; }
+      // edh-e-51 (CR 609.4b; Sunglasses of Urza): "You may spend white mana as though it were red mana." as a static ability (statics/play-permits.ts#isSpendAsColorPermit) is `permit:spendMana.asColor`
+      const asColor = notPrinted(n) !== 'lasting' && v['action'] === 'spendMana' && v['asThough'] === 'a color' && typeof v['spentType'] === 'string' && typeof v['asColor'] === 'string' && v['of'] === undefined && v['abilities'] === undefined
+        && Object.keys(v).every((k) => ['s', 'who', 'action', 'asThough', 'spentType', 'asColor'].includes(k));
+      if (asColor) { add('permit:spendMana.asColor'); break; }
       // edh-mana-keywords-4 (CR 609.4b): "You may spend mana as though it were mana of any color." as a static ability (statics/play-permits.ts#isSpendAnyColorEverywherePermit)
       // is `permit:spendMana.anyColorEverywhere`; a resolved effect with it is a form nothing registers
       const anyColorEverywhere = notPrinted(n) !== 'lasting' && v['action'] === 'spendMana' && v['asThough'] === 'any color' && v['of'] === undefined && v['abilities'] === undefined
@@ -2293,6 +2374,11 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
         // and lets them be played as that face only (statics/play-permits.ts#namedObjects, actions/cast.ts#namedPermitTypesAllow refuses a spell face)
         if (k === 'onlyTypes' && ofObject && v['action'] === 'play' && JSON.stringify(v['onlyTypes']) === '["Land"]') { add('feature:permit.play.onlyTypes.land'); continue; }
         if (k === 'onlyTypes') { add(ofObject && v['action'] === 'cast' ? 'feature:permit.cast.onlyTypes' : `feature:permit.${String(v['action'])}.onlyTypes.other`); continue; } // edh-zones-11 (CR 601.3)
+        // trek-23 (CR 608.2c, 611.2a; Vulcan Mind-Meld): "the player who exiled it may play it": the play permission of a resolved effect for named objects, of each player
+        // (effects/handlers/lasting.ts#exiledByPermits); on any other permission a `.other` form nothing registers
+        // (only when every card it names is the result of an earlier move into exile of the same instructions that says who exiled it, `by`: a card no instruction says who exiled
+        // would be permitted to nobody, so such a reading is never automated)
+        if (k === 'exiledByOnly') { add(ofObject && v['action'] === 'play' && JSON.stringify(v['who']) === '{"ref":"each","who":"player"}' && exiledByNamesKnown(n) ? 'feature:permit.play.exiledByOnly' : `feature:permit.${String(v['action'])}.exiledByOnly.other`); continue; }
         if (k === 'ownOnly' || k === 'landsEnterTapped') { add(ofObject ? `feature:permit.${String(v['action'])}.${k}` : `feature:permit.${String(v['action'])}.${k}.other`); continue; }
         // std-rx27 (CR 601.3, 611.2a): "until end of turn, you may play a card exiled with ~": one card, counted for the turn (statics/play-permits.ts#namedSingleKey),
         // so only on a permission for named objects that lasts until end of turn; any other is a form nothing registers
@@ -2305,6 +2391,8 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
         if (k === 'entersAbilities') { add(zone && v['action'] === 'play' && isCappedPermanentPlayPermitJson(v) ? 'feature:permit.play.zone.entersAbilities' : `feature:permit.${String(v['action'])}.entersAbilities`); continue; }
         // std-freecast-2 (CR 601.3): a graveyard permission of a resolved effect "this turn" for one spell (statics/play-permits.ts#gyHits counts it for the turn)
         if (k === 'single' && zone) { add(lastingGy && rec(rec(n.parent?.value)['duration'])['d'] === 'endOfTurn' ? 'feature:permit.cast.zone.single' : 'feature:permit.cast.zone.single.other'); continue; }
+        // edh-d-104 (CR 603.7a, 305.1; Fires of Mount Doom): "When you play a card this way" on a play permission for named objects with its delayed trigger (actions/land.ts, actions/cast.ts)
+        if (k === 'onCastLand') { add(ofObject && !top && !zone && v['action'] === 'play' && v['onCast'] !== undefined && v['onCastLand'] === true ? 'feature:permit.play.onCastLand' : `feature:permit.${String(v['action'])}.onCastLand.other`); continue; }
         if (k === 'onCast') { add(ofObject && !top && !zone ? `feature:permit.${String(v['action'])}.onCast` : `feature:permit.${String(v['action'])}.onCast.other`); continue; } // edh-next-127 (CR 603.7a): "When you cast a spell this way" on a permission for named objects only
         if (k === 'entersTapped') { add(zone && v['action'] === 'cast' ? 'feature:permit.cast.entersTapped' : `feature:permit.${String(v['action'])}.entersTapped.other`); continue; } // edh-next-68
         if (k === 'entersSubtypes') { add(zone ? 'feature:permit.cast.entersSubtypes' : `feature:permit.${String(v['action'])}.entersSubtypes.other`); continue; }
@@ -2395,6 +2483,7 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
       // edh-next-12 INTERFACE CHANGE: a floor on the total mana of spells (Trinisphere, statics/costmods.ts#modifyMana, CR 601.2f, 118.7); spells only
       if (rec(v['change'])['kind'] === 'floor') add(rec(v['applies'])['spells'] !== undefined && rec(v['applies'])['abilities'] === undefined && rec(v['applies'])['self'] !== true ? 'feature:costMod.floorTotal' : 'feature:costMod.floorTotal.form');
       // r5-cost INTERFACE CHANGE: "cost an additional 3 life to cast" (actions/cast.ts#modifiedPlan, CR 601.2f, 119.4): spells only; nothing adds it to an activation
+      if (rec(v['change'])['life'] !== undefined && rec(v['change'])['times'] !== undefined) add('feature:costMod.life.times'); // edh-e-46: the life is paid once for each time (actions/cast.ts#modifiedPlan)
       if (rec(v['change'])['life'] !== undefined) add(rec(v['applies'])['abilities'] !== undefined || rec(v['change'])['kind'] !== 'increase' ? 'feature:costMod.abilities.life' : 'feature:costMod.life');
       // edh-next-142 INTERFACE CHANGE: "loyalty abilities ... cost an additional [+1] to activate" (actions/activate.ts#costChangeOf, CR 606.4, 601.2f): an increase of the loyalty cost of loyalty
       // abilities only, nothing else changed; any other use of `loyalty` is not read
@@ -2414,6 +2503,7 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
         const b = rec(v['body'])['b'];
         if (b !== 'prevent' && b !== 'regeneration') add(`feature:shield.${String(b)}`);
         if (rec(v['shield'])['batch'] !== undefined) add('feature:shield.batch'); // edh-next-122: the next time one or more objects enter together (CR 614.1c, 616.1)
+        if (rec(v['shield'])['each'] !== undefined) add('feature:shield.each'); // edh-d-103: one shield per creature and player (CR 615.7)
         // edh-next-99: a one-use skip shield of a GROUP of players is one shield per player (effects/handlers/lasting.ts#effectsToStore, CR 614.10a): no capability needed
       }
       break;
@@ -2428,6 +2518,7 @@ function usesOfNode(n: WalkNode, out: CapUse[]): void {
       break;
     case 'ManaProduction':
       if (v['kind'] === 'couldProduce') add('feature:mana.couldProduce'); // p2-mana-1: CR 106.7 (effects/handlers/cards-mana.ts)
+      if (v['kind'] === 'manaCostOf') add('feature:mana.manaCostOf'); // edh-e-21: CR 106.1, 202.1 (effects/handlers/cards-mana.ts)
       if (v['kind'] === 'devotionColor') add('feature:mana.devotionColor'); // p2-mana-2: CR 700.5 (effects/handlers/cards-mana.ts)
       if (v['kind'] === 'eventProduced') add('feature:mana.eventProduced'); // T38: read from the triggering mana ability's activation (effects/handlers/cards.ts#FEATURES)
       if (v['kind'] === 'anyColor' && v['from'] !== undefined) add('feature:mana.anyColor.from'); // r3-cost: each unit among some types (effects/handlers/cards-mana.ts)

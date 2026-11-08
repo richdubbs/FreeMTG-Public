@@ -1,0 +1,111 @@
+[
+  {
+    "id": "eff.edhe5.linked.returnAllOwned.hand",
+    "kind": "effect",
+    "since": 105,
+    "status": "stable",
+    "subject": "none",
+    "cr": [
+      "CR 607.2a",
+      "CR 400.3",
+      "CR 108.3"
+    ],
+    "pattern": "return all cards you own exiled with ( it | ~ ) to your hand",
+    "build": {
+      "op": "move",
+      "what": {
+        "ref": "each",
+        "filter": {
+          "is": {
+            "ref": "linked",
+            "link": "exiled"
+          },
+          "zone": "any",
+          "isCard": true,
+          "owner": "you"
+        }
+      },
+      "to": {
+        "zone": "hand"
+      }
+    },
+    "consumes": [
+      "all",
+      "you",
+      "own"
+    ],
+    "examples": [
+      {
+        "text": "{T}: Exile a card from your hand face down.\nAt the beginning of your upkeep, return all cards you own exiled with ~ to your hand."
+      },
+      {
+        "text": "Whenever ~ attacks, exile the top card of target opponent's library.\n{1}: Return all cards you own exiled with it to your hand."
+      }
+    ],
+    "counterExamples": [
+      "{T}: Exile a card from your hand face down.\nAt the beginning of your upkeep, return all cards exiled with ~ to your hand.",
+      "{T}: Exile a card from your hand face down.\nAt the beginning of your upkeep, return all cards you own exiled with ~ to the battlefield.",
+      "{T}: Exile a card from your hand face down.\nAt the beginning of your upkeep, return a card you own exiled with ~ to your hand."
+    ]
+  },
+  {
+    "id": "eff.edhe5.linked.untilEot.castOne.free",
+    "kind": "effect",
+    "since": 105,
+    "status": "stable",
+    "cr": [
+      "CR 607.2a",
+      "CR 611.2a",
+      "CR 601.3",
+      "CR 118.9"
+    ],
+    "pattern": "until end of turn , you may cast a creature spell from among cards exiled with ( it | ~ ) without paying its mana cost",
+    "build": {
+      "op": "effect",
+      "duration": {
+        "d": "endOfTurn"
+      },
+      "effects": [
+        {
+          "s": "permit",
+          "who": {
+            "ref": "you"
+          },
+          "action": "cast",
+          "of": {
+            "is": {
+              "ref": "linked",
+              "link": "exiled"
+            }
+          },
+          "single": true,
+          "onlyTypes": [
+            "Creature"
+          ],
+          "costChange": {
+            "kind": "set",
+            "cost": {}
+          }
+        }
+      ]
+    },
+    "consumes": [
+      "may",
+      "until",
+      "without"
+    ],
+    "examples": [
+      {
+        "text": "Whenever a Goblin you control dies, exile it.\n{T}: Until end of turn, you may cast a creature spell from among cards exiled with ~ without paying its mana cost."
+      },
+      {
+        "text": "Whenever a Goblin you control dies, exile it.\n{1}, {T}: Until end of turn, you may cast a creature spell from among cards exiled with ~ without paying its mana cost."
+      }
+    ],
+    "counterExamples": [
+      "Whenever a Goblin you control dies, exile it.\n{T}: Until your next turn, you may cast a creature spell from among cards exiled with ~ without paying its mana cost.",
+      "Whenever a Goblin you control dies, exile it.\n{T}: Until end of turn, you may cast two creature spells from among cards exiled with ~ without paying their mana costs.",
+      "Whenever a Goblin you control dies, exile it.\n{T}: Until end of turn, you may cast an instant spell from among cards exiled with ~ without paying its mana cost."
+    ]
+  }
+]

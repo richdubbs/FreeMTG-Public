@@ -38,7 +38,7 @@ const M6_EVENT_KINDS: readonly EventPattern['ev'][] = ['phase', 'dayNight'];
 // (triggers/normalize.ts) and the history entry's `via` fact (triggers/history.ts, rules/history.ts)
 // FAST5X E18: 'ev.cast.nthMatching', "their first noncreature spell each turn": the Nth of the caster's spells this turn that match the pattern's `spell` (history)
 // FAST5X E16: 'ev.damage.excess', "is dealt excess damage" (CR 120.10): the `excess` data of the damage event (rules/damage.ts computes it, normalize.ts carries it)
-export const FEATURES: readonly string[] = ['trigger.producedChosen' /* edh-mana-keywords-5 */, 'trigger.batch', 'trigger.batch.whole' /* CLOUD std-misc */, 'delay.batch', 'delay.batch.whole' /* edh-players-13: delayed.ts, CR 603.2c */, 'delay.targets' /* std-tdm: delayed.ts#delayedAbility, CR 603.7, 603.3d */, 'trigger.limit', 'trigger.mana', 'trigger.while', 'trigger.first', 'wasCast.by', 'wasCast.spent', 'wasCast.object' /* std-tdm: effects/eval.ts#castRecordOf */, 'wasCast.fromOwner' /* Standard round 4, r4-trig: effects/eval.ts#wasCast, CR 400.3 */, 'ev.cast.via', 'ev.cast.notFrom' /* Standard round 5, r5-trig: the `from` of the cast event and history entry (CR 601.2a) */, 'ev.cast.nthMin' /* r5-trig: the cast event's `nth` (CR 601.2i) */, 'ev.cast.nthMatching', 'ev.damage.excess', 'ev.damage.amountIsToughness' /* std-rx28: CR 120.1, 208.1 */, 'ev.damage.toSourceTarget' /* std-rx28: CR 115.9b */, 'ev.activate.activated' /* std-rx28: CR 602.2 */, 'did.which', 'did.which.move' /* FAST5 T75 */, 'ev.counters.by', 'ev.counters.byController' /* edhn63 */, 'trigger.limit.action' /* FAST5X E21 */, 'delayed.step.anyMain' /* r5-fxb: delayed.ts#fires, CR 505.1 */, 'lookback.attachments' /* r5-fxb: LastKnown.attached, CR 603.10a */, 'trigger.tappedForMana' /* std-mana-1: rules/mana.ts#addMana `tapped`, CR 106.12 */, 'ev.life.fromDamage' /* edh-players-3: CR 120.3a */, ...SUPPORTED_EVENT_FORMS, 'delayed.step.addedPhase' /* edh-combat-5 */, 'ev.damage.sourcePermanent', 'ev.damage.toOtherThanSourceController' /* edhd63 */ /* edh-zones-19: CR 109.2 */, 'trigger.resolvesIfIllegal' /* edh-top-9: effects/run.ts, CR 608.2b */, 'ev.activate.targetsYourCreature' /* edh-next-67: CR 115.1, 602.2b */, 'ev.abilityTriggered.entering' /* edh-next-74: CR 603.6a */, 'trigger.activateLifePaid' /* edh-next-74: CR 602.2b */, 'trigger.activateXInCost' /* edh-next-74: CR 107.3a */, 'delayed.event.or' /* edh-next-74: CR 603.7 */, 'trigger.activateManaSpent' /* edh-d-50 */, 'ev.cast.nthAnyCaster' /* edh-next-91: CR 601.2i */];
+export const FEATURES: readonly string[] = ['trigger.producedChosen' /* edh-mana-keywords-5 */, 'trigger.batch', 'trigger.batch.whole' /* CLOUD std-misc */, 'delay.batch', 'delay.batch.whole' /* edh-players-13: delayed.ts, CR 603.2c */, 'delay.targets' /* std-tdm: delayed.ts#delayedAbility, CR 603.7, 603.3d */, 'trigger.limit', 'trigger.mana', 'trigger.while', 'trigger.first', 'wasCast.by', 'wasCast.spent', 'wasCast.object' /* std-tdm: effects/eval.ts#castRecordOf */, 'wasCast.fromOwner' /* Standard round 4, r4-trig: effects/eval.ts#wasCast, CR 400.3 */, 'ev.cast.via', 'ev.cast.notFrom' /* Standard round 5, r5-trig: the `from` of the cast event and history entry (CR 601.2a) */, 'ev.cast.nthMin' /* r5-trig: the cast event's `nth` (CR 601.2i) */, 'ev.cast.nthMatching.from' /* edhe32 */, 'ev.cast.nthMatching', 'ev.damage.excess', 'ev.damage.amountIsToughness' /* std-rx28: CR 120.1, 208.1 */, 'ev.damage.toSourceTarget' /* std-rx28: CR 115.9b */, 'ev.activate.activated' /* std-rx28: CR 602.2 */, 'did.which', 'did.which.move' /* FAST5 T75 */, 'ev.counters.by', 'ev.counters.byController' /* edhn63 */, 'trigger.limit.action' /* FAST5X E21 */, 'delayed.step.anyMain' /* r5-fxb: delayed.ts#fires, CR 505.1 */, 'lookback.attachments' /* r5-fxb: LastKnown.attached, CR 603.10a */, 'trigger.tappedForMana' /* std-mana-1: rules/mana.ts#addMana `tapped`, CR 106.12 */, 'ev.life.fromDamage' /* edh-players-3: CR 120.3a */, ...SUPPORTED_EVENT_FORMS, 'delayed.step.addedPhase' /* edh-combat-5 */, 'ev.damage.sourcePermanent', 'ev.damage.toOtherThanSourceController' /* edhd63 */, 'ev.damage.toDefendingPlayer' /* edh-e-49 */ /* edh-zones-19: CR 109.2 */, 'trigger.resolvesIfIllegal' /* edh-top-9: effects/run.ts, CR 608.2b */, 'ev.activate.targetsYourCreature' /* edh-next-67: CR 115.1, 602.2b */, 'ev.abilityTriggered.entering' /* edh-next-74: CR 603.6a */, 'trigger.activateLifePaid' /* edh-next-74: CR 602.2b */, 'trigger.activateXInCost' /* edh-next-74: CR 107.3a */, 'delayed.event.or' /* edh-next-74: CR 603.7 */, 'trigger.activateManaSpent' /* edh-d-50 */, 'ev.cast.nthAnyCaster' /* edh-next-91: CR 601.2i */, 'trigger.batch.mixedAction' /* edh-d-112: occurrences.ts#mixedActionOccurrences, CR 603.2c */, 'wasCast.nth' /* edh-d-111: triggers/cond.ts and effects/eval.ts read the cast record's `nth`, CR 601.2i */];
 
 /**
  * Event kinds that CANNOT occur in this build because no engine code emits the `GameEvent` they are derived from (none since WP15's `rollDie` emits `dieRolled`). Their matchers
@@ -156,7 +156,7 @@ function producedChosen(cx: MatchContext, e: SemEvent): boolean {
  * including this spell's own entry (triggers/stack.ts writes a batch's history before collecting its triggers; an entry not written yet comes after every
  * written one). The facts are those the spell had as it was cast (triggers/history.ts). NaN when the event names no caster or spell.
  */
-function nthMatchingOf(cx: MatchContext, filter: ObjectFilter | undefined, e: SemEvent, anyCaster = false): number {
+function nthMatchingOf(cx: MatchContext, filter: ObjectFilter | undefined, e: SemEvent, anyCaster = false, from?: string): number {
   const caster = playerOf(e);
   const spell = e.roles['spell'];
   const spellId = spell && 'objects' in spell ? spell.objects[0]?.id : undefined;
@@ -169,6 +169,7 @@ function nthMatchingOf(cx: MatchContext, filter: ObjectFilter | undefined, e: Se
   for (const h of s.history) {
     if (h.turn !== s.turn.number || h.ev !== 'cast' || (!anyCaster && h.actor !== caster) || h.facts['copy'] === true) continue; // edh-next-91: `anyCaster` counts every player's spells
     if (h.subject === spellId) return n + 1;
+    if (from !== undefined && h.facts['from'] !== from) continue; // edhe32 (CR 601.2i): "your first instant or sorcery spell from your graveyard each turn" counts only the spells cast from that zone
     if (filter === undefined || factsMatchFilter(h.facts, '', filter, env, h.subject)) n++;
   }
   return n + 1;
@@ -213,7 +214,7 @@ const MATCHERS: { [K in EventPattern['ev']]?: Matcher<K> } = {
     if (p.nthMin !== undefined && !((numberData(e, 'nth') ?? 0) >= p.nthMin)) return false; // Standard round 5, r5-trig (CR 601.2i): not the caster's first spell this turn
     if (p.nth !== undefined && p.nthMatching !== true && numberData(e, 'nth') !== p.nth) return false; // FAST1 T4: the Nth spell that player cast this turn
     // FAST5X E18 (CR 601.2i): the Nth spell of the caster this turn among those that match `spell` ("their first noncreature spell each turn")
-    if (p.nth !== undefined && p.nthMatching === true && nthMatchingOf(cx, p.spell, e, p.anyCaster === true) !== p.nth) return false;
+    if (p.nth !== undefined && p.nthMatching === true && nthMatchingOf(cx, p.spell, e, p.anyCaster === true, p.from) !== p.nth) return false;
     if (p.via !== undefined && !castVia(e.data['via'], p.via)) return false; // FAST5X E2: cast for its warp cost (CR 702.185c)
     if (p.modal === true && e.data['modal'] !== true) return false; // Standard round 3, r3-trig (CR 700.2): a modal spell (modes were chosen as it was cast)
     // std-exile-play-1-1 (CR 108.3, 601.2a): "a spell they don't own": its owner is not its caster (a spell with no caster or no object never matches)
@@ -248,7 +249,13 @@ const MATCHERS: { [K in EventPattern['ev']]?: Matcher<K> } = {
       const declared = typeof e.data['declared'] === 'string' ? e.data['declared'].split('|').filter((x) => x !== '') : [];
       const { zone: _zone, ...rest } = p.withOther;
       const others = declared.filter((id) => id !== me?.o.id).map((id) => cx.g.s.objects[id]).filter((o): o is GameObject => o !== undefined && o.zone === 'battlefield');
-      if (!others.some((o) => objectMatches(cx.g.s, rest, o, [o.id], filterCx(cx)))) return false;
+      // edh-d-109 (CR 508.1, 603.2c; Enkira, Hostile Scavenger): "~ and at least two Zombies attack": at least that many of them
+      // edh-d-109 (CR 508.1b, 506.2; Canal Courier): "~ and another creature attack different players": the other one attacks a player, not the player this one attacks
+      const attacked = (id: string): string | undefined => { const a = cx.g.s.combat?.attackers.find((x) => x.id === id); return a !== undefined && a.defender !== null && cx.g.s.players.some((pl) => pl.id === a.defender) ? a.defender : undefined; };
+      const mine = me === undefined ? undefined : attacked(me.o.id);
+      if (p.withOtherDifferentPlayer === true && mine === undefined) return false;
+      const matching = others.filter((o) => objectMatches(cx.g.s, rest, o, [o.id], filterCx(cx)) && (p.withOtherDifferentPlayer !== true || (attacked(o.id) !== undefined && attacked(o.id) !== mine))).length;
+      if (matching < (p.withOtherAtLeast ?? 1)) return false;
     }
     // edh-c-83 (CR 508.1, 603.2c; Mob Mentality): "all non-Wall creatures you control attack": every battlefield permanent of the description was declared in this declaration, and at
     // least one exists (an event without the declared ids never matches)
@@ -275,6 +282,12 @@ const MATCHERS: { [K in EventPattern['ev']]?: Matcher<K> } = {
   },
   /** CR 509.3a: without `attacker` it triggers once per blocker (the flagged first pair); CR 509.3b: with `attacker`, once per attacker it blocks that satisfies it. */
   blocks: (p, e, cx) => {
+    // edh-d-109 (CR 509.3a, 603.2c; Lairwatch Giant): "blocks two or more creatures": once per blocker, the first pair of a blocker declared blocking at least that many attackers
+    if (p.attackerAtLeast !== undefined) {
+      const n = e.data['blockingCount'];
+      if (e.data['first'] !== true || typeof n !== 'number' || n < p.attackerAtLeast) return false;
+      return roleMatches(cx, e, 'blocker', p.blocker, false) && roleMatches(cx, e, 'attacker', p.attacker, false);
+    }
     if (p.attacker === undefined && e.data['first'] === false) return false;
     return roleMatches(cx, e, 'blocker', p.blocker, false) && roleMatches(cx, e, 'attacker', p.attacker, false);
   },
@@ -328,6 +341,18 @@ const MATCHERS: { [K in EventPattern['ev']]?: Matcher<K> } = {
       const by = roleObject(cx, e, 'source', true)?.o.controller;
       const to = e.data['toPlayer'] === true ? playerOf(e, 'recipient') : roleObject(cx, e, 'object', false)?.o.controller;
       if (by === undefined || to === undefined || by === to) return false;
+    }
+    // edh-d-109 (CR 120.1, 108.3; The Beast, Deathless Prince): damage to a player who owns the source (the source as it last was); damage to a permanent, or no known owner: no
+    if (p.toSourceOwner === true) {
+      const owner = roleObject(cx, e, 'source', true)?.o.owner;
+      if (e.data['toPlayer'] !== true || owner === undefined || owner !== playerOf(e, 'recipient')) return false;
+    }
+    // edh-e-49 (CR 506.2, 508.5, 510.2; Latulla's Orders): combat damage to a player by an attacking creature, to the player that creature attacks (its entry in the combat's attackers); damage to a
+    // planeswalker or battle is not damage to a player, and a source that is not attacking (a blocker, a creature that left combat) never matches
+    if (p.toDefendingPlayer === true) {
+      const srcId = roleObject(cx, e, 'source', true)?.o.id;
+      const att = srcId === undefined ? undefined : cx.g.s.combat?.attackers.find((a) => a.id === srcId);
+      if (e.data['combat'] !== true || e.data['toPlayer'] !== true || att === undefined || att.defendingPlayer !== playerOf(e, 'recipient')) return false;
     }
     return recipientMatches(p.recipient, e, cx);
   },
@@ -412,7 +437,7 @@ const MATCHERS: { [K in EventPattern['ev']]?: Matcher<K> } = {
   /** CR 111. */
   createToken: (p, e, cx) => pm(cx, p.player, playerOf(e)) && roleMatches(cx, e, 'newObject', p.token, false),
   /** CR 706. */
-  dieRoll: (p, e, cx) => pm(cx, p.player, playerOf(e)) && cmpMatches(p.result, numberData(e, 'result')) && (p.natural === undefined || (numberData(e, 'natural') !== undefined && numberData(e, 'natural') === p.natural)) && (p.highest !== true || (numberData(e, 'natural') !== undefined && numberData(e, 'natural') === numberData(e, 'sides'))), // edh-next-55: a die's highest natural result
+  dieRoll: (p, e, cx) => pm(cx, p.player, playerOf(e)) && (p.nth === undefined || numberData(e, 'nth') === p.nth) && (p.visit !== true || e.data['visit'] === true) && cmpMatches(p.result, numberData(e, 'result')) && (p.natural === undefined || (numberData(e, 'natural') !== undefined && numberData(e, 'natural') === p.natural)) && (p.highest !== true || (numberData(e, 'natural') !== undefined && numberData(e, 'natural') === numberData(e, 'sides'))), // edh-next-55: a die's highest natural result
   /** Cloud r3-mech, CR 705.2: a called coin flip, won or lost. */
   coinFlip: (p, e, cx) => pm(cx, p.player, playerOf(e)) && (p.won === undefined || e.data['won'] === p.won),
   /** M12-3, CR 603.9: a player lost or left the game (not as the result of a draw: triggers/normalize.ts emits nothing then). */
@@ -422,6 +447,12 @@ const MATCHERS: { [K in EventPattern['ev']]?: Matcher<K> } = {
     const who = playerOf(e);
     if (who === undefined) return false;
     if (p.player === 'opponent') return who !== cx.controller;
+    // edh-e-66 (CR 104.3, 303.4, 603.2; Curse of Vengeance, rulings 2016-11-08): "When enchanted player loses the game": the player has lost by now, so the usual "still in the game" reading of the
+    // enchanted player (statics/attached-player.ts) names nobody; the Aura is judged as it was attached when the player lost (the Aura goes to the graveyard afterwards, CR 704.5m)
+    if (typeof p.player === 'object' && p.player.ref === 'enchantedPlayer') {
+      const aura = lookupObject(cx.g.s, cx.source);
+      return aura !== undefined && aura.attachedTo === who;
+    }
     return pm(cx, p.player, who);
   },
   /** Standard round 3, r3-trig (CR 108.4, 613.1b): the control of a permanent passed from the player `from` to the player `to`. */

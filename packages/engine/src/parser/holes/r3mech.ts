@@ -14,6 +14,8 @@ const SIEGE_WORDS: Readonly<Record<string, string>> = {
   mirran: 'Mirran', phyrexian: 'Phyrexian', brotherhood: 'Brotherhood', enclave: 'Enclave',
   // edhn115: the factions of Fallout's Battle of Hoover Dam ("choose NCR or Legion")
   ncr: 'NCR', legion: 'Legion',
+  // edh-d-106: the two outlooks of Duskmourn's Phenomenon Investigators ("choose Believe or Doubt"), words with no rules meaning of their own
+  believe: 'Believe', doubt: 'Doubt',
 };
 
 /** The words a Siege's choice may name (lower case), for parser/segment.ts. */

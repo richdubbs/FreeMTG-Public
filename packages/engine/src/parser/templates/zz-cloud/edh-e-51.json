@@ -1,0 +1,188 @@
+[
+  {
+    "id": "sta.edhe51.spell.spendOnlyManaFrom",
+    "kind": "static",
+    "since": 12,
+    "status": "stable",
+    "cr": [
+      "CR 601.2h",
+      "CR 106.6",
+      "CR 609.4"
+    ],
+    "pattern": "spend only mana produced by {f:Filter} to cast ~",
+    "build": {
+      "kind": "static",
+      "zone": [
+        "stack"
+      ],
+      "effects": [
+        {
+          "s": "rule",
+          "rule": "spendManaOnlyFrom",
+          "of": "$f"
+        }
+      ]
+    },
+    "consumes": [
+      "only"
+    ],
+    "examples": [
+      {
+        "text": "Spend only mana produced by artifacts to cast ~."
+      },
+      {
+        "text": "Spend only mana produced by Merfolk to cast ~."
+      },
+      {
+        "text": "Spend only mana produced by snow lands to cast ~."
+      }
+    ],
+    "counterExamples": [
+      "Spend only mana produced by creatures to activate ~.",
+      "Spend only mana produced by creatures on X.",
+      "Spend only mana produced by creatures to cast spells.",
+      "Spend only black mana to cast ~."
+    ]
+  },
+  {
+    "id": "sta.edhe51.spendColorAsColor",
+    "kind": "static",
+    "since": 12,
+    "status": "stable",
+    "cr": [
+      "CR 609.4b",
+      "CR 106.1",
+      "CR 601.2h"
+    ],
+    "pattern": "you may spend {m:Color} mana as though it were {n:Color} mana",
+    "build": {
+      "kind": "static",
+      "effects": [
+        {
+          "s": "permit",
+          "who": {
+            "ref": "you"
+          },
+          "action": "spendMana",
+          "asThough": "a color",
+          "spentType": "$m",
+          "asColor": "$n"
+        }
+      ]
+    },
+    "consumes": [
+      "may",
+      "as though"
+    ],
+    "examples": [
+      {
+        "text": "You may spend blue mana as though it were green mana."
+      },
+      {
+        "text": "You may spend black mana as though it were white mana."
+      }
+    ],
+    "counterExamples": [
+      "You may spend white mana as though it were mana of any color.",
+      "You may spend white mana as though it were white mana.",
+      "You may spend white mana as though it were red mana to cast creature spells.",
+      "You may spend white mana as though it were red or blue mana."
+    ]
+  },
+  {
+    "id": "eff.edhe51.mana.twoOfOneOfTwo",
+    "kind": "effect",
+    "since": 12,
+    "status": "stable",
+    "subject": "none",
+    "cr": [
+      "CR 106.1b",
+      "CR 106.4",
+      "CR 605.1a"
+    ],
+    "pattern": "add {a:ManaCost} or {b:ManaCost}",
+    "build": {
+      "op": "addMana",
+      "who": {
+        "ref": "you"
+      },
+      "dynamic": {
+        "kind": "anyOneColor",
+        "count": 2,
+        "from": [
+          "$a.0.color",
+          "$b.0.color"
+        ]
+      }
+    },
+    "examples": [
+      {
+        "text": "Sacrifice a land: Add {R}{R} or {W}{W}."
+      },
+      {
+        "text": "{T}: Add {U}{U} or {B}{B}."
+      }
+    ],
+    "counterExamples": [
+      "{T}: Add {R}{W} or {W}{W}.",
+      "{T}: Add {R}{R} or {W}{R}.",
+      "{T}: Add {R}{R} or {W}.",
+      "{T}: Add {R}{R} and {W}{W}.",
+      "{T}: Add {R}{R} or {R}{R}."
+    ],
+    "weak": 1
+  },
+  {
+    "id": "eff.edhe51.pump.power.forEachManaFromSpent",
+    "kind": "effect",
+    "since": 12,
+    "status": "stable",
+    "subject": "none",
+    "cr": [
+      "CR 106.3",
+      "CR 601.2h",
+      "CR 611.2a",
+      "CR 613.4c",
+      "CR 608.2h"
+    ],
+    "pattern": "{o:Obj} gets +1/+0 {d:Dur} for each mana from ( a | an ) {f:Filter} that was spent to cast {s:Obj}",
+    "build": {
+      "op": "effect",
+      "duration": "$d",
+      "effects": [
+        {
+          "s": "continuous",
+          "affects": "$o",
+          "mods": [
+            {
+              "layer": "7c",
+              "power": {
+                "q": "spellManaSpent",
+                "of": "$s",
+                "from": "$f"
+              },
+              "toughness": 0
+            }
+          ]
+        }
+      ]
+    },
+    "consumes": [
+      "each"
+    ],
+    "examples": [
+      {
+        "text": "Target creature gets +1/+0 until end of turn for each mana from a Forest that was spent to cast ~."
+      },
+      {
+        "text": "Target creature you control gets +1/+0 until end of turn for each mana from an Island that was spent to cast ~."
+      }
+    ],
+    "counterExamples": [
+      "Target creature gets +1/+0 until end of turn for each mana from a Forest that was spent to activate ~.",
+      "Target creature gets +1/+0 until end of turn for each mana that was spent to cast ~.",
+      "Target creature gets +1/+0 until end of turn for each Forest you control.",
+      "Target creature gets +2/+0 until end of turn for each mana from a Forest that was spent to cast ~."
+    ]
+  }
+]

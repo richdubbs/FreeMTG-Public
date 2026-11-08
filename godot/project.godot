@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="OpenMTG"
-config/version="0.3.0"
+config/version="0.3.2"
 config/description="The OpenMTG table. Talks to the local OpenMTG server; the rules engine runs there."
 run/main_scene="res://scenes/Boot.tscn"
 config/features=PackedStringArray("4.4", "GL Compatibility")

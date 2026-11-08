@@ -122,7 +122,9 @@ function modes(m: ModeSpec, st: RenderState, stop = true): string {
   }
   // edh-next-129 (CR 700.2, 111.1; Outlaws' Merriment): "choose one at random. Create a red and white creature token with those characteristics." and the bare characteristics of each token
   if (m.tokenChars === true) {
-    if (m.random !== true || m.min !== 1 || m.max !== 1 || m.chooser || m.override || m.allowRepeat || m.unchosen !== undefined || m.options.some((o) => o.cost !== undefined || o.label !== undefined)) throw new NoRenderer('token characteristics as modes other than one chosen at random');
+    // edh-d-106 (CR 700.2, 603.3c; Genku, Future Shaper): or one that hasn't been chosen this turn
+    const unchosenTurn = m.random !== true && m.unchosen === 'turn';
+    if (!(m.random === true ? m.unchosen === undefined : unchosenTurn) || m.min !== 1 || m.max !== 1 || m.chooser || m.override || m.allowRepeat || m.options.some((o) => o.cost !== undefined || o.label !== undefined)) throw new NoRenderer('token characteristics as modes other than one chosen at random or one not chosen this turn');
     const colors = new Set<string>();
     const bullets = m.options.map((o) => {
       const one = o.program.steps.length === 1 ? o.program.steps[0] : undefined;
@@ -131,11 +133,14 @@ function modes(m: ModeSpec, st: RenderState, stop = true): string {
       const r = /^create an? (\d+\/\d+) ((?:[a-z]+ and )?[a-z]+) (.+?) creature token( with .*)?$/is.exec(text);
       if (r === null) throw new NoRenderer('a token creation not said "create a P/T <colors> <subtypes> creature token ..."');
       colors.add(r[2]!.toLowerCase());
-      return `• ${r[1]} ${r[3]}${r[4] ?? '.'}`;
+      return { shared: `• ${r[1]} ${r[3]}${r[4] ?? '.'}`, own: `• ${r[1]} ${r[2]} ${r[3]}${r[4] ?? '.'}` };
     });
-    if (colors.size !== 1) throw new NoRenderer('token characteristics of different colors');
+    const head = unchosenTurn ? "choose one that hasn't been chosen this turn." : 'choose one at random.';
+    // edh-d-106 (CR 111.1; Genku): tokens of different colors: "Create a creature token with those characteristics." and each bullet's own colors ("• 2/2 white Fox with vigilance.")
+    const own = `${head} create a creature token with those characteristics. ${bullets.map((b) => b.own).join(' ')}`;
+    if (colors.size !== 1) return own;
     const c = [...colors][0]!;
-    return `choose one at random. create ${/^[aeiou]/.test(c) ? 'an' : 'a'} ${c} creature token with those characteristics. ${bullets.join(' ')}`;
+    return `${head} create ${/^[aeiou]/.test(c) ? 'an' : 'a'} ${c} creature token with those characteristics. ${bullets.map((b) => b.shared).join(' ')}`;
   }
   const spree = m.options.length > 0 && m.options.every((o) => o.cost !== undefined);
   // FAST5X E1 (CR 702.172a): the modes of a Spree spell are printed with no header (the "Spree" keyword line, a separate ability, says "choose one or more")
@@ -239,6 +244,20 @@ function targetCountWhereX(p: EffectProgram, st: RenderState): string | null {
   const text = K.steps(p.steps.map((s) => withX(s, key)), v);
   if (text === '' || / where x is /.test(text)) return null;
   if (/[.!?]\s/.test(text)) {
+    // edhe44 (CR 107.3, 701.19c, 608.2h; Vile Requiem): ONE destroy step that says its regeneration rider as a second sentence ("destroy up to x target creatures. they can't be
+    // regenerated."): the clause closes the FIRST sentence, "destroy up to X target nonblack creatures, where X is ... They can't be regenerated."
+    const only = p.steps.length === 1 ? (p.steps[0] as unknown as Record<string, unknown>) : undefined;
+    if (only !== undefined && only['op'] === 'destroy' && only['regeneration'] === 'cant') {
+      const { regeneration: _r, ...bare } = only;
+      const w = cloneState(st);
+      w.xCount = key;
+      const head = K.steps([withX(bare as never, key)], w);
+      if (head !== '' && !/[.!?]\s/.test(head.replace(/\.$/, '')) && !/ where x is /.test(head)) {
+        const where = K.qty(t.max as never, w);
+        const tail = alt("they can't be regenerated", "it can't be regenerated");
+        return `${head.replace(/\.$/, '')}, where x is ${where}. ${tail}`;
+      }
+    }
     // edh-next-140 (CR 107.3, 601.2c, 608.2h; Archipelagore): the clause closes the FIRST sentence when only its instruction uses the count and a later sentence follows: "tap up to X target
     // creatures, where X is the number of times this creature has mutated. Those creatures don't untap during their controller's next untap step."
     if (p.steps.length < 2 || p.steps.slice(1).some((x) => JSON.stringify(x).includes(key))) return null;
@@ -517,13 +536,27 @@ function chosenFirst(p: EffectProgram, st: RenderState, laterTargets = false): s
   // r3-choose (the parser's lower/choose.ts): a later instruction may be the first to name it ("You may sacrifice an artifact. If you do, return the chosen card ...")
   const first = JSON.stringify(p.steps[0]).includes(ref);
   if (!first && !p.steps.some((s) => JSON.stringify(s).includes(ref))) return null;
+  // edh-d-106 (CR 115.1, 601.2c, 608.2c; Mega Flare): one target for each opponent announced in a sentence of its own AFTER instructions that don't name it ("If this spell was kicked,
+  // create a 6/6 red Dragon creature token with flying. For each opponent, choose up to one target creature that player controls. ~ deals damage ... to each of the chosen creatures."):
+  // the earlier instructions, then the announcement, then the rest; the targets are chosen as the spell is cast either way (CR 601.2c). A further reading, only for such a spec.
+  const later = !first && t.kind === 'object' && (t.perOpponent === true || t.perPlayer === true) ? p.steps.findIndex((s) => JSON.stringify(s).includes(ref)) : -1;
+  const before = later > 0 ? chosenFirstAt(p, st, t, later) : null;
+  const main = chosenFirstAt(p, st, t, 0);
+  return before === null ? main : main === null ? before : alt(main, before);
+}
+
+/** chosenFirst's reading with the announcement before step `at` (0: before every step). Null when it can't be said. */
+function chosenFirstAt(p: EffectProgram, st: RenderState, t: EffectProgram['targets'][number], at: number): string | null {
+  const ref = JSON.stringify({ ref: 'target', id: t.id });
+  const first = JSON.stringify(p.steps[at]).includes(ref);
   const v = cloneState(st);
   try {
+    const pre = at > 0 ? `${endSentence(K.steps(p.steps.slice(0, at), v))} ` : '';
     // std-rx30 (CR 115.1, 601.2c): up to one target of each player, announced "For each player, choose up to one other target artifact or creature that player controls."
     // (Kitesail Larcenist); afterwards "the chosen permanents" as well
     // edh-d-101 (CR 115.1, 601.2c; Disorienting Choice): and up to one target of each opponent, "For each opponent, choose up to one target artifact or enchantment that player controls."
     const each = t.kind === 'object' && t.perPlayer === true ? 'for each player, ' : t.kind === 'object' && t.perOpponent === true ? 'for each opponent, ' : '';
-    const head = `${each}choose ${K.obj({ ref: 'target', id: t.id }, v, 'object').text}`;
+    const head = `${pre}${each}choose ${K.obj({ ref: 'target', id: t.id }, v, 'object').text}`;
     v.afterTrigger = false;
     // r3-choose (CR 608.2c; the parser's participle, lower/mentions.ts): the target is also "the chosen <noun>" after its own sentence
     const key = `t:${t.id}`;
@@ -535,8 +568,10 @@ function chosenFirst(p: EffectProgram, st: RenderState, laterTargets = false): s
     // edh-next-74 (CR 115.1, 608.2c; Radiant Performer): the spell or ability any "target spell or ability" chose is "that spell or ability"
     const anyAlts = t.kind === 'anyTarget' ? ['that permanent or player'] : t.kind === 'stackObject' && t.filter?.stackKind === undefined ? ['that spell or ability'] : [];
     if (info !== undefined) v.info.set(key, { ...info, alts: [...new Set([...(info.alts ?? []), ...nouns.flatMap(chosenAs), ...anyAlts])] });
-    if (first) v.chosen = { key, list: p.steps };
-    const rest = K.steps(p.steps, v);
+    // review (edh-d-106): the very list object when nothing comes before (render/steps.ts drops the chosen focus after the first instruction by identity of the list)
+    const restList = at === 0 ? p.steps : p.steps.slice(at);
+    if (first) v.chosen = { key, list: restList };
+    const rest = K.steps(restList, v);
     // p2-c-dieroll-2 (family choose-then-roll): "choose target creature an opponent controls, then roll a d20." over result rows (the parser's lower/choose.ts#thenRoll)
     // edh-top-8 (family choose-then-roll; CR 115.1, 705.1; Invert Polarity): and "choose target spell, then flip a coin." (the parser's lower/choose.ts#thenRoll, a flip with riders after it)
     if (p.steps[0]?.op === 'rollDie' || p.steps[0]?.op === 'flipCoin') return alt(`${head}. ${rest}`, `${head}, then ${rest}`);

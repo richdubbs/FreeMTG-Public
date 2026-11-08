@@ -233,6 +233,7 @@ describe('the tables say what is evaluated', () => {
       mostByController: { q: 'mostByController', of: { ref: 'self' } }, // edh-cast-3 (CR 109.4: the most one player controls of a set; none counts 0)
       chosenNumber: { q: 'chosenNumber', link: 'devoured' }, // edh-c-95 (CR 702.82b: read only when the source kept the link, see below)
       lifeLostTotal: { q: 'lifeLostTotal', of: { ref: 'each', who: 'opponent' } }, // edh-cast-3 (CR 119.3: no life lost this turn counts 0; only the opponents' total is read)
+      graveyardUsesThisTurn: { q: 'graveyardUsesThisTurn' }, // edh-d-108 (Laboratory Drudge; CR 601.2, 602.2: nothing cast or activated from a graveyard this turn counts 0)
     };
     expect(Object.keys(samples).sort()).toEqual([...STATIC_QUANTITY_KINDS].sort());
     // pc-statics-2 (CR 903.4, 903.4f): read only with a commander whose identity is given (War Room ruling 2020-11-10), so its canonical example runs in a Commander state

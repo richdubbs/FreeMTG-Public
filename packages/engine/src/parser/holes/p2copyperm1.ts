@@ -383,7 +383,50 @@ function clausesAt(ctx: HoleCtx, pos: number, num: Num, elided: boolean, setType
     const e = anyPhraseAt(ctx, pos, W_NAME);
     if (e >= 0) out.push({ end: e, kind: 'name', mods: [{ retain: ['name'] }] });
   }
+  // edh-d-105 (CR 707.9b, 201.2, 111.4; Mishra, Eminent One): ONE token copy given a new name, "its name is Mishra's Warform" (a copiable value, the name set in layer 4 beside the copied
+  // values), said once, first, of the token only
+  if (!elided && num === 'token') {
+    const at = phraseAt(ctx, pos, W_NAME_IS);
+    const n = at >= 0 ? givenName(ctx, at) : null;
+    if (n !== null) out.push({ end: n.end, kind: 'name', mods: [{ layer: 4, named: n.name }] });
+  }
+  // edh-d-105 (CR 707.9b, 205.1a, 205.4a, 201.2; The Eleventh Hour, ruling 2023-10-13: "it will lose any non-Alien subtypes it has", its card types kept): ONE token copy, "it's a legendary
+  // Alien named Prisoner Zero": legendary added, EVERY subtype replaced by the one named (`setAll`, the ruling: Equipment, Vehicle and land types go too) and a new name, one layer-4 change; said of the token only, as one clause (never elided)
+  if (!elided && num === 'token') {
+    for (const p of subjects(ctx, pos, num, false, true, false)) {
+      const art = anyPhraseAt(ctx, p, W_A);
+      const leg = art >= 0 ? phraseAt(ctx, art, W_LEGENDARY) : -1;
+      if (leg < 0) continue;
+      for (const m of multiAt(ctx, leg, ctx.vocab.subtypes)) {
+        if (m.entry.plural && !m.entry.both) continue;
+        const nm = phraseAt(ctx, m.end, W_NAMED_GIVEN);
+        const n = nm >= 0 ? givenName(ctx, nm) : null;
+        if (n !== null) out.push({ end: n.end, kind: 'types', mods: [{ layer: 4, supertypes: { add: ['Legendary'] }, subtypes: { set: [m.entry.name], setAll: true }, named: n.name }] });
+      }
+    }
+  }
   return out;
+}
+
+const W_NAME_IS = P('its name is');
+const W_NAMED_GIVEN = P('named');
+/**
+ * edh-d-105 (CR 201.2, 111.4): a name a copy exception gives ("Mishra's Warform", "Prisoner Zero"): the longest run of capitalized words from `pos` ("'s" right after a word inside it,
+ * never at its end), ending where the clause ends (",", ".", "and" or the end of the sentence). Null when the run is empty or anything else follows it.
+ */
+function givenName(ctx: HoleCtx, pos: number): { end: number; name: string } | null {
+  const cap = (k: number): boolean => ctx.toks[k]?.kind === 'WORD' && /^[A-Z]/.test(ctx.toks[k]!.text);
+  let p = pos;
+  let name = '';
+  while (cap(p)) {
+    name = name === '' ? ctx.toks[p]!.text : `${name} ${ctx.toks[p]!.text}`;
+    p++;
+    if (ctx.toks[p]?.text === "'s" && ctx.toks[p - 1]!.end === ctx.toks[p]!.start && cap(p + 1)) { name = `${name}'s`; p++; }
+  }
+  if (name === '') return null;
+  const next = ctx.toks[p];
+  if (next !== undefined && !(next.kind === 'PUNCT' && (next.norm === ',' || next.norm === '.')) && next.norm !== 'and') return null;
+  return { end: p, name };
 }
 
 function exceptList(ctx: HoleCtx, pos: number, num: Num, setTypes = false): Alt[] {

@@ -18,7 +18,7 @@ import { spanText, type Tok } from '../holes/tok';
 import type { Draft, Rec, Unit } from './types';
 import { clone, cloneDraft, freshName, isRec, rewrite, sequences, setManual, visit } from './util';
 
-interface Found { path: string; phrase: TargetPhrase; key: string; onlyIf?: Condition; doc: number }
+interface Found { path: string; phrase: TargetPhrase; key: string; onlyIf?: Condition; doc: number; innerOf?: number }
 
 /** Markers of one value in document order, with the `wasCast` condition of the `if` steps around them. */
 function markersOf(value: unknown): Found[] {
@@ -122,6 +122,7 @@ function specOf(id: string, ph: TargetPhrase, earlier: TargetSpec[], onlyIf: Con
   if (ph.equalToughness === true) spec.equalToughness = true; // edh-next-126: "with equal toughness" (CR 115.1, 208.1)
   if (ph.sameController === true) spec.sameController = true; // std-rx30: "controlled by the same opponent" (CR 115.1, 110.2)
   if (ph.perCardType === true) spec.perCardType = true; // std-cardcopy-7: "of each card type" (CR 115.1, 205.2a)
+  if (ph.perQuality !== undefined) spec.perQuality = ph.perQuality; // edh-e-64: "for each color / permanent type, ... one target card of that color / type" (CR 105.1, 110.4, 115.1)
   // edh-zones-26 (CR 115.1, 601.2c, 108.3, 404.1; Goblin Welder): "target artifact card in that player's graveyard" right after "target artifact a player controls": the card is in the
   // graveyard of the player who controls the target announced just before it (the filter's `owner` reads the earlier target as the targets are chosen, rules/targets.ts#playersOf)
   if (ph.ownerOfEarlierController === true && earlier.length > 0) spec.filter = { ...(spec.filter ?? {}), owner: { ref: 'controllerOf', object: { ref: 'target', id: earlier[earlier.length - 1]!.id } } };
@@ -145,10 +146,22 @@ function numberUnit(u: Unit, d: Draft, earlier: TargetSpec[]): boolean {
   const rider = u.rider ? markersOf(u.rider.patch) : [];
   const all = [...steps.map((f) => ({ ...f, where: 'steps' as const })), ...rider.map((f) => ({ ...f, where: 'rider' as const }))];
   if (all.length === 0) return true;
+  // edh-e-64 (CR 115.1, 601.2c, 404.1; Suffer the Past, Drafna's Restoration): "target cards from target player's graveyard": the PLAYER is a target of its own, announced
+  // first (the cards are chosen from the graveyard of that player), and the cards' `filter.owner` names it. The player's words lie inside the cards' phrase.
+  const inner = new Map<(typeof all)[number], (typeof all)[number]>(); // outer phrase -> its player phrase
+  for (const f of [...all]) {
+    const own = f.phrase.kind === 'object' ? f.phrase.filter?.owner : undefined;
+    if (!isRec(own) || !isRec((own as Rec)['$target'])) continue;
+    const ph = (own as Rec)['$target'] as unknown as TargetPhrase;
+    if (ph.kind !== 'player' || ph.min !== 1 || ph.max !== 1 || !isRec((own as Rec)['$target']) || /\bgraveyard$/.test(f.phrase.text) === false) return false; // other shapes: the sentence stays manual
+    const g = { path: `${f.path}/$owner`, phrase: ph, key: canonicalJson(ph), doc: f.doc, where: f.where, innerOf: f.doc };
+    inner.set(f, g);
+    all.push(g);
+  }
   // positions in word order
   const byText = new Map<string, typeof all>();
   // T20 (FAST4): a target a keyword action implies is placed at the words of the action (`locate`, "support 2", CR 701.41a)
-  for (const f of all) { const k = (f.phrase.locate ?? f.phrase.text).toLowerCase(); byText.set(k, [...(byText.get(k) ?? []), f]); }
+  for (const f of all) { if (f.innerOf !== undefined) continue; const k = (f.phrase.locate ?? f.phrase.text).toLowerCase(); byText.set(k, [...(byText.get(k) ?? []), f]); }
   const pos = new Map<(typeof all)[number], number>();
   const span = new Map<(typeof all)[number], number>(); // edh-top-3: the tokens of each phrase (Mention.len)
   // longer phrases first: "target creature" inside "another target creature" is not an occurrence of its own
@@ -161,7 +174,19 @@ function numberUnit(u: Unit, d: Draft, earlier: TargetSpec[]): boolean {
     else return false;
     claimed.push(...occ);
   }
-  const ordered = [...all].sort((a, b) => pos.get(a)! - pos.get(b)! || a.doc - b.doc);
+  // edh-e-64: the player inside a phrase is found in the words of that phrase and sorts just before it (it is announced first)
+  const sortKey = new Map<(typeof all)[number], number>();
+  for (const [outer, g] of inner) {
+    const a = pos.get(outer)!;
+    const b = a + (span.get(outer) ?? 0);
+    const at = occurrences(u.tokens.slice(a, b), g.phrase.text).map(([x, y]) => [x + a, y + a] as [number, number]);
+    if (at.length !== 1) return false;
+    pos.set(g, at[0]![0]);
+    span.set(g, at[0]![1] - at[0]![0]);
+    sortKey.set(g, a - 0.5);
+  }
+  const keyOf = (f: (typeof all)[number]): number => sortKey.get(f) ?? pos.get(f)!;
+  const ordered = [...all].sort((a, b) => keyOf(a) - keyOf(b) || a.doc - b.doc);
   const idAt = new Map<number, { id: string; key: string }>();
   const ids = new Map<(typeof all)[number], string>();
   for (const f of ordered) {
@@ -175,6 +200,8 @@ function numberUnit(u: Unit, d: Draft, earlier: TargetSpec[]): boolean {
     if (f.phrase.controllerOfEarlierController === true && earlier.length === 0) return false; // edh-c-85: "that player" would name nobody
     const id = `t${d.targets.length}`;
     const spec = specOf(id, f.phrase, earlier, f.onlyIf);
+    const ip = inner.get(f);
+    if (ip !== undefined && spec.filter !== undefined) spec.filter = { ...spec.filter, owner: { ref: 'target', id: ids.get(ip)! } }; // edh-e-64
     d.targets.push(spec);
     earlier.push(spec);
     u.targetIds = [...(u.targetIds ?? []), id];
@@ -201,6 +228,15 @@ function markDivisions(d: Draft): void {
       if (node['op'] === 'damage' && node['divided'] === 'announced' && isRec(to) && to['ref'] === 'target') {
         const spec = d.targets.find((s) => s.id === to['id']);
         if (spec && !spec.divide) spec.divide = { what: 'damage', total: clone(node['amount']) as Quantity };
+      }
+      // edh-e-68 (CR 601.2d, 615.7; Embolden): a divided prevention shield (`effect` with `divided`) divides the amount of its `prevent` among the targets of its recipient
+      if (node['op'] === 'effect' && node['divided'] === true && Array.isArray(node['effects']) && node['effects'].length === 1) {
+        const eff = node['effects'][0];
+        const body = isRec(eff) ? eff['body'] : undefined;
+        const rec = isRec(eff) && isRec(eff['replaces']) ? eff['replaces']['recipient'] : undefined;
+        const pl = isRec(rec) ? rec['player'] : undefined;
+        const spec = isRec(pl) && pl['ref'] === 'target' ? d.targets.find((s) => s.id === pl['id']) : undefined;
+        if (spec && !spec.divide && isRec(body) && body['b'] === 'prevent' && body['amount'] !== undefined && body['amount'] !== 'all') spec.divide = { what: 'damage', total: clone(body['amount']) as Quantity };
       }
       return undefined;
     });

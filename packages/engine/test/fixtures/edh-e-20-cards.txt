@@ -1,0 +1,6 @@
+# edh-e-20 (Commander coordinator E, group combat 2/2): block-pair history filter (blockedWithThisTurn), union destroy/return. After editing: npm run cards -- fixtures
+You Cannot Pass!
+Defiant Vanguard
+Joven's Ferrets
+Contempt
+Cathedral Membrane

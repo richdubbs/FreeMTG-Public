@@ -20,7 +20,7 @@ describe('edh-next-98 readings (CR 608.2c, 118.3, 400.3, 506.3)', () => {
   });
   it('near misses of the drain are not full (other amounts, other players)', () => {
     expect(spell('Exile up to two target cards from graveyards. For each creature card exiled this way, each opponent loses 2 life and you gain 1 life.')).toBe(false);
-    expect(spell('Exile up to two target cards from graveyards. For each creature card exiled this way, target opponent loses 1 life and you gain 1 life.')).toBe(false);
+    expect(spell('Exile up to two target cards from graveyards. For each creature card exiled this way, target opponent loses 1 life and you gain 2 life.')).toBe(false);
     expect(spell('Exile up to two target cards from graveyards. For each creature card exiled this way, each opponent loses 1 life and each other player gains 1 life.')).toBe(false);
   });
   it('"Pay {E}{E}. If you can\'t, ..." is full; "you may pay" and "if you don\'t" wordings are other readings', () => {

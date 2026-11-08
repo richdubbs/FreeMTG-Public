@@ -315,4 +315,5 @@ func _action_button(a: Dictionary, n: int) -> Button:
 	b.name = "Action_%d" % n
 	b.text = J.str_of(a, "label")
 	b.pressed.connect(_do.bind(a), CONNECT_DEFERRED)
+	zoom_on_hover(b, open_id)
 	return b

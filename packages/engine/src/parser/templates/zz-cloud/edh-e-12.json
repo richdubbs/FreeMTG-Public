@@ -1,0 +1,152 @@
+[
+  {
+    "id": "eff.edhe12.token.chosenColorType",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 111.1",
+      "CR 111.3",
+      "CR 607.2d",
+      "CR 701.7a"
+    ],
+    "pattern": "create {n:Qty} {pt:BasePT} creature token of the chosen color and type",
+    "build": {
+      "op": "createToken",
+      "who": {
+        "ref": "you"
+      },
+      "count": "$n",
+      "token": {
+        "types": [
+          "Creature"
+        ],
+        "power": "$pt.p",
+        "toughness": "$pt.t",
+        "chosenColor": "color",
+        "chosenSubtype": "type"
+      }
+    },
+    "subject": "none",
+    "examples": [
+      {
+        "text": "Create a 3/3 creature token of the chosen color and type."
+      },
+      {
+        "text": "Create a 1/1 creature token of the chosen color and type."
+      }
+    ],
+    "counterExamples": [
+      "Create a 2/2 creature token of the chosen color.",
+      "Create a 2/2 green creature token of the chosen type.",
+      "Create a 2/2 creature token of the chosen color and type with flying."
+    ],
+    "consumes": [
+      "chosen"
+    ]
+  },
+  {
+    "id": "eff.edhe12.token.chosenColorType.whereX",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 111.1",
+      "CR 111.3",
+      "CR 607.2d",
+      "CR 107.3b",
+      "CR 701.7a"
+    ],
+    "pattern": "create {n:Qty} x/x creature token of the chosen color and type , where x is {q:Qty}",
+    "build": {
+      "op": "createToken",
+      "who": {
+        "ref": "you"
+      },
+      "count": "$n",
+      "token": {
+        "types": [
+          "Creature"
+        ],
+        "power": "$q",
+        "toughness": "$q",
+        "chosenColor": "color",
+        "chosenSubtype": "type"
+      }
+    },
+    "subject": "none",
+    "examples": [
+      {
+        "text": "Create an X/X creature token of the chosen color and type, where X is the number of creatures you control."
+      },
+      {
+        "text": "Create an X/X creature token of the chosen color and type, where X is the number of cards in your hand."
+      }
+    ],
+    "counterExamples": [
+      "Create an X/X creature token of the chosen color and type.",
+      "Create a 2/2 creature token of the chosen color and type, where X is the number of creatures you control."
+    ],
+    "consumes": [
+      "chosen"
+    ]
+  },
+  {
+    "id": "rep.edhe12.enters.chooseColorAndType",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 614.1c",
+      "CR 614.12",
+      "CR 607.2a",
+      "CR 105.1"
+    ],
+    "pattern": "as ~ enters , choose a color and a creature type",
+    "build": {
+      "kind": "static",
+      "zone": [
+        "stack",
+        "battlefield"
+      ],
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "zoneChange",
+            "subject": {
+              "self": true
+            },
+            "to": "battlefield"
+          },
+          "body": {
+            "b": "enters",
+            "choose": [
+              {
+                "what": "color",
+                "link": "color"
+              },
+              {
+                "what": "creatureType",
+                "link": "type"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "examples": [
+      {
+        "text": "As ~ enters, choose a color and a creature type."
+      },
+      {
+        "text": "As this artifact enters, choose a color and a creature type."
+      }
+    ],
+    "counterExamples": [
+      "As ~ enters, choose a color.",
+      "As ~ enters, choose two colors.",
+      "As ~ enters, choose a creature type."
+    ]
+  }
+]

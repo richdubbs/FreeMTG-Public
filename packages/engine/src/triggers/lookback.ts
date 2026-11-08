@@ -42,6 +42,11 @@ export const lookBackKinds: LookBackKinds = (p: EventPattern): LookBackKind[] =>
     case 'becomes':
       if (p.what === 'unattached') out.push('unattach');
       break;
+    // edh-e-66 (CR 603.10a-g, 104.3, 800.4a; Curse of Vengeance): a player losing the game looks back, so the Aura an enchanted player had is judged as it was attached when they lost, though state-based
+    // actions put it into the graveyard in the same batch
+    case 'loseGame':
+      out.push('playerLoses');
+      break;
     default:
       break;
   }
@@ -67,6 +72,8 @@ export function lookBackApplies(p: EventPattern, e: SemEvent): boolean {
       return true; // sacrifice: the permanent as it was; counter: the spell as it was
     case 'becomes':
       return true;
+    case 'loseGame':
+      return true; // edh-e-66
     default:
       return false;
   }

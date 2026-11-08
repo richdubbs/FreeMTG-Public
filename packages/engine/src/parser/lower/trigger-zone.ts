@@ -21,7 +21,7 @@ const zones = (z: ZoneName | ZoneName[] | undefined): ZoneName[] => (z === undef
 // ("the number of coin counters on ~ from your graveyard", Wishing Well): there "~" is what the counters are on, and "from your graveyard" ends the description
 // of the card the instruction names before it, which is not ~
 // edh-next-80 (CR 113.6m; Slimefoot and Squee): and "~ and up to one other target creature card from your graveyard"
-const MOVES_OR_READS = /(?<!\bnamed |\bon )~ (?:and (?:up to one )?(?:other )?target [a-z' -]+? card )?(?:from|is in) (?:your |its owner's |their |a |an opponent's |the )?(graveyard|hand|library|exile)\b/i;
+const MOVES_OR_READS = /(?<!\bnamed |\bon )~ (?:and (?:up to one )?(?:other )?target [a-z' -]+? card )?(?:from|is in|is the only [a-z' -]+? in) (?:your |its owner's |their |a |an opponent's |the )?(graveyard|hand|library|exile)\b/i;
 /** edh-combat-7 (CR 113.6m; Senu, Keen-Eyed Protector): an intervening "if ~ is exiled" reads ~ in exile, as "if ~ is in exile" does. */
 const IS_EXILED = /(?<!\bnamed |\bon )~ is (?:exiled|suspended)\b/i; // edhn95: "if this card is suspended" (CR 702.62b) is a card in exile too
 /** CR 113.6m exception: an earlier part of the effect puts ~ into that zone ("exile it. ... return ~ from exile"). */
@@ -113,6 +113,9 @@ export function offBattlefield(trigger: TriggerDef, rest: string): OffBattlefiel
   // card is in, the cycling of another card only while ~ is on the battlefield (the trigger's `while`: the event's card is ~, or ~ is on the battlefield): it functions in both zones. Automated
   // under the cycle trigger's terms (the effect names ~ at most as a source, no payment on resolution)
   if (cycleSelfOrOtherWhileOnBattlefield(trigger) && !/\bpay\b/i.test(unquoted(rest))) return { zone: ['battlefield', 'graveyard'], manualZone: ['battlefield'], reason: 'a cycle trigger of ~ and of other cards functions in the graveyard and on the battlefield (CR 113.6k, 702.29c): not automated by this parser version', automate: true, onlyAsSource: true };
+  // edhe28 (CR 702.29c, 113.6k, 603.10a; Esper Sojourners, Bant Sojourners): "When you cycle ~ and when ~ dies": the cycling triggers from the graveyard the cycled card is in, the death looks back at
+  // the battlefield; automated under the cycle trigger's terms (the effect names ~ at most as a source, no payment on resolution)
+  if (cycleAndDiesEvents(trigger) && !/\bpay\b/i.test(unquoted(rest))) return { zone: ['battlefield', 'graveyard'], manualZone: ['battlefield'], reason: 'a cycle trigger of ~ together with its death functions in the graveyard and on the battlefield (CR 113.6k, 702.29c): not automated by this parser version', automate: true, onlyAsSource: true };
   for (const p of trigger.on) {
     if (p.ev === 'zoneChange' && p.subject.self === true) {
       const from = zones(p.from);
@@ -211,4 +214,14 @@ function cycleSelfOrOtherWhileOnBattlefield(trigger: TriggerDef): boolean {
     on: [{ ev: 'action', verb: 'cycle', actor: 'you', object: { self: true } }, { ev: 'action', verb: 'cycle', actor: 'you', object: { other: true } }],
     while: { cond: 'any', of: [{ cond: 'matches', object: { ref: 'event', role: 'subject' }, filter: { self: true } }, { cond: 'matches', object: { ref: 'self' }, filter: { zone: 'battlefield' } }] },
   });
+}
+
+/** edhe28 (CR 702.29c, 603.10a): exactly "When you cycle ~ and when ~ dies": the cycling of this card by you and its own death from the battlefield. */
+function cycleAndDiesEvents(trigger: TriggerDef): boolean {
+  if (trigger.on.length !== 2 || trigger.batch === true || trigger.first !== undefined || trigger.while !== undefined) return false;
+  const cycle = trigger.on.find((p) => p.ev === 'action');
+  const dies = trigger.on.find((p) => p.ev === 'zoneChange');
+  if (cycle?.ev !== 'action' || dies?.ev !== 'zoneChange') return false;
+  return JSON.stringify(cycle) === JSON.stringify({ ev: 'action', verb: 'cycle', actor: 'you', object: { self: true } })
+    && JSON.stringify(dies) === JSON.stringify({ ev: 'zoneChange', subject: { self: true }, from: 'battlefield', to: 'graveyard' });
 }

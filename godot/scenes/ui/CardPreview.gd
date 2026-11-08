@@ -165,6 +165,11 @@ func _build(card: Dictionary, detail: Dictionary, pinned: bool, is_cover: bool) 
 		_right.add_child(actions)
 
 
+## The picture's key is known only once the card is in the tree (its picture may already be loaded: no picture_ready then).
+func _ready() -> void:
+	_show_artist()
+
+
 func _on_picture(_key: String, _texture: Texture2D) -> void:
 	_show_artist()
 

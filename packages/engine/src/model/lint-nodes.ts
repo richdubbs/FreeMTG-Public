@@ -698,7 +698,7 @@ export function lintNodes(root: unknown, base: string, ctx: ValidateContext, iss
       const payload: Record<string, boolean> = {
         '4': m['types'] !== undefined || m['subtypes'] !== undefined || m['supertypes'] !== undefined || m['named'] !== undefined,
         '5': m['colors'] !== undefined && Object.keys(rec(m['colors'])).length > 0,
-        '6': m['add'] !== undefined || m['keywordsOf'] !== undefined /* edh-d-102 */ || m['removeAll'] === true || m['remove'] !== undefined || m['removeEnchant'] !== undefined /* edh-perms-4 */ || m['cantHave'] !== undefined || m['addActivatedOf'] !== undefined || m['protectionFromColorsOf'] !== undefined /* edh-players-15 */ || m['addChosen'] !== undefined /* edhd63 */, // r5-static
+        '6': m['add'] !== undefined || m['keywordsOf'] !== undefined /* edh-d-102 */ || m['protectionFromColorsAmong'] !== undefined /* edh-e-61 */ || m['removeAll'] === true || m['remove'] !== undefined || m['removeEnchant'] !== undefined /* edh-perms-4 */ || m['removeAbilities'] !== undefined /* edh-e-48 */ || m['cantHave'] !== undefined || m['addActivatedOf'] !== undefined || m['protectionFromColorsOf'] !== undefined /* edh-players-15 */ || m['protectionFromVotedColors'] !== undefined /* edhe35 */ || m['addChosen'] !== undefined /* edhd63 */, // r5-static
         '7a': m['power'] !== undefined || m['toughness'] !== undefined,
         '7b': m['power'] !== undefined || m['toughness'] !== undefined,
         '7c': m['power'] !== undefined || m['toughness'] !== undefined,
@@ -904,6 +904,9 @@ export function lintNodes(root: unknown, base: string, ctx: ValidateContext, iss
       // edh-next-140 (CR 605.3b, 608.2c; parser/lower/ability.ts#gainLifeIfYouControl; Altar of the Pantheon): "If you control a God, a Demigod, or a legendary enchantment, you gain 1 life."
       if (st['else'] === undefined && youControlExists(st['cond']) && then.length === 1 && rec(then[0])['op'] === 'gainLife' && JSON.stringify(rec(then[0])['who']) === '{"ref":"you"}'
         && typeof rec(then[0])['amount'] === 'number' && rec(then[0])['guard'] === undefined && rec(then[0])['as'] === undefined && rec(then[0])['also'] === undefined) return true;
+      // edh-e-21 (CR 605.3b, 120.3; parser/lower/ability.ts#damageIfYouControlNo; Tomb of Urami): "~ deals 1 damage to you if you don't control an Ogre."
+      if (st['else'] === undefined && cond['cond'] === 'not' && youControlExists(cond['of']) && then.length === 1 && rec(then[0])['op'] === 'damage' && JSON.stringify(rec(then[0])['source']) === '{"ref":"self"}'
+        && JSON.stringify(rec(then[0])['to']) === '{"ref":"you"}' && typeof rec(then[0])['amount'] === 'number' && rec(then[0])['guard'] === undefined && rec(then[0])['as'] === undefined && rec(then[0])['also'] === undefined) return true;
       const lists = [st['then'], ...(st['else'] !== undefined ? [st['else']] : [])];
       return lists.every((l) => Array.isArray(l) && l.length > 0 && l.every((x) => rec(x)['op'] === 'addMana' && (Array.isArray(rec(x)['units']) || typeof rec(rec(x)['dynamic'])['kind'] === 'string') && rec(x)['guard'] === undefined)); // pc-keywords-mana-2: and a dynamic production
     }

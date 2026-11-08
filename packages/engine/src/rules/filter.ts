@@ -17,7 +17,7 @@ import type { GameObject, GameState, LinkValue, ObjHandle } from '../types/state
 import { charsOfObject, hasKeyword, PERMANENT_TYPES as PERMANENT_CARD_TYPES, type Chars } from './characteristics';
 import { attackerState, isAttacking, isBlocked, isBlocking, isUnblocked } from './combat-state';
 import { KEYWORD_ABILITY_KINDS } from './ability-kinds';
-import { enteredUnderControlOfThisTurn, foughtThisTurn, dealtExcessDamageThisTurn, attackedThisTurn, blockedThisTurn, wasBlockedThisTurn, controllerDealtCombatDamageBySourceThisTurn, combatDamageSourcesToPlayerThisTurn, crewedBySourceThisTurn, enteredFromThisTurn, dealtDamageAsSourceThisTurn, dealtDamageToPlayerThisTurn, dealtDamageBySourceOfThisTurn, dealtDamageThisTurnByMatching, dealtDamageBySourceThisTurn, dealtDamageThisTurn, enteredThisTurn, countersPutThisTurn, HISTORY_FILTER_FIELDS, HISTORY_WRITTEN, putThereThisTurn, putThereThisCombat } from './history';
+import { enteredSinceYourLastTurn, enteredUnderControlOfThisTurn, foughtThisTurn, dealtNoncombatDamageThisTurn, dealtExcessDamageThisTurn, attackedThisTurn, blockedThisTurn, wasBlockedThisTurn, blockedWithThisTurn, controllerDealtCombatDamageBySourceThisTurn, combatDamageSourcesToPlayerThisTurn, crewedBySourceThisTurn, enteredFromThisTurn, dealtDamageAsSourceThisTurn, dealtDamageToPlayerThisTurn, dealtDamageBySourceOfThisTurn, dealtDamageThisTurnByMatching, dealtDamageBySourceThisTurn, dealtDamageThisTurn, enteredThisTurn, countersPutThisTurn, HISTORY_FILTER_FIELDS, HISTORY_WRITTEN, putThereThisTurn, putThereThisCombat } from './history';
 import { compareNumbers, playerPredMatches } from './predicates';
 import { BASIC_LAND_TYPES, CREATURE_TYPES, hasEveryCreatureType, isLandType, isNonCreatureSubtype, subtypeClass } from '../statics/subtypes';
 import { firstCastOfOk, isTransformedPermanent, manaSpentFromOk, otherSpellType } from '../statics/match';
@@ -82,10 +82,12 @@ const FIELD_KEYS: Record<keyof ObjectFilter, true> = {
   manaValue: true, manaValueParity: true /* edh-cast-4 */, manaValueVsGraveyard: true /* edh-cast-12 */, nameInGraveyard: true /* edh-next-32 */, power: true, toughness: true, keyword: true, notKeyword: true, hasAbility: true, abilityTapCost: true /* edh-perms-8 */, abilityNotMana: true /* edh-c-44 */, tapped: true, token: true, isCard: true, faceDown: true,
   transformed: true, emblem: true /* std-typechange-2 */, doubleFaced: true, isCopy: true, attacking: true, blocking: true, blocked: true, self: true, is: true, other: true, attached: true, attachedToSource: true,
   onlyColorChosenByController: true, // edh-players-17 (CR 105.2a, 608.2d)
-  counters: true, enteredThisTurn: true, dealtDamageThisTurn: true, dealtDamageBySourceThisTurn: true, dealtDamageByAttachedThisTurn: true /* edh-c-113 */, controllerDealtCombatDamageBySourceThisTurn: true, attackedThisTurn: true, blockedThisTurn: true, wasBlockedThisTurn: true, sharesWith: true, chosen: true,
+  counters: true, enteredThisTurn: true, enteredSinceYourLastTurn: true /* edh-e-27 */, dealtDamageThisTurn: true, dealtDamageBySourceThisTurn: true, dealtDamageByAttachedThisTurn: true /* edh-c-113 */, controllerDealtCombatDamageBySourceThisTurn: true, attackedThisTurn: true, blockedThisTurn: true, wasBlockedThisTurn: true, blockedWithThisTurn: true /* edh-e-20 */, sharesWith: true, chosen: true,
   dealtDamageAsSourceThisTurn: true, // std-mkm (CR 120.1)
   dealtDamageToYouThisTurn: true, // edh-players-9 (CR 120.1, 510.2)
   dealtExcessDamageThisTurn: true, // edh-d-38 (CR 120.10)
+  dealtNoncombatDamageThisTurn: true, // edh-e-50 (CR 120.1, 510.2)
+  controlledSinceTurnStart: true, // edh-e-50 (CR 302.6, 400.7)
   foughtThisTurn: true, // edh-next-139 (CR 701.14a)
   dealtDamageByYourSourceThisTurn: true, // edh-c-48 (CR 120.1, 400.7)
   putThereThisTurn: true, // r3-choose (CR 400.7)
@@ -106,6 +108,7 @@ const FIELD_KEYS: Record<keyof ObjectFilter, true> = {
   blockedByObject: true, blockingOrBlockedBy: true, // p2-combat-flow-1 (CR 509.1g-h)
   attachedToObject: true, // FAST4 T22
   couldEnchant: true, // edh-d-24 (CR 303.4a, 702.5a)
+  auraMovesTo: true, // edh-e-53 (CR 701.3b, 303.4a)
   attachedToPlayer: true, // p2-damage-2 (CR 303.4, 702.5d)
   commander: true, // M11-0 (m11 design 4.5): a status field, advertised once M11-1 lists it in rules/filter-parts/commander.ts
   equipped: true, modified: true, // FAST4 T33
@@ -147,8 +150,10 @@ const FIELD_KEYS: Record<keyof ObjectFilter, true> = {
   firstCastManaFrom: true, // edh-mana-keywords-12 (CR 601.2i, 106.3)
   manaSpentFrom: true, // edh-next-143 (CR 601.2h, 106.3)
   uncast: true, // edhd60 (CR 707.10, 707.12)
+  castNthThisTurn: true, // edh-e-17 (CR 601.2i)
   firstCastOf: true, // edh-next-97 (CR 601.2i)
   controllerDealtCombatDamageBy: true, // edh-next-134 (CR 510.2, 120.1)
+  controllerControls: true, // edhe33 (CR 109.4)
   sameCardAs: true, // edh-d-100 (CR 400.7, 603.7c)
 };
 
@@ -190,7 +195,7 @@ const FILTER_FORMS = ['controller.ref', 'owner.ref', 'keyword.list', 'notKeyword
  * enchant restriction, mana spending restrictions, trigger patterns and conditions), and `FilterContext.env` is required, so a new call site without one does
  * not compile (`ENV_REQUIRED`). test/m5/eval/wp30-filter-env.test.ts covers the forms in the positions.
  */
-export const NEEDS_ENV: ReadonlySet<string> = new Set(['controller.ref', 'owner.ref', 'attacking.defender', 'cmp.quantity', 'is', 'sharesWith', 'targets', 'blockingObject', 'attachedToObject', 'couldEnchant' /* edh-d-24 */, 'saddledThisTurn', 'targetsOnly', 'targetedBy' /* std-rx28 */, 'crewedThisTurn' /* r5-fxb */, 'wasAttachedTo' /* r5-fxb */, 'attachedToPlayer' /* p2-damage-2 */, 'attacking.orPlaneswalker' /* std-combat-1 */, 'blockedByObject', 'blockingOrBlockedBy' /* p2-combat-flow-1 */, 'sameCardAs' /* edh-d-100 */]);
+export const NEEDS_ENV: ReadonlySet<string> = new Set(['controller.ref', 'owner.ref', 'attacking.defender', 'cmp.quantity', 'is', 'sharesWith', 'targets', 'blockingObject', 'attachedToObject', 'couldEnchant' /* edh-d-24 */, 'auraMovesTo' /* edh-e-53 */, 'saddledThisTurn', 'targetsOnly', 'targetedBy' /* std-rx28 */, 'crewedThisTurn' /* r5-fxb */, 'wasAttachedTo' /* r5-fxb */, 'attachedToPlayer' /* p2-damage-2 */, 'attacking.orPlaneswalker' /* std-combat-1 */, 'blockedByObject', 'blockingOrBlockedBy' /* p2-combat-flow-1 */, 'blockedWithThisTurn' /* edh-e-20 */, 'sameCardAs' /* edh-d-100 */]);
 
 /**
  * An environment that resolves nothing beyond `self`, `you` and `active` (a quantity can't be read): what a filter read with no context sees. For TESTS of the
@@ -702,6 +707,13 @@ function test(s: GameState, o: GameObject, f: ObjectFilter, ctx: FilterContext, 
     const host = hosts.length === 1 ? hosts[0] : undefined;
     if (host === undefined || couldEnchantCheck === undefined || !couldEnchantCheck(s, o, c, host)) return false; // (unset: rules/attachment.ts not loaded, fail closed)
   }
+  // edh-e-53 (CR 701.3a-b, 303.4a, 303.4d): a permanent the one Aura the reference names could be attached to, other than the one it is attached to now (the Aura on the battlefield; an Aura that enchants
+  // players, or whose restriction is not understood, matches nothing)
+  if (f.auraMovesTo !== undefined) {
+    const auras = refsOf(s, ctx, f.auraMovesTo).objects.map((h) => s.objects[h.id]);
+    const aura = auras.length === 1 ? auras[0] : undefined;
+    if (aura === undefined || aura.zone !== 'battlefield' || o.zone !== 'battlefield' || aura.attachedTo === o.id || couldEnchantCheck === undefined || !couldEnchantCheck(s, aura, charsOfObject(s, aura), o)) return false;
+  }
   // p2-damage-2 (CR 303.4, 702.5d): attached to a player the predicate names (an Aura with enchant player); an object attached to an object is not
   if (f.attachedToPlayer !== undefined) {
     const host = o.zone === 'battlefield' ? o.attachedTo : undefined;
@@ -746,8 +758,12 @@ function test(s: GameState, o: GameObject, f: ObjectFilter, ctx: FilterContext, 
 
   // history (CR 603.4 style "this turn" facts)
   if (f.enteredThisTurn !== undefined && enteredThisTurn(s, o.id) !== f.enteredThisTurn) return false;
+  if (f.enteredSinceYourLastTurn !== undefined && !enteredSinceYourLastTurn(s, o.id, ctx.you)) return false; // edh-e-27 (CR 400.7, 500.1)
   if (f.dealtDamageThisTurn !== undefined && dealtDamageThisTurn(s, o.id) !== f.dealtDamageThisTurn) return false;
   if (f.dealtExcessDamageThisTurn !== undefined && !dealtExcessDamageThisTurn(s, o.id)) return false; // edh-d-38 (CR 120.10)
+  if (f.dealtNoncombatDamageThisTurn !== undefined && !dealtNoncombatDamageThisTurn(s, o.id)) return false; // edh-e-50 (CR 120.1, 510.2)
+  // edh-e-50 (CR 302.6, 400.7): its controller has controlled it since before this turn began (`controlledSinceTurn` is the number of the turn its current control began in)
+  if (f.controlledSinceTurnStart !== undefined && !(o.zone === 'battlefield' && o.controlledSinceTurn < s.turn.number)) return false;
   if (f.dealtDamageAsSourceThisTurn !== undefined && dealtDamageAsSourceThisTurn(s, o.id) !== f.dealtDamageAsSourceThisTurn) return false; // std-mkm (CR 120.1)
   if (f.dealtDamageToYouThisTurn !== undefined && !dealtDamageToPlayerThisTurn(s, o.id, ctx.you, f.dealtDamageToYouThisTurn === 'combat')) return false; // edh-players-9 (CR 120.1, 510.2)
   // edh-players-7 (CR 121.1, 400.7): a card in its owner's hand that the owner drew this turn (PlayerState.turnStats.drawn)
@@ -779,10 +795,20 @@ function test(s: GameState, o: GameObject, f: ObjectFilter, ctx: FilterContext, 
   if (f.controllerDealtCombatDamageBySourceThisTurn !== undefined && (ctx.sourceId !== undefined && controllerDealtCombatDamageBySourceThisTurn(s, c.controller, ctx.sourceId)) !== f.controllerDealtCombatDamageBySourceThisTurn) return false;
   // edh-next-134 (CR 510.2, 120.1; Admiral Beckett Brass): its controller was dealt combat damage this turn by N or more different sources of a kind (as each dealt it)
   if (f.controllerDealtCombatDamageBy !== undefined && combatDamageSourcesToPlayerThisTurn(s, c.controller, f.controllerDealtCombatDamageBy.by, { you: ctx.you, ...(ctx.sourceId !== undefined ? { sourceId: ctx.sourceId } : {}) }) < f.controllerDealtCombatDamageBy.atLeast) return false;
+  // edhe33 (CR 109.4; Seasinger): its controller (as it is now) controls a permanent of that description
+  if (f.controllerControls !== undefined) {
+    const who = c.controller;
+    if (!findObjects(s, { ...f.controllerControls, zone: 'battlefield' }, { ...ctx, you: who }).some((x) => charsOfObject(s, x).controller === who)) return false;
+  }
   if (f.attackedThisTurn !== undefined && attackedThisTurn(s, o.id) !== f.attackedThisTurn) return false;
   if (f.foughtThisTurn === true && !foughtThisTurn(s, o.id)) return false; // edh-next-139 (CR 701.14a)
   if (f.blockedThisTurn !== undefined && blockedThisTurn(s, o.id) !== f.blockedThisTurn) return false;
   if (f.wasBlockedThisTurn !== undefined && wasBlockedThisTurn(s, o.id) !== f.wasBlockedThisTurn) return false; // edh-c-18
+  if (f.blockedWithThisTurn !== undefined) { // edh-e-20 (CR 509.1g-h): a described creature is judged as it was when the pair formed (ruling 2023-06-16), anything else by the objects it names
+    const bw = f.blockedWithThisTurn, w = bw.with;
+    const other = w.ref === 'each' && 'filter' in w ? { filter: w.filter } : { ids: w.ref === 'fixed' ? w.objects.map((h) => h.id) /* CR 608.2h: the object as it last existed, even after it moved */ : w.ref === 'self' && ctx.sourceId !== undefined ? [ctx.sourceId] : refsOf(s, ctx, w).objects.map((h) => h.id) };
+    if (!blockedWithThisTurn(s, o.id, bw.role, other, bw.combat === true, { you: ctx.you, ...(ctx.sourceId !== undefined ? { sourceId: ctx.sourceId } : {}) })) return false;
+  }
 
   // stack objects
   if (f.stackKind !== undefined && !stackKindMatches(o, f.stackKind)) return false;
@@ -792,6 +818,7 @@ function test(s: GameState, o: GameObject, f: ObjectFilter, ctx: FilterContext, 
   if (f.castFrom !== undefined && (o.stack?.castFrom ?? o.cast?.from) !== f.castFrom) return false;
   if (f.kicked !== undefined && (o.zone !== 'stack' || (o.stack?.costsPaid.kicked ?? 0) <= 0)) return false; // edh-next-13 (CR 702.33d): a kicked spell
   if (f.firstCast !== undefined && !firstCastOk(o, f.firstCast)) return false; // pc-exile-play-2 (CR 601.2i)
+  if (f.castNthThisTurn !== undefined && !(o.zone === 'stack' && o.kind !== 'ability' && o.stack?.castOrdinal?.all === f.castNthThisTurn)) return false; // edh-e-17 (CR 601.2i): the Nth spell cast this turn by any player
   if (f.uncast === true && !(o.zone === 'stack' && o.kind !== 'ability' && o.stack?.castOrdinal === undefined)) return false; // edhd60 (CR 707.10, 707.12): put on the stack, never cast
   if (f.firstCastManaFrom !== undefined && !(o.zone === 'stack' && o.stack?.castOrdinal?.manaFrom?.[f.firstCastManaFrom] === 1)) return false; // edh-mana-keywords-12 (CR 601.2i, 106.3)
   if (f.manaSpentFrom !== undefined && !manaSpentFromOk(o, f.manaSpentFrom)) return false; // edh-next-143 (CR 601.2h, 106.3)
@@ -914,7 +941,10 @@ function test(s: GameState, o: GameObject, f: ObjectFilter, ctx: FilterContext, 
   }
   if (f.manaValueParity !== undefined && !manaValueParityMatches(o, { manaCost: c.manaCost, manaValue: o.zone === 'stack' && o.stack?.x !== undefined ? manaValue(c.manaCost, o.stack.x) : c.manaValue }, f.manaValueParity)) return false; // CR 202.3e
   if (f.sharesWith !== undefined) {
-    const all = refsOf(s, ctx, f.sharesWith.with).objects;
+    const all0 = refsOf(s, ctx, f.sharesWith.with).objects;
+    // edh-e-23 (CR 608.2h, 303.4; Crown of Fury): "the enchanted creature" that has left the battlefield since the ability was put on the stack (the Aura gone with it or sacrificed as a cost) is read as it last existed
+    const lostHost = all0.length === 0 && f.sharesWith.with.ref === 'attachedTo' && ctx.sourceId !== undefined ? objectOrLki(s, ctx.sourceId)?.attachedTo : undefined;
+    const all: ObjHandle[] = lostHost !== undefined && s.objects[lostHost]?.zone !== 'battlefield' && s.lki[lostHost]?.leftZone === 'battlefield' ? [{ id: lostHost, zone: s.objects[lostHost]?.zone ?? 'graveyard' }] : all0;
     const others = f.sharesWith.other === true ? all.filter((h) => h.id !== o.id) : all; // std-rx32: "another <set>" (CR 201.2)
     const q = f.sharesWith.quality;
     // edh-b-14 (CR 202.3e): a spell on the stack counts its X, on both sides of "the same mana value"
@@ -974,8 +1004,11 @@ function wasAttachedLast(s: GameState, f: ObjectFilter, ctx: FilterContext): Gam
   const out: GameObject[] = [];
   const seen = new Set<ObjectId>();
   for (const h of refsOf(s, ctx, wasAttachedTo!).objects) {
+    const live0 = s.objects[h.id];
+    // edhe33 (Murderous Spoils, indestructible host): a host still on the battlefield has its permanents attached right now
+    const nowAttached = live0 !== undefined && live0.zone === 'battlefield' ? s.zones.battlefield.filter((x) => s.objects[x]?.attachedTo === h.id) : [];
     const host = s.lki[h.id] ?? Object.values(s.lki).find((l) => l.newId === h.id); // (a host that has left is named by the object it became)
-    for (const id of host?.attached?.ids ?? []) {
+    for (const id of [...nowAttached, ...(host?.attached?.ids ?? [])]) {
       if (seen.has(id)) continue;
       seen.add(id);
       const live = s.objects[id];

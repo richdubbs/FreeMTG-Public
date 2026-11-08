@@ -1,0 +1,186 @@
+[
+  {
+    "id": "eff.edhe44.exile.withCounter.an",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 122.1",
+      "CR 400.7",
+      "CR 406.1"
+    ],
+    "pattern": "exile {o:Obj} with an {k:CounterKind} counter on it",
+    "build": {
+      "op": "move",
+      "what": "$o",
+      "to": {
+        "zone": "exile",
+        "counters": [
+          {
+            "kind": "$k",
+            "count": 1
+          }
+        ]
+      }
+    },
+    "subject": "none",
+    "examples": [
+      {
+        "text": "Whenever another nontoken creature dies, exile it with an aegis counter on it."
+      },
+      {
+        "text": "Whenever a land you control is put into a graveyard from the battlefield, exile it with an aim counter on it."
+      }
+    ],
+    "counterExamples": [
+      "Whenever another nontoken creature dies, exile it with an aegis counter on that creature.",
+      "Whenever another nontoken creature dies, exile it with three aegis counters on it.",
+      "Whenever another nontoken creature dies, exile it."
+    ]
+  },
+  {
+    "id": "eff.edhe44.itsController.mayExile.withCounter",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 608.2d",
+      "CR 122.1",
+      "CR 406.1",
+      "CR 109.4"
+    ],
+    "pattern": "its controller may exile {o:Obj} with ( a | an ) {k:CounterKind} counter on it",
+    "build": {
+      "op": "may",
+      "who": {
+        "ref": "controllerOf",
+        "object": "$o"
+      },
+      "do": [
+        {
+          "op": "move",
+          "what": "$o",
+          "to": {
+            "zone": "exile",
+            "counters": [
+              {
+                "kind": "$k",
+                "count": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "may"
+    ],
+    "examples": [
+      {
+        "text": "Whenever ~ attacks, choose up to one target creature. Its controller may exile it with an aegis counter on it."
+      },
+      {
+        "text": "Whenever ~ attacks, choose target creature. Its controller may exile it with a gloom counter on it."
+      }
+    ],
+    "counterExamples": [
+      "Whenever ~ attacks, choose up to one target creature. Its owner may exile it with an aegis counter on it.",
+      "Whenever ~ attacks, choose up to one target creature. Its controller may exile it with two aegis counters on it.",
+      "Whenever ~ attacks, choose up to one target creature. Its controller may exile it."
+    ]
+  },
+  {
+    "id": "eff.edhe44.return.exiledCounters.bf.owners",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 122.1",
+      "CR 400.3",
+      "CR 110.2",
+      "CR 406.1"
+    ],
+    "pattern": "return all exiled cards with {k:CounterKind} counters on them to the battlefield under their owners' control",
+    "build": {
+      "op": "move",
+      "what": {
+        "ref": "each",
+        "filter": {
+          "isCard": true,
+          "zone": "exile",
+          "counters": {
+            "kind": "$k"
+          }
+        }
+      },
+      "to": {
+        "zone": "battlefield",
+        "controller": "owner"
+      }
+    },
+    "subject": "none",
+    "consumes": [
+      "all"
+    ],
+    "examples": [
+      {
+        "text": "{2}{W}, {T}: Return all exiled cards with gloom counters on them to the battlefield under their owners' control."
+      },
+      {
+        "text": "{3}: Return all exiled cards with husk counters on them to the battlefield under their owners' control."
+      }
+    ],
+    "counterExamples": [
+      "{2}{W}, {T}: Return all exiled cards with gloom counters on them to the battlefield under your control.",
+      "{2}{W}, {T}: Return all exiled cards you own with gloom counters on them to the battlefield under their owners' control.",
+      "{2}{W}, {T}: Return all exiled cards to the battlefield under their owners' control."
+    ]
+  },
+  {
+    "id": "eff.edhe44.put.exiledOwnedCounters.hand",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 122.1",
+      "CR 400.3",
+      "CR 406.1"
+    ],
+    "pattern": "put all exiled cards you own with {k:CounterKind} counters on them into your hand",
+    "build": {
+      "op": "move",
+      "what": {
+        "ref": "each",
+        "filter": {
+          "isCard": true,
+          "zone": "exile",
+          "owner": "you",
+          "counters": {
+            "kind": "$k"
+          }
+        }
+      },
+      "to": {
+        "zone": "hand"
+      }
+    },
+    "subject": "none",
+    "consumes": [
+      "all"
+    ],
+    "examples": [
+      {
+        "text": "{1}, Discard your hand: Put all exiled cards you own with gloom counters on them into your hand."
+      },
+      {
+        "text": "{2}, {T}: Put all exiled cards you own with husk counters on them into your hand."
+      }
+    ],
+    "counterExamples": [
+      "{1}, Discard your hand: Put all exiled cards with gloom counters on them into your hand.",
+      "{1}, Discard your hand: Put all exiled cards an opponent owns with gloom counters on them into your hand.",
+      "{1}, Discard your hand: Put all exiled cards you own with gloom counters on them onto the battlefield."
+    ]
+  }
+]

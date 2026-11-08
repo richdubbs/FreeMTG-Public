@@ -47,7 +47,7 @@ export const ACCEPTANCE: Readonly<Record<string, Pin>> = {
   'Vesuvan Doppelganger': { level: 'full', package: 'M6-2, MX2 (the retained color and the self-referencing "it has this ability", CR 707.9a, 707.9c)' },
   'Runeclaw Bear': { level: 'full', package: 'M6-2' },
   'Primal Clay': { level: 'manual', package: 'M6-2', cause: '"As this creature enters, it becomes your choice of ..." needs feature:copy.asEntersPT (CR 613.2a), which M6-2 left unregistered (fail closed), and has no template' },
-  Cytoshape: { level: 'manual', package: 'M6-2', cause: '"Choose a nonlegendary creature on the battlefield. Target creature becomes a copy of that creature until end of turn." has no template' },
+  Cytoshape: { level: 'full', package: 'M6-2, edh-e-1 (eff.edhe1.choose.aFilter.onBattlefield; was manual, outdated by the standing rule 2026-10-27)' },
   // r4-fxz: the back face's "Target player draws X cards, where X is the number of cards in your hand" reads with eff.fxz.draw.whereX (CR 107.3, 121.1)
   'Jushi Apprentice // Tomoya the Revealer': { level: 'full', package: 'M6-2, M6-4, r4-fxz' },
   // edh-c-49: the back face's "loses 1 life for each card fewer than three in their hand" reads with eff.edhv49.player.loseLife.perCardFewerThanThreeInHand (CR 119.3, 402.1)
@@ -140,7 +140,7 @@ describe('m6 design 6, E22: the game-path level of every acceptance card', () =>
 
   it('the gate count: how many acceptance cards are full (the gate needs all of them, E22)', () => {
     const levels = Object.values(ACCEPTANCE).map((p) => p.level);
-    expect([levels.length, levels.filter((l) => l === 'full').length]).toEqual([94, 92]); // edh-d-61: + Huntmaster of the Fells (the player of a self "becomes" event); edh-next-76: + Delver of Secrets; edh-next-65: + Fork, Moritte of the Frost; edh-next-34: + Wheel of Sun and Moon (sta.edhn34.graveyard.enchantedPlayer.revealBottom); edh-next-22: + Whisperwood Elemental; Commander combined copy (edh-cast-4 + edh-misc-3): + Bard Class; std-rx21: + Brisela, Voice of Nightmares; std-re: + Bruna, the Fading Light; merge wave 8 (audit D2): + The Elder Dragon War; r4-fxz: + Jushi Apprentice; r4-fxb: + Cryptic Coat, Willbender, Hooded Hydra; r4-cost: + Everflowing Chalice; FAST5X E27: + Phyrexian Fleshgorger; FAST4 MX1: + Leyline of the Void, Brutal Cathar; MX2: + Oko, Voice of All, Gisela, Graf Rats, Vesuvan Doppelganger; FAST5X E14: + Case of the Locked Hothouse
+    expect([levels.length, levels.filter((l) => l === 'full').length]).toEqual([94, 93]); // edh-e-1: + Cytoshape; edh-d-61: + Huntmaster of the Fells (the player of a self "becomes" event); edh-next-76: + Delver of Secrets; edh-next-65: + Fork, Moritte of the Frost; edh-next-34: + Wheel of Sun and Moon (sta.edhn34.graveyard.enchantedPlayer.revealBottom); edh-next-22: + Whisperwood Elemental; Commander combined copy (edh-cast-4 + edh-misc-3): + Bard Class; std-rx21: + Brisela, Voice of Nightmares; std-re: + Bruna, the Fading Light; merge wave 8 (audit D2): + The Elder Dragon War; r4-fxz: + Jushi Apprentice; r4-fxb: + Cryptic Coat, Willbender, Hooded Hydra; r4-cost: + Everflowing Chalice; FAST5X E27: + Phyrexian Fleshgorger; FAST4 MX1: + Leyline of the Void, Brutal Cathar; MX2: + Oko, Voice of All, Gisela, Graf Rats, Vesuvan Doppelganger; FAST5X E14: + Case of the Locked Hothouse
   });
 });
 

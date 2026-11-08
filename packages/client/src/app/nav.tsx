@@ -14,6 +14,7 @@ import { sfx } from '../audio/sfx';
 import { closeGame } from '../connection/closeGame';
 import type { GameConnection } from '../connection/GameConnection';
 import type { PlayerSleeves } from '../board/sleeves';
+import type { GamePrintings } from '../game/printings';
 import type { HostedLink } from '../hosted/HostedLink';
 import type { OnlineLink } from '../online/OnlineLink';
 import type { GameSetup } from '../game/NewGameScreen';
@@ -43,7 +44,7 @@ export type Route =
    * `hosted` (milestone 13): the link of a game on the DigiDice server, for what the game screen adds there: the clocks and the rope, the server's notices,
    * chat, the approval of other players' adjustments by hand, the result with its placements; Leave concedes the game and leaves the table.
    */
-  | { screen: 'game'; connection: GameConnection; rematch?: () => GameConnection; online?: OnlineLink; hosted?: HostedLink; sleeves?: PlayerSleeves; setup?: GameSetup }
+  | { screen: 'game'; connection: GameConnection; rematch?: () => GameConnection; online?: OnlineLink; hosted?: HostedLink; sleeves?: PlayerSleeves; printings?: GamePrintings; setup?: GameSetup }
   | { screen: 'settings' }
   | { screen: 'about' };
 

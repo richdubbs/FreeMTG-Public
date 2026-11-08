@@ -301,6 +301,14 @@ export function linkExiled(abilities: readonly AbilityDef[], permanentFace = tru
       for (const i of consumers) producers.set(i, withExiledLink(abilities[i]!));
       return { producers, unlinked: [], consumers };
     }
+    // edh-d-104 (CR 607.2a; Moonring Mirror: "Whenever you draw a card, exile the top card of your library face down." and "At the beginning of your upkeep, you may exile all cards from your
+    // hand face down. If you do, put all other cards you own exiled with this artifact into your hand."): one reader that exiles cards itself and reads only the whole group in exile
+    // (readsOnlyExiledWith), beside other abilities whose plain instructions exile: every card any of them exiled is exiled with ~ (a link of the object, the cards of both abilities,
+    // ruling 2004-12-01), so the reader and those abilities are all producers. Only plain moves to exile (no keyword, cost or replacement that exiles anywhere on the face)
+    if (mine !== undefined && permanentFace && elsewhere && readsOnlyExiledWith(mine) && plainExilesOnly(abilities)) {
+      abilities.forEach((a, i) => { let ex = false; walkJson(a, (n) => { if (exilesWithoutLink(n)) ex = true; }); if (ex) producers.set(i, withExiledLink(a)); });
+      return { producers, unlinked: [], consumers };
+    }
     if (mine === undefined || !permanentFace || elsewhere || !selfLinkable(mine)) return { producers, unlinked: consumers, consumers };
     producers.set(consumers[0]!, withExiledLink(mine));
     return { producers, unlinked: [], consumers };
@@ -453,6 +461,20 @@ function readsOwnExile(a: AbilityDef): boolean {
  * std-cardcopy-9 (CR 607.2a): every read of the link "exiled" in the ability is the description "<cards> exiled with ~" (a filter in exile whose `is` is the link,
  * parser/holes/filter.ts), never "the exiled card" itself.
  */
+/**
+ * edh-d-104 (CR 607.2a): every instruction of the face that exiles is a `move` to exile (no exileUntil, no keyword, no exiling cost or replacement, no "until" return): the cards those moves
+ * exile are all the cards "exiled with ~".
+ */
+function plainExilesOnly(abilities: readonly AbilityDef[]): boolean {
+  let ok = true;
+  for (const a of abilities) {
+    if (a.kind === 'keyword' && EXILED_LINK_KEYWORDS.has(a.keyword)) ok = false;
+    if (evidenceCostParts(a as unknown as Record<string, unknown>).length > 0) ok = false;
+    walkJson(a, (n) => { if (exilesWithoutLink(n) && !(n['op'] === 'move' && n['until'] === undefined)) ok = false; if (exileCostParts(n).length > 0 || replacementExilesWithoutLink(n)) ok = false; });
+  }
+  return ok;
+}
+
 function readsOnlyExiledWith(a: AbilityDef): boolean {
   let all = 0;
   let described = 0;
@@ -478,6 +500,9 @@ function readsOnlyAsGroup(a: AbilityDef): boolean {
     if ((n['zone'] === 'exile' || n['zone'] === 'any') && is?.['ref'] === 'linked' && is['link'] === EXILED_LINK) group++;
     const of = n['of'] as Record<string, unknown> | undefined;
     if (n['q'] === 'count' && of?.['ref'] === 'linked' && of['link'] === EXILED_LINK) group++;
+    // edh-e-36 (CR 607.2a; Rona, Disciple of Gix): a permission for the cards exiled with ~ ("You may cast spells from among cards exiled with ~") reads the whole group
+    const pis = (of as { is?: Record<string, unknown> } | undefined)?.is;
+    if (n['s'] === 'permit' && of !== undefined && Object.keys(of).length === 1 && pis?.['ref'] === 'linked' && pis['link'] === EXILED_LINK) group++;
     return undefined;
   });
   return all > 0 && all === group;
@@ -593,10 +618,13 @@ export function exiledCardLinkable(s: AbilitySegment, all: readonly AbilitySegme
   if (!/\bthe exiled card\b/i.test(s.text) || /\bexil/i.test(s.text.replace(/\bthe exiled card\b/gi, ''))) return false;
   // review fix (Summoner's Egg, Clone Shell: "turn the exiled card face up. If it's a creature card, put it onto the battlefield"): a bare pronoun of the same ability could only name the linked
   // card too, which the anaphora pass does not offer it (Mention.linked is named by "the exiled card" only), so it would take another antecedent: such an ability is not linked here (fail closed)
-  if (/\b(it|its|it's)\b/i.test(s.text.replace(/^[^,]*\b(when|whenever|at)\b[^,]*,/i, ''))) return false;
+  // edh-d-104 (CR 702.75a, 607.2a; Widespread Thieving): the fixed words "without paying its mana cost" of a free play name the card played, never another antecedent
+  if (/\b(it|its|it's)\b/i.test(s.text.replace(/^[^,]*\b(when|whenever|at)\b[^,]*,/i, '').replace(/\bplay the exiled card without paying its mana cost\b/gi, ''))) return false;
   // the exile it names is of ONE card: an instruction of another ability that exiles several ("exile all cards from target player's graveyard") is no producer of "the exiled card"
   // (singular); such a reader is left to the readings that existed before (fail closed)
-  const exiling = all.filter((o) => o !== s && /\bexile/i.test(o.text)).flatMap((o) => o.text.split(/(?<=\.)\s+/).filter((x) => /\bexile/i.test(x)));
+  // edh-d-104 (CR 702.75a, 607.2a; Widespread Thieving): a hideaway keyword line ("Hideaway 5") is an instruction that exiles ONE card face down (its expansion records it under the link)
+  const exiling = all.filter((o) => o !== s && (/\bexile/i.test(o.text) || /^hideaway \d+$/i.test(o.text.trim()))).map((o) => /^hideaway \d+$/i.test(o.text.trim()) ? 'Exile one card.' : o.text)
+    .flatMap((o) => o.split(/(?<=\.)\s+/).filter((x) => /\bexile/i.test(x)));
   return exiling.length > 0 && exiling.every((x) => !/\b(cards|all|each|any number|up to|two|three|four|five|six|seven|x|them|those|artifacts|creatures|permanents|lands|enchantments|planeswalkers|battles|spells|tokens|nonland permanents)\b/i.test(x));
 }
 
@@ -768,6 +796,39 @@ export function linkChosenOpponent(abilities: readonly AbilityDef[]): { producer
     if (n['op'] === 'chooseValue' && n['link'] === CHOSEN_OPPONENT_LINK) made += consumers.includes(i) || n['what'] !== 'opponent' ? 2 : 1;
   }));
   return { producers, unlinked: made === 1 ? [] : consumers, consumers };
+}
+
+/** edh-d-109 (CR 607.2d): the link of "the last chosen player", the player a triggered or activated "choose an opponent" of the face chose most recently. */
+export const LAST_CHOSEN_PLAYER_LINK = 'lastChosenPlayer';
+
+/**
+ * edh-d-109 (CR 607.2d, 400.7; Triarch Stalker, Beckoning Will-o'-Wisp): "Creatures attacking the last chosen player have menace." (`{ref:'linked', link: LAST_CHOSEN_PLAYER_LINK}`) in a
+ * static ability reads the player the face's ONE triggered or activated "choose an opponent" (or "choose a player") chose last: that top-level `chooseValue` (chosen by you, no link,
+ * condition, secret or per-player choice of its own) gets the link, so each new choice replaces the remembered one (effects/handlers/choose.ts#rememberLink). The reader must be a static
+ * ability, and the face must make no other choice of a player anywhere (an "As ~ enters, choose an opponent" included); otherwise the reader is returned in `unlinked` (it becomes manual).
+ * Pure: changed abilities are copies.
+ */
+export function linkLastChosenPlayer(abilities: readonly AbilityDef[]): { producers: Map<number, AbilityDef>; unlinked: number[]; consumers: number[] } {
+  const consumers = abilities.flatMap((a, i) => (readsLink(a, LAST_CHOSEN_PLAYER_LINK) ? [i] : []));
+  const producers = new Map<number, AbilityDef>();
+  if (consumers.length === 0) return { producers, unlinked: [], consumers };
+  if (consumers.some((i) => abilities[i]!.kind !== 'static')) return { producers, unlinked: consumers, consumers };
+  const one = (n: Record<string, unknown>): boolean => n['op'] === 'chooseValue' && (n['what'] === 'opponent' || n['what'] === 'player') && n['link'] === undefined && n['guard'] === undefined
+    && n['forEachPlayer'] === undefined && n['secret'] === undefined && JSON.stringify(n['who']) === '{"ref":"you"}';
+  let anyChoice = 0;
+  abilities.forEach((a, i) => {
+    if (consumers.includes(i)) return;
+    walkJson(a, (n) => {
+      if (n['op'] === 'chooseValue' && (n['what'] === 'opponent' || n['what'] === 'player')) anyChoice++;
+      if (n['b'] === 'enters' && Array.isArray(n['choose']) && (n['choose'] as Record<string, unknown>[]).some((c) => c['what'] === 'opponent' || c['what'] === 'player')) anyChoice++;
+    });
+  });
+  const found = abilities.flatMap((a, i) => (consumers.includes(i) || (a.kind !== 'triggered' && a.kind !== 'activated') ? [] : topSteps(a).filter(one).map((step) => ({ i, step }))));
+  if (found.length !== 1 || anyChoice !== 1) return { producers, unlinked: consumers, consumers };
+  const copy = JSON.parse(JSON.stringify(abilities[found[0]!.i])) as AbilityDef;
+  for (const st of topSteps(copy)) if (one(st)) st['link'] = LAST_CHOSEN_PLAYER_LINK;
+  producers.set(found[0]!.i, copy);
+  return { producers, unlinked: [], consumers };
 }
 
 /**
@@ -1104,7 +1165,12 @@ function parseFace(ctx: FaceContext, opts: ParseOptions, cardHasX: boolean, cycl
       // A reader through an older template keeps WP23's reading (the face-wide link makes it a manual ability)
       const newReader = readsExiledLink(v.def) && res.templates.some((id) => id.startsWith('eff.r3refs.')) && !exileProducerPossible(s);
       // TREK-6 (CR 607.2a): ... unless the ability is its own producer and nothing else on the face can exile (selfLinkable; linkExiled links it)
-      const ownExile = v.def.kind !== 'manual' && ((readsOwnExile(v.def) && !(v.def.kind !== 'spell' && selfLinkable(v.def) && !exileProducerPossible(s))) || newReader);
+      // edh-d-104 (CR 607.2a; Moonring Mirror): ... or it reads only the whole group in exile with this round's template ("put all other cards you own exiled with ~ into your hand") and
+      // exiles by plain moves: linkExiled links it with the face's other plain exiles, or leaves it unlinked (manual)
+      // (review, guard G10: only on a face where this is the one ability that says "exiled with": linkExiled's branch links one reader only)
+      const groupReader = v.def.kind !== 'spell' && res.templates.includes('eff.edhd104.otherLinkedOwn.toHand') && readsOnlyExiledWith(v.def) && plainExilesOnly([v.def])
+        && seg.abilities.filter((o) => /\bexiled with\b/i.test(o.text)).length === 1;
+      const ownExile = v.def.kind !== 'manual' && ((readsOwnExile(v.def) && !groupReader && !(v.def.kind !== 'spell' && selfLinkable(v.def) && !exileProducerPossible(s))) || newReader);
       if (ownExile) {
         const d = v.def;
         const shape = d.kind === 'triggered' ? 'triggered' : d.kind === 'activated' ? 'activated' : d.kind === 'spell' ? 'spell' : 'static';
@@ -1333,6 +1399,8 @@ function parseFace(ctx: FaceContext, opts: ParseOptions, cardHasX: boolean, cycl
   // edh-next-139 (CR 607.2c): "the creature put onto the battlefield with ~" in one ability is what another ability of this face put onto the battlefield
   applyLink(linkPutOntoWith(abilities), `unlinked: "the creature put onto the battlefield with ~" needs exactly one instruction on this face that puts a permanent onto the battlefield (CR 607.2c)`);
   applyLink(linkChosenOpponent(abilities), `unlinked: "the chosen player" needs exactly one "choose an opponent" as ~ enters or transforms on this face (CR 607.2d)`);
+  // edh-d-109 (CR 607.2d): "the last chosen player" in a static ability is the player the face's one triggered or activated "choose an opponent" chose last
+  applyLink(linkLastChosenPlayer(abilities), `unlinked: "the last chosen player" needs exactly one triggered or activated "choose an opponent" on this face (CR 607.2d)`);
   // edh-players-11 (CR 118.9, 601.2b): "if the {1}{B} cost was paid" in one ability is the alternative cost another ability of this face states, at that mana cost
   applyLink(linkAltCostNamed(abilities), `unlinked: "the {cost} cost was paid" needs exactly one alternative cost on this face whose mana cost is that cost (CR 118.9)`);
   // std-rx28 (CR 701.4a, 702.188a): "the creature you chose or the card you revealed" and "the returned creature" read a cost of this face (a behold additional cost,

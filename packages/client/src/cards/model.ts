@@ -6,7 +6,7 @@
  * binds to the same key wherever the card shows up.
  */
 import { formatManaCost, imageSlots, type AutomationLevel, type CardDef, type Color, type FaceDef, type ImageSlot } from '@openmtg/engine';
-import type { CardSummary, FaceSummary, ImageUris } from '@openmtg/server/api';
+import type { CardSummary, FaceSummary, ImageUris, PrintingRef } from '@openmtg/server/api';
 
 export interface CardFaceModel {
   name: string;
@@ -36,6 +36,10 @@ export interface CardModel {
   slots: ImageSlot[];
   /** The compiled definition, when the model came from one: the frame paints its manual text (engine `spansOf`). */
   def?: CardDef;
+  /** deck-art-1: the printing the player's deck chose (images/printings.ts withPrinting); its picture is looked up by name + printing. */
+  printing?: PrintingRef;
+  /** deck-art-1: the Oracle id the printing is looked up by (a token's; token names are not unique). */
+  printingOracleId?: string;
 }
 
 /** Layouts printed as one card with two halves and one picture (CR 709 split, 715 adventure, 710 flip, 722 prepare). */

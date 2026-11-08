@@ -40,11 +40,12 @@ function CommanderStageCard({ object, card }: { object: ObjectId; card: CardId }
   const o = board.view.objects[object];
   if (o && !isHidden(o) && o.faceDown !== true) return <StageCard id={object} />;
   // A face-down commander (exiled face down, CR 406.3a) stays a card back on the screen, like the player's own face-down cards on the table (M6-11).
-  const rec = board.view.players.flatMap((p) => p.commanders ?? []).find((c) => c.card === card);
+  const seat = board.view.players.find((p) => (p.commanders ?? []).some((c) => c.card === card));
+  const rec = seat?.commanders?.find((c) => c.card === card);
   const def = o?.faceDown === true || !rec ? null : (board.view.defs[rec.defId] ?? null);
   return (
     <div className="prompt-stage-card">
-      <div className="prompt-stage-picture">{board.renderCard({ def, face: 0, chars: null, size: 'large', faceDown: o?.faceDown === true })}</div>
+      <div className="prompt-stage-picture">{board.renderCard({ def, face: 0, chars: null, size: 'large', faceDown: o?.faceDown === true, ...(seat ? { owner: seat.id } : {}) })}</div>
     </div>
   );
 }

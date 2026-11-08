@@ -381,7 +381,10 @@ function chosenTypeReturn(s: StepOf<'move'>, st: RenderState): string | null {
  */
 function plainEachReturn(s: StepOf<'move'>, st: RenderState): string | null {
   const d = s.to;
-  if (s.what.ref !== 'each' || d.zone !== 'battlefield' || d.controller !== 'owner' || Object.keys(d).length !== 2 || s.as !== undefined || s.until !== undefined) return null;
+  // edh-e-38 (CR 122.1, 614.1c, 400.3; Pyrrhic Revival, template eff.edhe38.eachPlayer.returnEach.graveyard.bf.additionalCounters): the same move with one kind of counters each card enters with
+  const ec = d.counters;
+  const counters = ec !== undefined && ec.length === 1 && Object.keys(ec[0]!).sort().join(',') === 'count,kind' && typeof ec[0]!.count === 'number' && ec[0]!.count >= 1 && typeof ec[0]!.kind === 'string' ? ec[0]! : null;
+  if (s.what.ref !== 'each' || d.zone !== 'battlefield' || d.controller !== 'owner' || Object.keys(d).length !== (ec === undefined ? 2 : 3) || (ec !== undefined && counters === null) || s.as !== undefined || s.until !== undefined) return null;
   const f = s.what.filter as Record<string, unknown>;
   const keys = Object.keys(f).filter((k) => f[k] !== undefined).sort().join(',');
   if (keys !== 'anyOf,isCard,zone' || f['zone'] !== 'graveyard' || f['isCard'] !== true || s.what.filter.anyOf?.length !== 1) return null;
@@ -389,6 +392,9 @@ function plainEachReturn(s: StepOf<'move'>, st: RenderState): string | null {
   // edhd19 (family all-each, Magister of Worth): "each player returns each creature card from their graveyard to the battlefield" says the same as "... all creature cards ..."
   // (the engine runs the same move; a different count wording in the group would not pass the gate: the filter has no count)
   const each = K.np({ ...s.what.filter.anyOf[0]!, zone: 'graveyard' }, st, { det: 'each', noZone: true });
+  const withCounters = counters === null ? '' : ` with ${counters.count as number} additional ${String(counters.kind)} ${counters.count === 1 ? 'counter' : 'counters'} on it`; // Oracle: each card enters with the counters "on it", whatever their number
+  // the counters belong to each card that enters: Oracle says "each ... card ... with an additional counter on it" (only the "each" wording, whose "it" is the one card)
+  if (counters !== null) return `each player returns ${each} from their graveyard to the battlefield${withCounters}`;
   return alt(`each player returns ${np} from their graveyard to the battlefield`, `each player returns ${each} from their graveyard to the battlefield`);
 }
 
@@ -405,6 +411,20 @@ function sameNameReturn(s: StepOf<'move'>, st: RenderState): string | null {
   const sw = s.what.filter.sharesWith;
   if (keys !== 'isCard,sharesWith,zone' || f['zone'] !== 'graveyard' || f['isCard'] !== true || sw === undefined || sw.quality !== 'name' || sw.other !== undefined || Object.keys(sw).length !== 2) return null;
   return `each player returns all cards with the same name as ${K.obj(sw.with, st, 'object').text} from their graveyard to the battlefield`;
+}
+
+/**
+ * edh-e-39 (CR 201.2, 400.3, 110.2a, 608.2c; template eff.edhe39.eachPlayer.returnsAll.named.bf, Myr Servitor): the cards with one name in every graveyard
+ * (`{ref:'each', filter:{name, zone:'graveyard', isCard:true}}`) onto the battlefield under their owners' control: "each player returns all cards named <name> from their graveyard to the
+ * battlefield". Null for any other move.
+ */
+function namedReturnToBattlefield(s: StepOf<'move'>, st: RenderState): string | null {
+  const d = s.to;
+  if (s.what.ref !== 'each' || d.zone !== 'battlefield' || d.controller !== 'owner' || Object.keys(d).length !== 2 || s.as !== undefined || s.until !== undefined) return null;
+  const f = s.what.filter as Record<string, unknown>;
+  const keys = Object.keys(f).filter((k) => f[k] !== undefined).sort().join(',');
+  if (keys !== 'isCard,name,zone' || f['zone'] !== 'graveyard' || f['isCard'] !== true || typeof f['name'] !== 'string') return null;
+  return `each player returns all cards named ${f['name']} from their graveyard to the battlefield`;
 }
 
 /**
@@ -516,6 +536,12 @@ export function tokenText(t: TokenDef, count: number | string, plural: boolean, 
     const noun = `${pre === '' ? '' : `${pre} `}${t.predefined ?? ownName} token`;
     return plural ? `${countWord} ${pluralize(noun)}`.trim() : withArticle(noun);
   }
+  // edh-e-12 (CR 607.2d; Volrath's Laboratory): "a 2/2 creature token of the chosen color and type" (the only token shape that reads both choices)
+  if (t.chosenColor !== undefined && t.chosenSubtype !== undefined && t.power !== undefined && t.toughness !== undefined && (t.types ?? []).join() === 'Creature' && (t.keywords ?? []).length === 0 && (t.abilities ?? []).length === 0 && t.name === undefined && t.subtypes === undefined && t.colors === undefined) {
+    const ptc = `${typeof t.power === 'number' ? t.power : K.qty(t.power, st)}/${typeof t.toughness === 'number' ? t.toughness : K.qty(t.toughness, st)}`;
+    const corec = [pre, ptc, 'creature'].filter((x) => x !== '').join(' ');
+    return `${plural ? countWord : article(corec)} ${corec} ${plural ? 'tokens' : 'token'} of the chosen color and type`.replace(/\s+/g, ' ').trim();
+  }
   const pt = t.power !== undefined && t.toughness !== undefined ? `${typeof t.power === 'number' ? t.power : K.qty(t.power, st)}/${typeof t.toughness === 'number' ? t.toughness : K.qty(t.toughness, st)}` : '';
   const colors = t.colors && t.colors.length > 0 ? joinList(t.colors.map((c) => COLOR_WORD[c] ?? c)) : t.types?.includes('Artifact') || t.types?.includes('Creature') ? 'colorless' : '';
   const supers = (t.supertypes ?? []).map((x) => x.toLowerCase());
@@ -607,6 +633,14 @@ function topCardsExiledBy(s: StepOf<'move'>, st: RenderState): { text: string; p
   const w = s.what;
   // (r5-refs: a move that records what it exiled for a linked ability, CR 607.2a, says the same words: "that player exiles the top card of their library")
   // std-rs (CR 406.3): also face down, "target opponent exiles the top X cards of their library face down"
+  // edh-e-39 (CR 401.2, 404.1, 608.2c; template eff.edhe39.player.putsBottomCardGraveyard, Cellar Door): the bottom card of another player's library put into a graveyard says that
+  // player as the subject too: "target player puts the bottom card of their library into their graveyard" (the card goes to its owner's graveyard, which is theirs)
+  if (w.ref === 'topCards' && w.fromBottom === true && w.count === 1 && s.to.zone === 'graveyard' && Object.keys(s.to).length === 1 && s.until === undefined && playerKey(w.player) !== 'you') {
+    const who = K.player(w.player, st, 'subject');
+    if (who.person !== 'sg') return null;
+    const bottom = 'puts the bottom card of their library into their graveyard';
+    return { text: `${who.text} ${bottom}`, pred: bottom, actor: playerKey(w.player) ?? 'x' };
+  }
   if (w.ref !== 'topCards' || s.to.zone !== 'exile' || s.until !== undefined || playerKey(w.player) === 'you') return null;
   const down = s.to.faceDown === true ? ' face down' : '';
   const subj = K.player(w.player, st, 'subject');
@@ -682,7 +716,7 @@ export function copyNewTargets(s: StepOf<'copy'>, st?: RenderState): string {
   const one = (s.count === undefined || s.count === 1) && !many;
   // p2-copy-spell-3: or the copier named again in a sentence of its own, "That player may choose new targets for the copy." (Meletis Charlatan)
   // edh-cast-15 (Tempt with Mayhem, family copies-you-control-new-targets): each opponent "may copy that spell and may choose new targets for the copy they control"
-  const andMay = alt(` and may choose new targets for ${copies}`, ...(one ? [` and may choose a new target for ${copies}`] : []), ...(s.who.ref !== 'you' ? [`. that player may choose new targets for ${copies}`] : []), ...(s.who.ref === 'iterating' && one ? [' and may choose new targets for the copy they control'] : []), ...(s.who.ref === 'each' && one ? ['. each of those players may choose new targets for their copy'] : [])); // edh-d-64 (Hive Mind)
+  const andMay = alt(` and may choose new targets for ${copies}`, ...(one ? [` and may choose a new target for ${copies}`] : []), ...(s.who.ref !== 'you' ? [`. that player may choose new targets for ${copies}`, `. they may choose new targets for ${copies}` /* edh-e-62 (Parnesse, the Subtle Brush) */] : []), ...(s.who.ref === 'iterating' && one ? [' and may choose new targets for the copy they control'] : []), ...(s.who.ref === 'each' && one ? ['. each of those players may choose new targets for their copy'] : [])); // edh-d-64 (Hive Mind)
   if (s.who.ref !== 'you') return andMay;
   // edh-cast-7 (CR 707.10c; family joiner): or with a comma, "if you win the flip, copy that spell, and you may choose new targets for the copy" (Krark, the Thumbless)
   // edh-next-50 (CR 707.10c, 115.7; Ancestral Communion, family copy-and-may-choose-new-target): "You may choose a new target for the copy." of one copy
@@ -814,10 +848,12 @@ export const CLAUSES_ZONES = {
     const twoColors = twoColorsReturn(s); // edh-b-4 (Balthor the Defiled)
     if (twoColors !== null) return plain(twoColors, { standalone: true, leadThen: true });
     const handReturn = eachPlayerReturnToHand(s, st); // edh-c-29 (Empty the Catacombs)
-    if (handReturn !== null) return plain(handReturn, { standalone: true, leadThen: true });
+    if (handReturn !== null) return plain(handReturn, { standalone: true, leadThen: true, joined: handReturn /* edh-e-39 (CR 608.2c; Underworld Cerberus): "exile it and each player returns all creature cards from their graveyard to their hand" */ });
     const chosenReturn = chosenTypeReturn(s, st); // edh-players-13 (Patriarch's Bidding)
     if (chosenReturn !== null) return plain(chosenReturn, { standalone: true, leadThen: true });
     const sameName = sameNameReturn(s, st); // edh-c-112 (Bloodbond March)
+    const namedAll = namedReturnToBattlefield(s, st); // edh-e-39 (Myr Servitor)
+    if (namedAll !== null) return plain(namedAll, { standalone: true, leadThen: true });
     if (sameName !== null) return plain(sameName, { standalone: true, leadThen: true });
     const top = topCardsExiledBy(s, cloneState(st)); // read before the library's owner is mentioned by the other reading
     const before = cloneState(st); // FAST5 T42: the state before the object is named, for a reading that names it differently
@@ -931,6 +967,19 @@ export const CLAUSES_ZONES = {
       text = alt(text, "return the exiled cards to their owners' hands", "put all cards exiled with ~ into their owners' hands", "return all cards exiled with ~ to their owner's hand",
         // edh-c-102 (CR 607.2a, 400.3; family linked-put-all-owner-hand): "put all cards exiled with ~ into their owner's hand" (Kyren Archive) and "each player returns to their hand all cards they own exiled with ~" (Parallax Nexus)
         "put all cards exiled with ~ into their owner's hand", "each player returns to their hand all cards they own exiled with ~", "each player returns to their hand all cards they own exiled with it");
+    }
+    // edhe5 (CR 607.2a, 400.3, 108.3; family linked-return-all-owned-hand; Bottled Cloister): the cards of the object's linked exile that you own, returned to your hand
+    if (s.what.ref === 'each' && JSON.stringify(s.what.filter) === '{"is":{"ref":"linked","link":"exiled"},"zone":"any","isCard":true,"owner":"you"}' && d.zone === 'hand' && s.until === undefined && Object.keys(d).length === 1) {
+      text = alt(text, ...['~', 'it'].map((o) => `return all cards you own exiled with ${o} to your hand`));
+    }
+    // edh-d-104 (CR 607.2a, 400.3, 108.3, 608.2c; family linked-other-owned-hand; Moonring Mirror): the cards of the object's linked exile that you own, other than the group an earlier
+    // instruction of the ability just exiled (a bound name), put into your hand: "put all other cards you own exiled with ~ into your hand"
+    const f = s.what.ref === 'each' && 'filter' in s.what ? s.what.filter : undefined;
+    const other = f?.not?.is?.ref === 'bound' ? f.not.is : undefined;
+    const notBound = f !== undefined && other !== undefined && Object.keys(f).length === 4 && JSON.stringify(f.is) === '{"ref":"linked","link":"exiled"}' && f.zone === 'exile' && f.owner === 'you'
+      && Object.keys(f.not!).length === 1 && Object.keys(other).length === 2;
+    if (notBound && d.zone === 'hand' && Object.keys(d).length === 1 && s.until === undefined && st.info.get(`b:${other!.name}`)?.thisWay === 'exiled this way') {
+      text = alt(text, ...['~', 'it'].map((o) => `put all other cards you own exiled with ${o} into your hand`));
     }
     // p2-refs-1 (CR 607.2a, 110.2; family linked-exiled-battlefield-plural): the cards a linked exile instruction exiled, returned to the battlefield under their owners'
     // control, are also the plural participle of the linked ability, "return the exiled cards to the battlefield [tapped] under their owner's / owners' control"
@@ -1065,7 +1114,7 @@ export const CLAUSES_ZONES = {
     }
     // edh-c-23 (CR 401.4, 400.3; Misinformation, eff.edhv23.put.lib.top.anyorder.theirLibrary): cards targeted in the graveyard of one opponent go to that opponent's library, "on top of their library"
     // (the library of the one player whose graveyard they are in) as well as "on top of their owners' libraries"
-    if (s.what.ref === 'target' && d.zone === 'library' && d.position === 'top' && d.owner === undefined && spec?.filter?.owner === 'opponent' && spec.filter.zone === 'graveyard' && d.order === 'chosen') {
+    if (s.what.ref === 'target' && d.zone === 'library' && d.position === 'top' && d.owner === undefined && (spec?.filter?.owner === 'opponent' || (typeof spec?.filter?.owner === 'object' && spec.filter.owner.ref === 'target' /* edh-e-64: Drafna's Restoration, "target player's graveyard" */)) && spec.filter.zone === 'graveyard' && d.order === 'chosen') {
       text = alt(text, `${verb} ${what} on top of their library in any order`);
     }
     // FAST5 T52 (CR 107.3, 608.2h, 205.2a): "exile the top X cards of your library, where X is the number of card types among other nonland permanents you
@@ -1315,7 +1364,11 @@ export const CLAUSES_ZONES = {
       // FAST1 T6 (CR 701.21a): the sacrificing player chooses; current Oracle wording says so for another player ("sacrifices a creature of their choice")
       // edh-c-53 (CR 701.21a, 702.9a; Clip Wings): "sacrifices a creature of their choice with flying": the choice is said before the keyword the creature must have (family sacrifice-choice)
       const withKeyword = s.who.ref !== 'you' && typeof f.keyword === 'string' ? [`${countedNp({ ...f, keyword: undefined }, s.count, st)} of their choice with ${f.keyword.toLowerCase()}`] : [];
-      return s.who.ref !== 'you' ? alt(np, `${np} of their choice`, ...withKeyword) : np;
+      // edh-e-21 (CR 701.21a, 202.3; Exile into Darkness): the same for a mana value ceiling, "sacrifices a creature of their choice with mana value 3 or less" (family sacrifice-choice)
+      const mv = f.manaValue;
+      const withManaValue = s.who.ref !== 'you' && typeof mv === 'object' && mv !== null && 'op' in mv && mv.op === '<=' && typeof mv.value === 'number' && !('keyword' in f && f.keyword !== undefined)
+        ? [`${countedNp({ ...f, manaValue: undefined }, s.count, st)} of their choice with mana value ${mv.value} or less`] : [];
+      return s.who.ref !== 'you' ? alt(np, `${np} of their choice`, ...withKeyword, ...withManaValue) : np;
     });
     bindCant(st, s.cantAs, s.who); // C6: "each opponent who can't"
     // edh-d-20 (CR 701.21a, 109.4, 608.2e; Tide of War, eff.edhd20.sacrificed.eachFilter.byItsController): every player sacrifices all permanents of a description they control, said the other way:
@@ -1341,6 +1394,8 @@ export const CLAUSES_ZONES = {
     // std-rx30 (CR 400.7, 701.6a): after "if a permanent spell is countered this way, exile it instead ...", the card it became is "that card" (Thranduil's Decree)
     if (s.as !== undefined && s.toIf !== undefined) bind(st, s.as, { nouns: ['card'], plural: false });
     else if (s.as !== undefined && s.to !== undefined && s.to.zone === 'exile' && s.sourceEffect === undefined) { bind(st, s.as, { nouns: ['card'], plural: false }); st.info.set(`r:${s.as}`, { nouns: ['spell and ability'], plural: true, thisWay: 'countered this way' }); } // edh-d-43 (CR 701.6a, 400.7; Kheru Spellsnatcher): after an exile-instead of the countered spell, the card it became is "that card"
+    // edh-e-15 (CR 701.6a, 608.2c; Swift Silence): every object the step could counter is a spell, so what it countered is "spell countered this way"
+    else if (s.as !== undefined && s.what.ref === 'each' && 'filter' in s.what && (s.what.filter as { stackKind?: string }).stackKind === 'spell') st.info.set(`r:${s.as}`, { nouns: ['spell', 'spell and ability'], plural: true, thisWay: 'countered this way' }); // both wordings: r4-moved's older examples say "spell and ability"
     else if (s.as !== undefined) st.info.set(`r:${s.as}`, { nouns: ['spell and ability'], plural: true, thisWay: 'countered this way' });
     // std-rx30 (CR 113.7, 611.2a; Tishana's Tidebinder): "If an ability of an artifact, creature, or planeswalker is countered this way, that permanent loses all
     // abilities for as long as this creature remains on the battlefield."
@@ -1354,7 +1409,9 @@ export const CLAUSES_ZONES = {
     const then = s.sourceThen;
     if (then !== undefined) {
       if (s.to || fx !== undefined || Object.keys(then.filter).length !== 0) throw new NoRenderer('an effect on the source of a countered ability beside another one, or for a described source');
-      return plain(`counter ${what}. if a permanent's ability is countered this way, ${then.do === 'destroy' ? 'destroy that permanent' : "activated abilities of that permanent can't be activated this turn"}`, { standalone: true });
+      // edh-e-14 (CR 701.6a, 113.7a, 602.5; Interdict): "That permanent's activated abilities can't be activated this turn." is the same restriction without the "if" (family countered-source-then)
+      if (then.do !== 'destroy') return plain(`counter ${what}. ${alt("if a permanent's ability is countered this way, activated abilities of that permanent can't be activated this turn", "that permanent's activated abilities can't be activated this turn")}`, { standalone: true });
+      return plain(`counter ${what}. if a permanent's ability is countered this way, destroy that permanent`, { standalone: true });
     }
     if (!s.to) return plain(`counter ${what}`);
     return plain(`counter ${what}. ${counterTail(s, st)}`, { standalone: true });
@@ -1395,11 +1452,11 @@ export const CLAUSES_ZONES = {
         const oneSide = tp !== undefined && tt !== undefined && isComputed(tp) !== isComputed(tt);
         // edh-c-102 (CR 111.4, 208.3, 608.2h; Ritual of the Returned; family token-power-toughness-sentence): two different computed numbers, one token for you: "Create a black Zombie creature token. Its power is equal to
         // that card's power and its toughness is equal to that card's toughness." (the token words, then a sentence that sets power and toughness)
-        if (tp !== undefined && tt !== undefined && isComputed(tp) && isComputed(tt) && JSON.stringify(tp) !== JSON.stringify(tt) && n === 1 && !s.tapped && !s.attacking && s.blocking === undefined && !s.attachTo
+        if (tp !== undefined && tt !== undefined && isComputed(tp) && isComputed(tt) && JSON.stringify(tp) !== JSON.stringify(tt) && n === 1 && !s.tapped && (s.attacking === undefined || s.attacking === true /* edh-e-43 (Gemini Engine): "... token named Twin that's attacking. Its power is equal to ..." */) && s.blocking === undefined && !s.attachTo
           && (s.counters?.length ?? 0) === 0 && (s.token.abilities?.length ?? 0) === 0 && (s.token.keywords?.length ?? 0) === 0 && s.who.ref === 'you') {
           const { power: _p2, toughness: _t2, ...bare } = s.token;
           const before = cloneState(st);
-          return `${tokenText(bare, 1, false, before)}. its power is equal to ${K.qty(tp, before)} and its toughness is equal to ${K.qty(tt, before)}`;
+          return `${tokenText(bare, 1, false, before)}${s.attacking === true ? " that's attacking" : ''}. its power is equal to ${K.qty(tp, before)} and its toughness is equal to ${K.qty(tt, before)}`;
         }
         if (tp === undefined || tt === undefined || (!oneSide && JSON.stringify(tp) !== JSON.stringify(tt)) || typeof n !== 'number' || (n !== 1 && oneSide)) throw new NoRenderer('a token with a computed power and toughness other than one X/X token');
         const x = { ...s.token, power: isComputed(tp) ? { q: 'X' as const } : tp, toughness: isComputed(tt) ? { q: 'X' as const } : tt };
@@ -1538,7 +1595,7 @@ export const CLAUSES_ZONES = {
     // counted number, tapped and attacking whoever the controller chooses, said with the count in front
     const attackingCounted = s.attacking === true && s.tapped === true && (typeof s.count === 'object') && (s.count.q === 'count' || (s.count.q === 'opponentsAttacked' && s.count.scope === 'turn'));
     const attackingOk = s.blocking === undefined && (!s.attacking || (flipsWon && s.attacking === true && s.tapped === true) || attackingCounted);
-    if (s.who.ref === 'you' && typeof n === 'object' && (n.q === 'count' || (n.q === 'resultCount' && n.which !== undefined) || (n.q === 'resultCount' && n.which === undefined && st.info.get(`r:${n.step}`)?.thisWay === 'tapped this way' /* edh-d-14 (Devout Invocation): "for each creature tapped this way" */) || flipsWon || n.q === 'spellsCastThisTurn' /* edh-cast-9: "for each spell you've cast this turn, create ..." (Murmuration) */ || n.q === 'diceResults' /* edh-top-16 (CR 706.2; Clown Car): "For each odd result, create ..." */ || (n.q === 'opponentsAttacked' && n.scope === 'turn') /* trek-15 */ || (n.q === 'spellManaSpent' && n.from !== undefined) /* edh-d-42: "for each mana from a Desert spent to cast this spell, create a tapped Treasure token" (Cataclysmic Prospecting) */ || (n.q === 'countPlayers' && n.lifeVs !== undefined && n.of.ref === 'each' && n.of.who === 'opponent' && n.lifeVs.than.ref === 'you' && (n.lifeVs.op === '>' || n.lifeVs.op === '<')) /* edh-d-42: "for each opponent who has less life than you, create ..." (Great Unclean One) */) && attackingOk && !s.attachTo && !(s.counters && s.counters.length > 0)
+    if (s.who.ref === 'you' && typeof n === 'object' && (n.q === 'count' || (n.q === 'resultCount' && n.which !== undefined) || (n.q === 'resultCount' && n.which === undefined && st.info.get(`r:${n.step}`)?.thisWay === 'tapped this way' /* edh-d-14 (Devout Invocation): "for each creature tapped this way" */) || flipsWon || (n.q === 'happenedCount' && n.event.ev === 'zoneChange' && n.event.from === 'battlefield' && n.event.to === 'graveyard' && n.scope === 'turn' && n.by === undefined && n.per === undefined && n.sum === undefined && n.beforeEvent === undefined) /* edh-e-43 (Tobias, Doomed Conqueror): "for each nontoken creature you controlled that died this turn, create ..." */ || n.q === 'spellsCastThisTurn' /* edh-cast-9: "for each spell you've cast this turn, create ..." (Murmuration) */ || n.q === 'diceResults' /* edh-top-16 (CR 706.2; Clown Car): "For each odd result, create ..." */ || (n.q === 'opponentsAttacked' && n.scope === 'turn') /* trek-15 */ || (n.q === 'spellManaSpent' && n.from !== undefined) /* edh-d-42: "for each mana from a Desert spent to cast this spell, create a tapped Treasure token" (Cataclysmic Prospecting) */ || (n.q === 'countPlayers' && n.lifeVs !== undefined && n.of.ref === 'each' && n.of.who === 'opponent' && n.lifeVs.than.ref === 'you' && (n.lifeVs.op === '>' || n.lifeVs.op === '<')) /* edh-d-42: "for each opponent who has less life than you, create ..." (Great Unclean One) */) && attackingOk && !s.attachTo && !(s.counters && s.counters.length > 0)
       && !isComputed(s.token.power ?? 0) && !isComputed(s.token.toughness ?? 0)) {
       const per = countParts(n, st) ?? (n.q === 'opponentsAttacked' ? { singular: 'opponent you attacked this turn' } : null); // trek-15 (family for-each-opponent-you-attacked)
       const tok = s.attacking ? `${tokenText(s.token, 1, false, st)} that's tapped and attacking` : s.tapped ? tokenText(s.token, 1, false, st, 'tapped') : tokenText(s.token, 1, false, st);
@@ -1624,6 +1681,7 @@ export const CLAUSES_ZONES = {
     // edh-next-136 (CR 707.9b, 306.5b; Jace, Mirror Mage): "except it's not legendary and its starting loyalty is 1": the starting loyalty said last, of one token copy
     if (s.startingLoyalty !== undefined && (s.result !== 'token' || typeof s.startingLoyalty !== 'number' || (s.count ?? 1) !== 1 || counterExc !== null || halfPt !== null)) throw new NoRenderer('a starting loyalty of a copy other than one token copy with plain exceptions');
     const exc = s.startingLoyalty === undefined ? exc0 : tokenExc !== null ? `, except ${tokenExc} and its starting loyalty is ${s.startingLoyalty}` : exc0 === '' ? `, except its starting loyalty is ${s.startingLoyalty}` : `${exc0} and its starting loyalty is ${s.startingLoyalty}`;
+    if (s.also === true && (s.result !== 'spell' || s.retargetAll === true || s.retargetEach !== undefined || s.exceptThis === true)) throw new NoRenderer('"also copy" other than of a plain spell copy');
     if (s.result === 'spell' && s.retargetAll === true) {
       // edh-next-74 (CR 707.10c, 115.1; Radiate, Radiant Performer; templates eff.edhn74.copy.forEachOther.permanentOrPlayer and rid.edhn74.eachCopyTargetsDifferent.permanentsAndPlayers): "Copy that spell for each
       // other permanent or player the spell could target. Each copy targets a different one of those permanents and players." (a spell or ability: "the spell or ability could target")
@@ -1665,7 +1723,8 @@ export const CLAUSES_ZONES = {
       // edh-c-55 (CR 707.10; Bill Potts): the stack object of a trigger on casting a spell or activating an ability is "that spell or ability"
       const evTrigger = st.trigger ?? [];
       const spellOrAbility = s.what.ref === 'event' && s.what.role === 'spell' && evTrigger.some((e) => e.ev === 'cast') && evTrigger.some((e) => e.ev === 'activate');
-      const c0 = byPlayer(s.who, st, 'copy', () => `${spellOrAbility ? alt(what, 'that spell or ability') : what}${times}${exc}${where}`);
+      // edh-e-62 (CR 707.10; Parnesse, the Subtle Brush): "may also copy that spell" (`also`)
+      const c0 = byPlayer(s.who, st, s.also === true ? 'also copy' : 'copy', () => `${spellOrAbility ? alt(what, 'that spell or ability') : what}${times}${exc}${where}`);
       // p2-copy-spell-3 (CR 707.10, 707.10c; family controller-of-target-copies-it): the controller of the one target spell copies that spell, said with the target
       // inside the subject: "The controller of target instant or sorcery spell copies it." (Meletis Charlatan); one copy of the target itself, no exception
       const ofTarget = s.what.ref === 'target' && JSON.stringify(s.who) === JSON.stringify({ ref: 'controllerOf', object: s.what }) && times === '' && exc === '';
@@ -1864,6 +1923,11 @@ export const CLAUSES_ZONES = {
       if (!isPlayerRef(s.a as never, st) || s.a.ref !== 'you' || JSON.stringify(s.a) !== JSON.stringify(s.b)) throw new NoRenderer('an exchange of hand and graveyard other than the controller\'s own');
       return plain('exchange your hand and graveyard');
     }
+    // edh-e-38 (CR 701.12a; Morality Shift): "exchange your graveyard and library", the same shape
+    if (s.what === 'graveyardLibrary') {
+      if (!isPlayerRef(s.a as never, st) || s.a.ref !== 'you' || JSON.stringify(s.a) !== JSON.stringify(s.b)) throw new NoRenderer('an exchange of graveyard and library other than the controller\'s own');
+      return plain('exchange your graveyard and library');
+    }
     const ref = (r: ObjRef | PlayerRef): string => (isPlayerRef(r, st) ? K.player(r as PlayerRef, st, 'subject').text : K.obj(r as ObjRef, st, 'object').text);
     const a = ref(s.a as never);
     // MX2 (additive): one reference to two objects, "exchange control of two target creatures" (CR 701.12b)
@@ -1968,8 +2032,12 @@ export const CLAUSES_ZONES = {
       // edh-cast-1 (CR 707.12, 608.2g, 607.2a; Isochron Scepter): the copy of the card the object's linked ability exiled is optional and so is its cast: "You may copy the
       // exiled card. If you do, you may cast the copy without paying its mana cost."
       if (s.what.ref === 'linked' && s.what.link === 'exiled' && !what.plural && s.free === true && s.select === undefined && s.guard === undefined && s.as === undefined) {
+        // edhe32 (CR 707.12, 707.10a, 608.2g; Elite Arcanist; family copy-exiled-card-plain): "Copy the exiled card. You may cast the copy without paying its mana cost." is the same instruction: a
+        // copy that is not cast ceases to exist, so copying it is not a choice of its own
         const said = `you may copy ${what.text}. if you do, you may cast the copy${free}`;
-        return { ...c, imp: said, sub: said };
+        const plain = `copy ${what.text}. you may cast the copy${free}`;
+        const either = alt(said, plain);
+        return { ...c, imp: either, sub: either };
       }
       const tail = what.plural ? `. you may cast any number of the copies${s.free === true ? ' without paying their mana costs' : ''}` : alt(`. you may cast the copy${free}`, `, then you may cast the copy${free}`, `, and you may cast the copy${free}` /* edh-zones-12: "For each card exiled this way, copy it, and you may cast the copy ..." (Mizzix's Mastery) */);
       // trek-12 (CR 707.12; family create-a-copy-of-self): the copy of the card the ability is on, in exile, is "Create a copy of ~" as well as "Copy ~" (Q, Stacking the Deck)
@@ -2054,6 +2122,8 @@ export const CLAUSES_ZONES = {
       if (lifeInstead(s.costChange)) t += ` by paying life equal to ${alt('its', "that spell's", "the spell's")} mana value rather than paying its mana cost`;
       // edh-d-100 (CR 118.9, 202.3, 107.14; Amped Raptor): "cast that card by paying an amount of {E} equal to its mana value rather than paying its mana cost"
       if (s.costChange !== undefined && JSON.stringify(s.costChange) === '{"kind":"set","energy":"manaValue"}') t += ' by paying an amount of {E} equal to its mana value rather than paying its mana cost';
+      // edh-d-104 (CR 118.9, 601.2b; Jadzi, Oracle of Arcavios): "cast it by paying {1} rather than paying its mana cost" (an alternative cost of mana only, of the one card cast)
+      if (manaInstead(s.costChange)) t += ` by paying ${formatManaCost(s.costChange!.cost!.mana!)} rather than paying its mana cost`;
       if (s.anyManaType === true) t += `, and mana of any type can be spent to cast ${alt('that spell', 'it')}`; // FAST5X E29: CR 609.4b
       // edh-cast-9 (CR 118.9, 202.3, 601.2; Solstice Revelations, the parser's template eff.stdrj.cast.free.ifSpellMvLess): "if the spell's mana value is less than N" is the cap N - 1 on the
       // spell the cast makes (the face cast, as for cascade), not a check of the card before it is cast
@@ -2100,7 +2170,7 @@ export const CLAUSES_ZONES = {
     const castF = s.what.ref === 'target' ? st.specs.get(s.what.id)?.filter : undefined; // edh-d-96: the card cast is a target card in your graveyard
     const giText = gi === undefined ? '' : graveyardInsteadText(gi, castF?.zone === 'graveyard' && castF.owner === 'you');
     const c = gi === undefined ? c0 : { ...c0, imp: c0.imp + giText, sub: c0.sub + giText, standalone: true };
-    if (!s.costChange || discardInstead(s.costChange) || lifeInstead(s.costChange) || JSON.stringify(s.costChange) === '{"kind":"set","energy":"manaValue"}' /* edh-d-100 */) return c;
+    if (!s.costChange || discardInstead(s.costChange) || lifeInstead(s.costChange) || JSON.stringify(s.costChange) === '{"kind":"set","energy":"manaValue"}' /* edh-d-100 */ || manaInstead(s.costChange) /* edh-d-104 */) return c;
     const ch = s.costChange;
     // CR 601.2f: the amount is the generic part and the mana symbols of the change ("it costs {1}{G} less to cast this way")
     if (ch.kind === 'set') throw new NoRenderer('a cast cost change that sets the cost');
@@ -2151,6 +2221,14 @@ function payingInstead(ch: StepOf<'cast'>['costChange']): string | null {
 /** edh-next-49: an alternative cost of a cast during a resolution that is life equal to the spell's mana value, nothing else. */
 function lifeInstead(ch: StepOf<'cast'>['costChange']): boolean {
   return ch !== undefined && JSON.stringify(ch) === '{"kind":"set","life":"manaValue"}';
+}
+
+/** edh-d-104 (CR 118.9): an alternative cost of mana symbols only, named "alternative" (eff.edhd104.mayCast.obj.byPayingMana), of a cast that is not a copy and not free. */
+function manaInstead(ch: StepOf<'cast'>['costChange']): boolean {
+  if (ch === undefined || ch.kind !== 'set' || ch.name !== 'alternative' || ch.cost === undefined || ch.mana !== undefined || ch.generic !== undefined) return false;
+  const keys = Object.keys(ch).filter((k) => (ch as unknown as Record<string, unknown>)[k] !== undefined);
+  const cost = ch.cost as unknown as Record<string, unknown>;
+  return keys.every((k) => k === 'kind' || k === 'cost' || k === 'name') && Object.keys(cost).length === 1 && Array.isArray(cost['mana']) && (cost['mana'] as unknown[]).length > 0;
 }
 
 /** r5-cost: an alternative cost of a cast during a resolution that is discarding one card, nothing else ("by discarding a card rather than paying its mana cost"). */

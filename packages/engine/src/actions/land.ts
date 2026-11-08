@@ -16,9 +16,9 @@ import { assertAllowed, deny, type Denial } from '../rules/denial';
 import { gameOf, hookpoints } from '../rules/hookpoints';
 import { sorceryTiming } from '../rules/timing';
 import { additionalLandPlays } from '../statics/hooks';
-import { graveyardLandUse, linkedLandUse, namedPermit, namedPermitLandTapped, namedSingleKey, outsideLandKey, playPermitted, topPermitFor } from '../statics/play-permits';
+import { graveyardLandUse, linkedLandUse, namedPermit, namedPermitLandTapped, namedSingleKey, onCastPermits, outsideLandKey, playPermitted, topPermitFor } from '../statics/play-permits';
 import { installResolutionLandPlayer } from '../effects/cast-hook';
-import { permitOnUseTrigger } from '../triggers/stack';
+import { permitOnUseTrigger, putReflexiveTrigger } from '../triggers/stack';
 
 /** How many lands the player can play this turn (CR 305.2: one, plus what rule modifications and permissions add; WP16: statics/hooks.ts#additionalLandPlays). */
 export function landsAllowed(s: GameState, player: PlayerId): number {
@@ -92,6 +92,8 @@ export function playLand(g: Game, action: Extract<Action, { type: 'playLand' }>)
   // CR 305.1 / 116.2a: the land goes straight onto the battlefield; it is never a spell.
   // std-exile-play-1-3 (CR 614.1c): "Each land played this way enters tapped" on the permission it is played with (statics/play-permits.ts#namedPermitLandTapped)
   const tapped = !outside && from !== 'hand' && namedPermitLandTapped(g.s, player, action.card);
+  // edh-d-104 (CR 603.7a, 305.1; Fires of Mount Doom): "When you play a card this way, ..." of the named-object play permission the land is played with (read before it moves)
+  const onPlay = !outside && from !== 'hand' ? onCastPermits(g.s, player, action.card, true) : [];
   const id = moveObject(g, action.card, 'battlefield', { face: check.face, controller: player, cause: 'play land', ...(tapped ? { tapped: true } : {}) });
   if (!id) throw new IllegalAction('The land could not be put onto the battlefield.', ['CR 305.1']);
   g.player(player).landsPlayedThisTurn++; // CR 305.2a
@@ -100,6 +102,14 @@ export function playLand(g: Game, action: Extract<Action, { type: 'playLand' }>)
   // edh-zones-22 (CR 614.1c, 611.2; Serra Paragon): "If you do, it gains ...": the land played with a permission that gives abilities has them for as long as it is that object
   if (gyUse?.entersAbilities !== undefined) grantAbilitiesToNewObject(g, id, gyUse.entersAbilities, gyUse.source ?? name);
   if (lnkUse?.onUse !== undefined) permitOnUseTrigger(g, lnkUse.onUse, player, { ev: 'action', roles: { subject: { objects: [{ id, zone: 'battlefield' }] }, player: { players: [player] } }, before: {} });
+  for (const t of onPlay) {
+    putReflexiveTrigger(g, {
+      source: t.source ?? { id, zone: 'battlefield' }, controller: t.controller,
+      text: `When you play a card this way (${t.name}), its triggered ability resolves.`, targets: [], steps: structuredClone(t.steps),
+      context: { ev: 'action', roles: { subject: { objects: [{ id, zone: 'battlefield' }] }, player: { players: [player] } }, before: {} },
+    });
+    g.log(`${name} was played with ${t.name}'s permission: its "when you play a card this way" ability triggers.`, { rules: ['CR 603.7a', 'CR 305.1'], level: 'info' });
+  }
   warnUnsupportedText(g, id); // e.g. "enters tapped" is not automated yet
 }
 

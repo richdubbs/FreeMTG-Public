@@ -110,9 +110,10 @@ function sourceStoodFor(cx: ExecCtx, h: ObjHandle): ObjHandle[] {
 export const OP_FORMS: readonly string[] = ['op:chooseObjects.unchosen' /* edh-next-135 (CR 608.2d): #chooseInTurn */, 'op:chooseObjects.groupLimit', 'op:chooseObjects.perPlayer', 'op:chooseObjects.perPlayer.ownChoice', 'op:chooseObjects.startingWith',
   'op:chooseObjects.eachCardType', 'op:chooseObjects.link',
   'op:chooseObjects.eachColorPair', // edh-next-142
-  'op:chooseObjects.distinct', 'op:chooseObjects.damageSource' /* audit-fix-1: CR 609.7a */, 'op:chooseValue.mostLife' /* edh-players-8: CR 119.1, 608.2d */, 'op:chooseValue.counterKind' /* edh-perms-15: CR 122.1, 608.2d */, 'op:chooseValue.manaTypeSpent' /* edh-mana-keywords-12: CR 106.1, 607.2d */, 'op:chooseValue.lifeTotal' /* edh-next-144: CR 119.1, 607.2d */, 'op:chooseValue.random' /* edh-zones-26: CR 608.2d */, 'op:chooseValue.random.opponent' /* edh-c-14: CR 608.2d */, 'op:chooseValue.random.player' /* edh-d-20: CR 608.2d */, 'op:chooseValue.controlsMore' /* edh-d-46: CR 109.4, 608.2d */, 'op:chooseValue.excludeBound' /* edhn110: CR 608.2d */, 'op:chooseValue.secretReveal' /* edh-next-120: CR 608.2d */, 'op:chooseValue.counterKindNotOn', 'op:chooseValue.random.counterKind' /* edh-next-128: CR 122.1, 608.2d */, 'op:chooseValue.notAttackedLastCombat' /* edh-next-129: CR 506.1, 608.2d */, 'op:chooseValue.random.option' /* edh-next-129: CR 608.2d */, 'op:chooseValue.secret.player' /* edh-next-135: CR 608.2d, a secretly chosen player is hidden as a value is */, 'op:chooseValue.forEachPlayer' /* edh-next-143: CR 608.2d */, 'op:chooseValue.colors' /* edh-next-140: CR 105.1, 608.2d */,
+  'op:chooseObjects.distinct', 'op:chooseObjects.damageSource' /* audit-fix-1: CR 609.7a */, 'op:chooseValue.mostLife' /* edh-players-8: CR 119.1, 608.2d */, 'op:chooseValue.among' /* edh-e-62: CR 608.2d */, 'op:chooseValue.counterKind' /* edh-perms-15: CR 122.1, 608.2d */, 'op:chooseValue.manaTypeSpent' /* edh-mana-keywords-12: CR 106.1, 607.2d */, 'op:chooseValue.lifeTotal' /* edh-next-144: CR 119.1, 607.2d */, 'op:chooseValue.random' /* edh-zones-26: CR 608.2d */, 'op:chooseValue.random.opponent' /* edh-c-14: CR 608.2d */, 'op:chooseValue.random.player' /* edh-d-20: CR 608.2d */, 'op:chooseValue.controlsMore' /* edh-d-46: CR 109.4, 608.2d */, 'op:chooseValue.excludeBound' /* edhn110: CR 608.2d */, 'op:chooseValue.secretReveal' /* edh-next-120: CR 608.2d */, 'op:chooseValue.counterKindNotOn', 'op:chooseValue.random.counterKind' /* edh-next-128: CR 122.1, 608.2d */, 'op:chooseValue.notAttackedLastCombat' /* edh-next-129: CR 506.1, 608.2d */, 'op:chooseValue.random.option' /* edh-next-129: CR 608.2d */, 'op:chooseValue.secret.player' /* edh-next-135: CR 608.2d, a secretly chosen player is hidden as a value is */, 'op:chooseValue.forEachPlayer' /* edh-next-143: CR 608.2d */, 'op:chooseValue.colors' /* edh-next-140: CR 105.1, 608.2d */,
   'op:chooseValue.counterKind.among', // edh-d-89: CR 122.1, 608.2d (a counter on any one of a group)
   'op:chooseObjects.cardTypesAtLeast', // edh-d-85: CR 205.2a, 608.2d
+  'op:chooseObjects.allOrNone', // edh-d-107: CR 608.2d, 609.3 (a fixed number, one chooser)
 ];
 
 /** CR 205.2a: the card types, in the order a choice of one of each is offered. */
@@ -284,6 +285,7 @@ export const chooseObjectsHandler: StepHandler<Step<'chooseObjects'>> = (cx, st)
     const min = clampCount(evalCount(st.min, { cx }), 0, max);
     let picked: ObjectId[];
     if (max === 0) picked = [];
+    else if (st.allOrNone === true && ids.length < evalCount(st.min, { cx })) picked = []; // edh-d-107 (CR 608.2d, 609.3): fewer than the number: none (Egon ruling 2021-02-05)
     else if (st.random) picked = atRandom(cx, ids, max);
     else if (st.eachColorPair === true) picked = pickEachColorPair(cx, p, ids, max, `${source}: ${st.span ?? 'choose'}`); // edh-next-142
     else if (st.eachCardType === true) picked = pickEachCardType(cx, p, ids, max, `${source}: ${st.span ?? 'choose'}`); // std-library-3
@@ -460,6 +462,12 @@ function chooseOne(cx: ExecCtx, st: Step<'chooseValue'>, player: PlayerId, about
       const skip = excludedPlayers(cx, st);
       if (skip === null) return null; // M6-8: a value that names no player: settled by hand (as for numbers)
       let ps = (st.what === 'opponent' ? g.opponents(player).map((p) => p.id) : g.apnap()).filter((id) => !skip.includes(id));
+      // edh-e-62 (CR 608.2d, 119.1; Loxodon Peacekeeper): "you choose one of them" (the players tied for the lowest life total): only the players `among` names, as the choice is made; none: nothing is chosen
+      if (st.among !== undefined) {
+        const named = resolvePlayers(cx, st.among);
+        ps = ps.filter((id) => named.includes(id));
+        if (ps.length === 0) return { none: true };
+      }
       // edh-players-8 (CR 119.1, 608.2d; The Black Gate): "a player with the most life or tied for most life": the highest life total among the players of the game, whoever may be chosen
       if (st.mostLife === true) {
         const top = Math.max(...g.apnap().map((id) => g.player(id).life));

@@ -74,7 +74,7 @@ export const LAYER_TABLE: Readonly<Record<string, ApplyMods>> = {
 };
 
 /** Features this module implements (design 5.2; the capability is `feature:<name>`): `dependency`, the trial-application ordering of CR 613.8. */
-export const FEATURES: readonly string[] = ['dependency', 'layer6.addActivatedOf', 'layer6.addActivatedOf.limit', 'layer6.addActivatedOf.triggered' /* std-cardcopy-9 */, 'layer6.protectionFromOwnColors' /* edh-c-59 */, 'layer6.removeEnchant' /* edh-perms-4 */, 'layer6.removeAll.exceptMana' /* edh-d-46 */, 'layer6.addChosen' /* edhd63 */, 'layer6.addActivatedOf.loyalty' /* edh-next-124 */, 'layer6.addActivatedOf.spendColorAsAny' /* edh-next-141 */, 'layer6.keywordsOf' /* edh-d-102: statics/mods.ts#keywordsOf */, 'layer4.namedChosen' /* edh-next-146 */]; // r5-static: "has all activated abilities of ..." (statics/mods.ts); std-craft-2: "... only once each turn"
+export const FEATURES: readonly string[] = ['dependency', 'layer6.addActivatedOf', 'layer6.addActivatedOf.limit', 'layer6.addActivatedOf.triggered' /* std-cardcopy-9 */, 'layer6.protectionFromOwnColors' /* edh-c-59 */, 'layer6.protectionFromColorsAmong' /* edh-e-61 */, 'layer6.removeEnchant' /* edh-perms-4 */, 'layer6.removeAll.exceptMana' /* edh-d-46 */, 'layer6.addChosen' /* edhd63 */, 'layer6.addActivatedOf.loyalty' /* edh-next-124 */, 'layer6.addActivatedOf.spendColorAsAny' /* edh-next-141 */, 'layer6.keywordsOf' /* edh-d-102: statics/mods.ts#keywordsOf */, 'layer4.namedChosen' /* edh-next-146 */, 'layer6.removeAbilities' /* edh-e-48: statics/mods.ts#abilityIdentity */]; // r5-static: "has all activated abilities of ..." (statics/mods.ts); std-craft-2: "... only once each turn"
 
 const NO_CHARS: ReadonlyMap<ObjectId, Chars> = new Map();
 
@@ -267,7 +267,7 @@ function writesOf(e: LiveEffect, layer: Layer): Writes {
       case 5: classes.add('colors'); break;
       case 6:
         if ((m.add && m.add.length > 0) || m.addActivatedOf !== undefined) classes.add('abilities'); // r5-static: and the abilities it copies
-        if (m.removeAll || (m.remove && m.remove.length > 0) || m.removeEnchant !== undefined || (m.cantHave && m.cantHave.length > 0)) { classes.add('abilities'); denies = true; }
+        if (m.removeAll || (m.remove && m.remove.length > 0) || (m.removeAbilities && m.removeAbilities.length > 0) /* edh-e-48 */ || m.removeEnchant !== undefined || (m.cantHave && m.cantHave.length > 0)) { classes.add('abilities'); denies = true; }
         break;
       case '7a': case '7b': case '7c': case '7d': classes.add('pt'); break;
       default: break;

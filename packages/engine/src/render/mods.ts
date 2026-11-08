@@ -93,8 +93,10 @@ function powerToughness(power: Quantity | undefined, toughness: Quantity | undef
     if (typeof q !== 'object') return null;
     // edh-c-47 (CR 107.3a, 602.2b; Vish Kal): the X of "Remove all <kind> counters from ~" is printed nowhere in the cost, so the change says it ("for each <kind> counter removed this way")
     if (st.costAllCountersX !== undefined) return null;
-    if (q.q === 'X') return '+X';
-    if (q.q === 'math' && q.op === '*' && q.args.length === 2 && q.args[0] === -1 && typeof q.args[1] === 'object' && q.args[1].q === 'X') return '-X';
+    // edh-e-41 (CR 107.3, 608.2h; Nightshade Assassin, parser/lower/edhd90.ts): the X that "you may reveal X black cards in your hand" defines is the count of that reveal (`xWord`), written X in the change too
+    const definedX = (x: unknown): boolean => typeof x === 'object' && x !== null && (x as { q?: unknown }).q === 'resultCount' && (x as { which?: unknown }).which === undefined && st.info.get(`r:${(x as { step: string }).step}`)?.xWord === true;
+    if (q.q === 'X' || definedX(q)) return '+X';
+    if (q.q === 'math' && q.op === '*' && q.args.length === 2 && q.args[0] === -1 && typeof q.args[1] === 'object' && (q.args[1].q === 'X' || definedX(q.args[1]))) return '-X';
     return null;
   };
   // edh-players-5 (CR 107.3a, 613.4c; Nuclear Fallout, the PT hole's "twice -X/-X"): both halves twice the X of the cost, said once: "twice -X/-X"
@@ -478,7 +480,7 @@ interface Pieces {
    * edh-c-28 (CR 205.1b, 107.3, 608.2h; Elvish Branchbender): the same identity that ADDS the creature type and creature types, "becomes an X/X Treefolk creature in addition to its other
    * types, where X is the number of Elves you control": the object keeps its types, so Oracle has no "still a land" rider.
    */
-  sizedXAdd?: { text: string; q: string; index: number; head: string };
+  sizedXAdd?: { text: string; q: string; index: number; head: string; /** edh-d-105 (CR 107.3a, 602.2b; Testament of Faith): the X is the X the ability's cost announced, said with no "where X is" clause */ announcedX?: true };
   /**
    * FAST5 T77 (CR 205.1b, 611.2a): preds[0] of a resolved effect that only ADDS types ("becomes a Bear in addition to its other types"); `inAddition` is that
    * predicate with "in addition to its (their) other types", which Oracle says with "is" ("It's a Demon in addition to its other types", "They are 5/5 Elemental
@@ -647,6 +649,16 @@ function identity(e: ContinuousEffectDef, pl: boolean, st: RenderState, isStatic
     out.preds.push(pl ? `aren't ${pluralize(sub)}` : `isn't ${article(sub)} ${sub}`);
     return;
   }
+  // edh-e-22 (CR 205.1b, 205.3g, 613.1d, 613.4b; Haunted Plate Mail): a resolved effect that ADDS the artifact and creature types and a creature type, takes one artifact type away and sets the base
+  // power and toughness, "becomes a 4/4 Spirit artifact creature that's no longer an Equipment" (the types it keeps are the ones it has, the one it loses is said)
+  if (t4 && !isStatic && !pl && b7 && !find(mods, '7a')[0] && isNum(unlive(b7.power!)) && isNum(unlive(b7.toughness!)) && !c5 && t4.named === undefined && t4.supertypes === undefined
+    && JSON.stringify(t4.types) === '{"add":["Artifact","Creature"]}' && (t4.subtypes?.add?.length ?? 0) > 0 && t4.subtypes?.remove?.length === 1 && t4.subtypes.set === undefined
+    && t4.subtypes.chosen === undefined && t4.subtypes.all !== true && t4.subtypes.removeAll === undefined && t4.subtypes.setFrom === undefined) {
+    const sizedWords = `${unlive(b7.power!)}/${unlive(b7.toughness!)}`;
+    const lost = t4.subtypes.remove[0]!;
+    out.preds.push(`${verbBe} ${article(sizedWords)} ${sizedWords} ${(t4.subtypes.add ?? []).join(' ')} artifact creature that's no longer ${article(lost)} ${lost}`);
+    return;
+  }
   // design 3.3: a layer-4 change that this function has no words for (removal, a chosen type, nothing at all) is refused, never left out of the sentence
   for (const tc of [t4?.types, t4?.subtypes, t4?.supertypes]) {
     if (tc && ((tc.remove?.length ?? 0) > 0 || tc.chosen !== undefined)) throw new NoRenderer('layer 4 removal or chosen type');
@@ -772,9 +784,11 @@ function identity(e: ContinuousEffectDef, pl: boolean, st: RenderState, isStatic
     } else {
       // CLOUD C8: "becomes an X/X Cat artifact creature until end of turn, where X is ..." (family becomes-x-over-x), read before `base` names the quantity's objects
       if (!isStatic && !pl && !allTypes && p !== undefined && t !== undefined && same(p, t)) out.sizedX = { index: out.preds.length, text: `${verbBe} an X/X ${plural(desc)}${withTypes}`, q: K.qty(p, cloneState(st)), ...(isAnnouncedX(p) ? { announcedX: true as const } : {}) };
-      if (!isStatic && !pl && !allTypes && p !== undefined && t !== undefined && same(p, t) && !isAnnouncedX(p) && types.set.length === 0 && types.add.length === 1 && types.add[0] === 'creature' && subs.set.length === 0
+      // edh-d-105 (CR 107.3a, 602.2b, 205.1b, 613.4b; Testament of Faith): also of the X the ability's cost announced, "{X}: ~ becomes an X/X Wall creature with defender in addition to its
+      // other types until end of turn" (no "where X is" clause: X is that announced number)
+      if (!isStatic && !pl && !allTypes && p !== undefined && t !== undefined && same(p, t) && types.set.length === 0 && types.add.length === 1 && types.add[0] === 'creature' && subs.set.length === 0
         && subs.add.length > 0 && colorSet.length === 0 && colorAdd === '' && supers.set.length === 0 && supers.add.length === 0) {
-        out.sizedXAdd = { text: `${verbBe} an X/X ${plural(desc)}${withTypes} in addition to its other types`, q: K.qty(p, cloneState(st)), index: out.preds.length, head: `${verbBe} an X/X ${plural(desc)}${withTypes}` };
+        out.sizedXAdd = { text: `${verbBe} an X/X ${plural(desc)}${withTypes} in addition to its other types`, q: K.qty(p, cloneState(st)), index: out.preds.length, head: `${verbBe} an X/X ${plural(desc)}${withTypes}`, ...(isAnnouncedX(p) ? { announcedX: true as const } : {}) };
       }
       const base = `${verbBe} ${art(desc)}${plural(desc)}${withTypes} with ${baseText(bp.power, bp.toughness, st)}`;
       // FAST3 T13: a resolved effect says "with power and toughness each equal to its mana value" for the base values it sets (CR 613.4b, 608.2h)
@@ -1015,7 +1029,7 @@ function walkerCreature(e: ContinuousEffectDef): { subtypes: string[]; add: Abil
  * types), sets a color and base power and toughness: "All lands are 2/2 creatures that are still lands" (the lands keep their other types, so the words say they are still lands).
  * Null for any other shape: the group must be lands (the land card type or a basic land type), the changes exactly the ones the words name.
  */
-function stillLandsGroup(e: ContinuousEffectDef): { p: number; t: number; color: string; subtypes: string[] } | null {
+function stillLandsGroup(e: ContinuousEffectDef): { p: number; t: number; color: string; subtypes: string[]; grants?: AbilityDef[] } | null {
   if (e.affects.ref !== 'each' && JSON.stringify(e.affects).includes('"ref":"self"')) return null;
   // the group is exactly lands: the land card type or one basic land type, with at most the controller (no union, no negation, no other quality)
   const f = (e.affects as { ref?: string; filter?: Record<string, unknown> }).filter;
@@ -1027,7 +1041,11 @@ function stillLandsGroup(e: ContinuousEffectDef): { p: number; t: number; color:
   const m4 = mods.find((m) => m['layer'] === 4);
   const m5 = mods.find((m) => m['layer'] === 5);
   const m7 = mods.find((m) => m['layer'] === '7b');
-  if (m4 === undefined || m7 === undefined || mods.length !== 2 + (m5 === undefined ? 0 : 1)) return null;
+  // edh-e-29 (CR 613.1f, 205.1b; Natural Emergence): a layer 6 grant of abilities beside the identity, said "creatures with first strike" (only a plain list of added abilities)
+  const m6 = mods.find((m) => m['layer'] === 6);
+  const grants = m6?.['add'] as AbilityDef[] | undefined;
+  if (m6 !== undefined && (Object.keys(m6).sort().join(',') !== 'add,layer' || !Array.isArray(grants) || grants.length === 0)) return null;
+  if (m4 === undefined || m7 === undefined || mods.length !== 2 + (m5 === undefined ? 0 : 1) + (m6 === undefined ? 0 : 1)) return null;
   if (JSON.stringify(m4['types']) !== JSON.stringify({ add: ['Creature'] })) return null;
   const keys = Object.keys(m4).sort().join(',');
   const subs = m4['subtypes'] as { add?: unknown } | undefined;
@@ -1040,7 +1058,7 @@ function stillLandsGroup(e: ContinuousEffectDef): { p: number; t: number; color:
     if (Object.keys(m5).sort().join(',') !== 'colors,layer' || c === undefined || Object.keys(c).join(',') !== 'set' || c.set?.length !== 1) return null;
     color = COLOR_WORD[c.set[0]! as keyof typeof COLOR_WORD]!;
   }
-  return { p: m7['power'], t: m7['toughness'], color, subtypes: (subs?.add as string[] | undefined) ?? [] };
+  return { p: m7['power'], t: m7['toughness'], color, subtypes: (subs?.add as string[] | undefined) ?? [], ...(grants !== undefined ? { grants } : {}) };
 }
 
 /** r4-static: a card name that reads as a plural noun phrase ("The Neutrinos", "The Ozolith" is not): "The" and a last word in -s, not -ss or -'s. */
@@ -1142,6 +1160,8 @@ function pieces(e: ContinuousEffectDef, pl: boolean, st: RenderState, isStatic: 
     else if (m.remove && m.remove.length > 0) preds.push(`${lose} ${joinList(m.remove.map((r) => { const c = /^protection:color:([WUBRG])$/.exec(r); return c !== null ? `protection from ${({ W: 'white', U: 'blue', B: 'black', R: 'red', G: 'green' } as Record<string, string>)[c[1]!]!}` : r.startsWith('landwalk:') ? `${r.slice(9)}walk` : r; }))}`);
     // edh-perms-4 (CR 702.5a, 613.1f): "it loses \"enchant creature card in a graveyard\"": the enchant ability with exactly this filter, quoted without a full stop
     if (m.removeEnchant !== undefined) preds.push(`${lose} "${keywordWords({ kind: 'keyword', keyword: 'enchant', filter: m.removeEnchant, text: '' } as never, st)}"`);
+    // edh-e-48 (CR 613.1f, 113.10; Glittering Lynx): "~ loses \"Prevent all damage that would be dealt to ~.\"": the quoted abilities it loses, said as a grant says them
+    if (m.removeAbilities !== undefined && m.removeAbilities.length > 0) preds.push(`${lose} ${abilityList(m.removeAbilities, st, granteeNoun(subject, e, st))}`);
     // edh-players-7 (family cant-have-or-gain; CR 613.1f, 101.2; Arcane Lighthouse): "can't have or gain hexproof and shroud" is also "can't have hexproof or shroud"
     if (m.cantHave && m.cantHave.length > 0) preds.push(alt(`can't have or gain ${joinList(m.cantHave)}`, `can't have ${joinList(m.cantHave, 'or')}`));
   }
@@ -1192,10 +1212,23 @@ function pieces(e: ContinuousEffectDef, pl: boolean, st: RenderState, isStatic: 
       preds.push(`${pl ? 'have' : 'has'} protection from each of ${pl ? 'their' : 'its'} colors`);
       continue;
     }
+    // edh-e-61 (CR 702.16a, 105.1, 613.1f; Empty-Shrine Kannushi; template sta.edhe61.protectionFromColorsAmong): a static ability's change of nothing else, the colors of the permanents a description names
+    if (m0.protectionFromColorsAmong !== undefined) {
+      const among = m0.protectionFromColorsAmong;
+      if (!isStatic || Object.keys(m0).some((k) => k !== 'layer' && k !== 'protectionFromColorsAmong') || among.ref !== 'each' || !('filter' in among) || among.filter === undefined || Object.keys(among).some((k) => k !== 'ref' && k !== 'filter')) throw new NoRenderer('protection from the colors among objects other than a static ability\'s one change');
+      preds.push(`${have} protection from each color among ${K.np(among.filter, st, { det: 'none', plural: true })}`);
+      continue;
+    }
     // edhd63 (CR 702.1, 607.2d, 613.1f; Greymond): a static ability's layer 6 modification of nothing else but the keywords the source's link "abilities" holds
     if (m0.addChosen !== undefined) {
       if (!isStatic || m0.addChosen !== 'abilities' || Object.keys(m0).length !== 2) throw new NoRenderer('chosen abilities other than a static ability\'s ones of the link abilities');
       preds.push(`${have} each of the chosen abilities`);
+      continue;
+    }
+    // edhe35 (CR 702.16a, 701.38a-b; Council Guardian, template eff.edhe35.gain.protectionFromMostVotedColors): a resolved effect's change of nothing else
+    if (m0.protectionFromVotedColors !== undefined) {
+      if (isStatic || Object.keys(m0).some((k) => k !== 'layer' && k !== 'protectionFromVotedColors')) throw new NoRenderer('protection from the colors with the most votes other than as a resolved effect\'s one change');
+      preds.push(`${pl ? 'gain' : 'gains'} protection from each color with the most votes or tied for most votes`);
       continue;
     }
     if (m0.protectionFromColorsOf !== undefined) {
@@ -1225,7 +1258,7 @@ function pieces(e: ContinuousEffectDef, pl: boolean, st: RenderState, isStatic: 
         const kw = m.add[0]?.kind === 'keyword' ? m.add[0].keyword : undefined;
         // trek-7 (Star Trek, CR 118.9): and beam me up, "The beam me up cost is equal to that spell's mana cost." (Scotty, Miracle Worker), with at most the filter that keeps
         // its grantor from being returned for it ("~ can't be beamed up to cast a spell this way", said after the cost sentence)
-        const only = m.add.length === 1 && (kw === 'flashback' || kw === 'mayhem' || kw === 'harmonize' || kw === 'embalm' || kw === 'scavenge' /* edh-next-59 */ || kw === 'beam me up' || kw === 'replicate' /* edh-next-65 (CR 702.56a) */ || kw === 'blitz' /* edh-next-144 (CR 702.152a) */ || kw === 'emerge' /* edh-d-97 (CR 702.119a; Herigast) */) && (m.add[0] as { cost?: unknown }).cost === undefined;
+        const only = m.add.length === 1 && (kw === 'flashback' || kw === 'mayhem' || kw === 'harmonize' || kw === 'embalm' || kw === 'scavenge' /* edh-next-59 */ || kw === 'encore' /* edh-e-39 (CR 702.141a; Wire Surgeons) */ || kw === 'beam me up' || kw === 'replicate' /* edh-next-65 (CR 702.56a) */ || kw === 'blitz' /* edh-next-144 (CR 702.152a) */ || kw === 'emerge' /* edh-d-97 (CR 702.119a; Herigast) */) && (m.add[0] as { cost?: unknown }).cost === undefined;
         // std-tla (CR 702.34a, 604.1): a static ability grants it the same way, "During your turn, each non-Lesson instant and sorcery card in your graveyard has flashback.
         // The flashback cost is equal to that card's mana cost." (the rider sentence follows the static sentence, as it follows a resolved one)
         // edh-zones-5 (CR 702.138a, 118.9; Underworld Breach): "The escape cost is equal to the card's mana cost plus exile three other cards from your graveyard."
@@ -1449,6 +1482,8 @@ export function continuousHave(e: ContinuousEffectDef, st: RenderState, duration
   // edh-next-30 (CR 608.2d, 205.1b, 613.4b; Vihaan, Goldwaker): a set's change of types and base power and toughness only, in the have form, "you may have Treasures you control become 3/3 Construct
   // Assassin artifact creatures in addition to their other types until end of turn": the plural predicate "become" is the bare verb the have form needs
   if (e.affects.ref === 'each' && identityOnly && !identityWith && e.mods.every((m) => m.layer === 4 || m.layer === '7b')) return continuous(e, st, duration, false, true);
+  // edh-e-1 (CR 608.2d, 707.2; Absorb Identity, Deceiver of Form): a set that each becomes a copy of one object, in the have form, "you may have Shapeshifters you control become copies of that creature until end of turn"
+  if (e.affects.ref === 'each' && e.mods.length === 1 && e.mods[0]!.layer === '1a') return continuous(e, st, duration, false, true);
   if (e.affects.ref === 'each' || isPlayerRef(e.affects as ObjRef | PlayerRef, st)) return null;
   if (identityOnly || identityWith) return continuous(e, st, duration, false, false).replace(/\bbecomes\b/g, 'become');
   return continuous(e, st, duration, false, true);
@@ -1504,12 +1539,18 @@ function keywordsOfSentence(e: ContinuousEffectDef, st: RenderState, duration: D
   // edh-d-97 (CR 613.1f, 607.2a; Eater of Virtue, template sta.edhd97.asLongAsExiledCardHas.equippedHas.sameFor): or the equipped creature shares the listed keywords of the cards the
   // Equipment's linked ability exiled, "As long as a card exiled with ~ has flying, equipped creature has flying. The same is true for ..."
   const exiledWith = e.affects.ref === 'attachedTo' && m.keywordsOf!.ref === 'linked' && m.keywordsOf!.link === 'exiled';
-  if (!isStatic || duration !== undefined || e.mods.length !== 1 || Object.keys(m).length !== 4 || (e.affects.ref !== 'self' && !exiledWith) || e.cda === true || m.keywordsOf!.ref !== 'linked' || (m.keywordsOf!.link !== 'craft' && !exiledWith)
-    || (e.affects.ref === 'self' && m.keywordsOf!.link !== 'craft')
+  if (!isStatic || duration !== undefined || e.mods.length !== 1 || Object.keys(m).length !== 4 || (e.affects.ref !== 'self' && !exiledWith) || e.cda === true || m.keywordsOf!.ref !== 'linked' || (m.keywordsOf!.link !== 'craft' && m.keywordsOf!.link !== 'exiled')
+    || (e.affects.ref === 'self' && m.keywordsOf!.link !== 'craft' && m.keywordsOf!.link !== 'exiled') // edh-e-36 (Urborg Scavengers, Death-Mask Duplicant): ~ itself, the cards exiled with ~
     || first.length !== 1 || among.length === 0 || ![...first, ...among].every(plain)) throw new NoRenderer('keywords shared with other than the exiled cards used to craft ~, or beside other changes');
   const k = (first[0] as { keyword: string }).keyword;
   const list = among.map((d) => (d as { keyword: string }).keyword);
   const words = list.length === 1 ? list[0]! : list.length === 2 ? `${list[0]} and ${list[1]}` : `${list.slice(0, -1).join(', ')}, and ${list[list.length - 1]}`;
+  // edh-e-36 (CR 613.1f, 607.2a; Urborg Scavengers: "This creature has flying as long as a card exiled with it has flying. The same is true for ..."; Death-Mask Duplicant: "As long as a card exiled
+  // with this creature has flying, this creature has flying. The same is true for ..."): the object itself shares the listed keywords of the cards its linked ability exiled
+  if (e.affects.ref === 'self' && m.keywordsOf!.link === 'exiled') {
+    const me = K.obj({ ref: 'self' }, st, 'subject').text;
+    return alt(`as long as a card exiled with ${me} has ${k}, ${me} has ${k}. the same is true for ${words}`, `${me} has ${k} as long as a card exiled with it has ${k}. the same is true for ${words}`);
+  }
   if (exiledWith) return `as long as a card exiled with ${K.obj({ ref: 'self' }, st, 'object').text} has ${k}, ${K.obj(e.affects as ObjRef, st, 'subject').text} has ${k}. the same is true for ${words}`;
   return `${K.obj({ ref: 'self' }, st, 'subject').text} has ${k} as long as an exiled card used to craft it has ${k}. the same is true for ${words}`;
 }
@@ -1826,9 +1867,14 @@ function continuousOne(e: ContinuousEffectDef, st: RenderState, duration: Durati
   if (usingTheir !== null) return usingTheir;
   const manaFromSpells = spellsManaFromHaveSentence(e, isStatic, duration); // edh-next-143
   if (manaFromSpells !== null) return manaFromSpells;
-  const dur = duration ? K.dur(duration, st) : '';
+  // edh-e-2 (CR 611.2b; Rootwater Matriarch): a duration about the affected object ("for as long as that creature is enchanted") names it AFTER the instruction does, so the
+  // instruction says "target creature" first and the duration "that creature": the duration is rendered once the imperative has named its object
+  const lateDur = duration?.d === 'whileObject' && !isStatic && e.mods.length === 1 && e.mods[0]!.layer === 2 && duration.as === 'enchanted';
+  const DUR_MARK = '\u0001DUR\u0001';
+  const dur = duration && !lateDur ? K.dur(duration, st) : lateDur ? DUR_MARK : '';
   const imp = imperative(e, st, dur, isStatic);
-  if (imp !== null) return imp;
+  if (imp !== null) return lateDur ? imp.split(DUR_MARK).join(K.dur(duration!, st)) : imp;
+  if (lateDur) throw new NoRenderer('a control change that is not said as an instruction');
   // Cloud std-fin (CR 613.4b, 611.2a, 608.2h): "Until end of turn, ~'s base power becomes equal to the number of Towns you control" (PuPu UFO): a resolved base power
   // alone (no toughness) of one object, said with the possessive and "becomes", the duration in front of it or after it; "has base power N" stays a reading
   const b7 = e.mods.length === 1 && e.mods[0]!.layer === '7b' ? (e.mods[0] as { power?: Quantity; toughness?: Quantity }) : undefined;
@@ -1926,7 +1972,9 @@ function continuousOne(e: ContinuousEffectDef, st: RenderState, duration: Durati
     // edh-players-3 (CR 107.3, 602.2b, 613.4b; Lair of the Hydra): the X the ability's cost announced is the X of "X/X" itself, with no "where X is" clause
     const sxText = sx !== undefined && p.forEach === undefined
       ? (sx.announcedX === true ? (p.preds.length === 1 && p.granted === undefined && p.where.length === 0 ? sentence([sx.text], []) : undefined)
-        : p.preds.length === 1 && p.rider === undefined && p.granted === undefined ? sentence([sx.text], [...p.where, `X is ${sx.q}`]) : sxGrant !== undefined && p.where.length === 0 ? sentence([sxGrant], [`X is ${sx.q}`]) : undefined)
+        // edh-d-105 (CR 107.3, 205.1b, 613.1d; Vastwood Animist): also with the rider, "becomes an X/X Elemental creature until end of turn, where X is the number of Allies you control.
+        // It's still a land." (the rider is said after the sentence below, as for the other readings)
+        : p.preds.length === 1 && p.granted === undefined ? sentence([sx.text], [...p.where, `X is ${sx.q}`]) : sxGrant !== undefined && p.where.length === 0 ? sentence([sxGrant], [`X is ${sx.q}`]) : undefined)
       : undefined;
     if (sxText !== undefined) text = alt(text, sxText);
     // edh-c-58 (CR 107.3, 613.4b, 611.2a; family base-pt-x-over-x; The Meep): "creatures you control have base power and toughness X/X until end of turn, where X is ...": the duration before the clause
@@ -1937,11 +1985,12 @@ function continuousOne(e: ContinuousEffectDef, st: RenderState, duration: Durati
       text = alt(text, sentence([`${hv} base power and toughness X/X`], [`X is ${K.qty(unlive(base7.power), st)}`]));
     }
     const sxa = p.sizedXAdd;
-    const sxaPlain = sxa !== undefined && p.preds.length === 1 && p.granted === undefined && p.forEach === undefined ? sentence([sxa.text], [...p.where, `X is ${sxa.q}`]) : undefined;
+    const sxaWhere = sxa?.announcedX === true ? [...p.where] : [...p.where, `X is ${sxa?.q}`];
+    const sxaPlain = sxa !== undefined && p.preds.length === 1 && p.granted === undefined && p.forEach === undefined ? sentence([sxa.text], sxaWhere) : undefined;
     // edh-d-41 (CR 205.1b, 107.3, 613.4b; Sage of the Maze): the same identity with abilities granted, said with "with" before "in addition to its other types": "becomes an X/X Citizen
     // creature with haste in addition to its other types, where X is twice the number of Gates you control" (the abilities are the only other piece)
     const sxaGranted = sxa !== undefined && p.granted !== undefined && p.preds.length === 2 && sxa.index === 0 && p.granted.index === 1 && p.forEach === undefined
-      ? sentence([`${sxa.head} with ${p.granted.list} in addition to its other types`], [...p.where, `X is ${sxa.q}`]) : undefined;
+      ? sentence([`${sxa.head} with ${p.granted.list} in addition to its other types`], sxaWhere) : undefined;
     const sxaText = sxaPlain ?? sxaGranted;
     // r5-fxz (CR 205.1a, 613.1d-f): a static ability that makes its object a colorless artifact of subtypes it sets, with abilities it grants, and takes every other
     // ability away: "Enchanted permanent is a colorless Food artifact with "{2}, {T}, Sacrifice this artifact: You gain 3 life" and loses all other card types and
@@ -2085,6 +2134,22 @@ function continuousOne(e: ContinuousEffectDef, st: RenderState, duration: Durati
     if (!isStatic && dur && !pl && wb && gr && p.preds.length === 2 && wb.index === 0 && gr.index === 1 && p.forEach === undefined && p.where.length === 0 && p.rider === undefined
       && !/"/.test(gr.list)) {
       text = alt(text, `${subject} ${wb.text} and ${gr.list} ${dur}`);
+      // edh-e-22 (CR 611.2a, 613.1f, 613.4b; Bogardan Dragonheart): the duration in front, the abilities after the size as the "with" list with the serial comma
+      // ("Until end of turn, ~ becomes a Dragon with base power and toughness 4/4, flying, and haste.")
+      const listedLead = gr.list.includes(' and ') ? (gr.list.includes(',') ? gr.list : gr.list.replace(' and ', ', and ')) : null;
+      text = alt(text, `${dur}, ${subject} ${wb.text} and ${gr.list}`, ...(listedLead !== null ? [`${dur}, ${subject} ${wb.text}, ${listedLead}`] : []));
+    }
+    // edh-e-22 (CR 205.3m, 613.1d, 613.1f, 611.2a; Ageless Sentinels): a resolved effect that sets the creature types and takes one keyword away, for good, says the identity first and the loss as
+    // its own clause: "it becomes a Bird Giant, and it loses defender" (the layers order the changes, not the words)
+    if (!isStatic && !dur && !pl && p.preds.length === 2 && /^loses [^,]+$/.test(p.preds[0]!) && /^becomes /.test(p.preds[1]!) && p.forEach === undefined && p.where.length === 0 && p.rider === undefined
+      && e.mods.length === 2 && e.mods.some((m) => m.layer === 6 && m.removeAll !== true) && e.mods.some((m) => m.layer === 4)) {
+      text = alt(text, `${subject} ${p.preds[1]!}, and ${alt('it', subject)} ${p.preds[0]!}`);
+    }
+    // edh-e-22 (CR 205.1a, 613.1d, 613.1f, 613.4b; Dragonshift, Dance of the Skywise): "Until end of turn, target creature you control becomes a blue Dragon with base power and
+    // toughness 4/4, loses all abilities, and gains flying.": the identity first, the loss after it and the gain last, the duration in front (the layers order the changes)
+    if (!isStatic && dur && !pl && p.preds.length === 3 && / all abilities$/.test(p.preds[0]!) && p.forEach === undefined && p.where.length === 0 && p.rider === undefined
+      && e.mods.some((m) => m.layer === 6 && m.removeAll === true && (m.add?.length ?? 0) > 0)) {
+      text = alt(text, `${dur}, ${subject} ${p.preds[1]!}, ${p.preds[0]!}, and ${p.preds[2]!}`);
     }
     if ((sz && gr && p.forEach === undefined) || withList.length > 0) {
       const preds = sz && gr ? p.preds.map((x, i) => (i === sz.index ? `${sz.text} with ${gr.list}${sz.suffix ?? ''}${p.sizedAll ? ' and all creature types' : ''}` : x)).filter((_, i) => i !== gr.index) : null;
@@ -2136,6 +2201,9 @@ function continuousOne(e: ContinuousEffectDef, st: RenderState, duration: Durati
       if (isStatic && tf !== undefined && tf !== fe.index && p.preds.length === 2 && p.rider === undefined && p.sized === undefined) readings.push(sentence([preds[fe.index]!, preds[tf]!], rest));
       // Oracle's order for a resolved effect: "gets +1/+1 until end of turn for each Elf you control" (the duration before the count)
       if (dur && fe.index === p.preds.length - 1 && rest.length === 0) readings.push(`${subject} ${joinList(p.preds.map((x, i) => (i === fe.index ? fe.head : x)))} ${dur} ${fe.tail}`);
+      // edh-d-112 (CR 107.3, 122.1, 613.4c; Blademane Baku; family for-each-counter-removed-first): the X of the cost "Remove X <kind> counters from ~" counted first, in the old wording
+      // "For each counter removed, ~ gets +2/+0 until end of turn." (the counters the cost removed, of that kind: the count is the X paid)
+      if (dur && !isStatic && st.costCountersX !== undefined && p.preds.length === 1 && fe.index === 0 && rest.length === 0 && /^for each (\S+ )?counter removed this way$/.test(fe.tail)) readings.push(`for each counter removed, ${subject} ${fe.head} ${dur}`);
       // CLOUD std-otj (family additional-pump-for-each, CR 613.4c): a resolved effect's ONE counted change is also "it gets an additional -1/-1 until end of turn for each
       // Desert you control" (Desert's Due): it adds to the change of the sentence before, as every change of power and toughness does (the E17 reading, counted)
       if (dur && !isStatic && e.mods.length === 1 && p.preds.length === 1 && fe.index === 0 && rest.length === 0) readings.push(`${subject} ${fe.head.replace(/^(gets?) /, '$1 an additional ')} ${dur} ${fe.tail}`);
@@ -2239,6 +2307,13 @@ function continuousOne(e: ContinuousEffectDef, st: RenderState, duration: Durati
       // the creature type only ADDED (the rider "It's still a land." changed the set card type into an added one, rid.stillLand): the rider is said after the sentence
       text = alt(text, JSON.stringify(m4['types']) === JSON.stringify({ add: ['Creature'] }) ? `${lead}${/[.!?](?:"|'|'")?$/.test(lead) ? ' ' : '. '}${riderText(st, e, [], false)}` : lead);
     }
+    // edh-e-22 (CR 205.1b, 613.1d, 613.4b; Mishra's Groundbreaker): a land that becomes an artifact creature keeps its types, "Target land becomes a 3/3 artifact creature that's still a land":
+    // the effect that ADDS the artifact and creature types (nothing else), for good, with a base power and toughness, restated by the clause (the words say what the JSON does)
+    if (!isStatic && !dur && !pl && e.mods.length === 2 && JSON.stringify(e.mods[0]) === '{"layer":4,"types":{"add":["Artifact","Creature"]}}' && e.mods[1]!.layer === '7b'
+      && isNum((e.mods[1] as { power?: Quantity }).power) && isNum((e.mods[1] as { toughness?: Quantity }).toughness) && p.preds.length === 1 && p.forEach === undefined && p.where.length === 0 && p.rider === undefined) {
+      const bp = e.mods[1] as { power: number; toughness: number };
+      text = alt(text, sentence([`becomes ${withArticle(`${bp.power}/${bp.toughness}`)} artifact creature that's still a land`], p.where));
+    }
     // FAST5 T64: "Target artifact you control becomes a copy of a second target artifact you control until end of turn, except it isn't legendary" (Shuri)
     const ce = p.copyExcept;
     if (ce !== undefined && dur && p.preds.length === 1 && p.forEach === undefined && p.sized === undefined && p.where.length === 0 && p.rider === undefined) {
@@ -2305,7 +2380,9 @@ function continuousOne(e: ContinuousEffectDef, st: RenderState, duration: Durati
     // edh-next-5 (family still-lands-group): "All lands are 2/2 creatures that are still lands." (the static identity of a group of lands, said with the size in front)
     const sl = isStatic && pl ? stillLandsGroup(e) : null;
     if (sl !== null && p.where.length === 0 && p.forEach === undefined && extra.length === 0 && p.rider === undefined && p.granted === undefined) {
-      more.push(`${subject} are ${sl.p}/${sl.t} ${[sl.color, ...sl.subtypes, 'creatures'].filter((w) => w !== '').join(' ')} that are still lands`);
+      if (sl.grants === undefined) more.push(`${subject} are ${sl.p}/${sl.t} ${[sl.color, ...sl.subtypes, 'creatures'].filter((w) => w !== '').join(' ')} that are still lands`);
+      // edh-e-29 (family still-lands-group-grant; CR 205.1b, 613.1f; Natural Emergence): the identity, the abilities with "with", the rider a sentence of its own
+      else more.push(`${subject} are ${sl.p}/${sl.t} ${[sl.color, ...sl.subtypes, 'creatures'].filter((w) => w !== '').join(' ')} with ${abilityList(sl.grants, st, granteeNoun(subject, e, st))}. they're still lands`);
     }
     if (p.baseAdd !== undefined && isStatic && p.preds.length === 2 && p.where.length === 0 && p.forEach === undefined && extra.length === 0 && p.rider === undefined) more.push(sentence([p.baseAdd], []));
     // edh-c-65 (family still-land-aura-creature; CR 205.1b, 303.4, 613.1f): the same identity of the land an Aura enchants, sized, with the abilities it gains said with "with" and the rider a sentence of its own

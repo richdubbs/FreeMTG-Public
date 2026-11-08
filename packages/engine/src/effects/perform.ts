@@ -100,6 +100,11 @@ export function performReminder(g: Game, chip: ManualReminder): void {
   g.s.reminders = [...g.s.reminders, chip];
 }
 
+/** edhe34 (CR 404.2; Fossil Find, Search for Survivors): an effect reorders a graveyard; only the order changes (no zone change, no new object). `order` holds the same cards. */
+export function performReorderGraveyard(g: Game, player: PlayerId, order: readonly ObjectId[]): void {
+  g.s.zones.graveyard[player] = [...order];
+}
+
 /** CR 701.24a: a player shuffles their library (no event can replace it in this build; WP13's shuffle op, routed here at the W2 merge). */
 export function performShuffle(g: Game, player: PlayerId): void {
   shuffleLibrary(g, player);

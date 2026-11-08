@@ -25,6 +25,7 @@ const NARROW: Readonly<Record<string, readonly string[]>> = {
   'cm.edhn68.alt.fromGraveyard.mana.exile': ['Squee, Dubious Monarch'],
   'cm.edhn68.alt.fromGraveyard.mana.sacrifice': ['Scourge of Nel Toth'],
   'cm.edhn68.alt.fromGraveyard.mana.asLongAs.graveyardInstead': ['Glimpse the Cosmos'],
+  'sta.edhn68.self.gy.exileN.addCost': ['Demilich'], // edh-e-16 (6.9 deviation): promoted to stable on Demilich alone, the one full card that prints it (its cost line was the blocker)
   'eff.edhn68.return.bf.tapped.first': ["Gerrard's Hourglass Pendant"],
   'eff.edhn68.cast.obj.fromGraveyard': ['Oskar, Rubbish Reclaimer'],
   'sta.edhn68.castWith.graveyard.mutate': ['Brokkos, Apex of Forever'],

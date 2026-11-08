@@ -54,7 +54,7 @@ export const counterKind: HoleFn = (ctx, pos) => {
 export const manaCost: HoleFn = (ctx, pos) => {
   const syms: ManaCost = [];
   let p = pos;
-  while (ctx.toks[p]?.kind === 'MANA' && ctx.toks[p]!.norm !== '{e}') {
+  while (ctx.toks[p]?.kind === 'MANA' && ctx.toks[p]!.norm !== '{e}' && ctx.toks[p]!.norm !== '{tk}') {
     try { syms.push(parseManaSymbol(ctx.toks[p]!.norm.slice(1, -1))); } catch { return []; }
     p++;
   }
@@ -174,6 +174,11 @@ export function basePt(ctx: HoleCtx, pos: number): { end: number; power: Quantit
  * toughness 3/3", "becomes a 2/2 creature" (CR 613.4b sets base power and toughness; CR 208.1). A signed pair ("+1/+1") is never a base P/T.
  */
 export const basePT: HoleFn = (ctx, pos) => basePt(ctx, pos).map((b) => ({ end: b.end, value: { p: b.power, t: b.toughness } }));
+/**
+ * edh-d-105 ADDITION: the `BasePTSaid` hole, a printed (unsigned) power/toughness of plain numbers as `{p, t, text}`, `text` the size as printed ("4/1"): the answer a choice between two
+ * sizes offers ("become 4/1 or 1/4", Master of Winds; CR 613.4b, 608.2d). Only numbers (an X/X size is not an answer).
+ */
+export const basePTSaid: HoleFn = (ctx, pos) => basePt(ctx, pos).filter((b) => typeof b.power === 'number' && typeof b.toughness === 'number').map((b) => ({ end: b.end, value: { p: b.power, t: b.toughness, text: `${b.power}/${b.toughness}` } }));
 
 // ---- Subtypes --------------------------------------------------------------
 

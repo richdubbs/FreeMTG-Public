@@ -1,0 +1,382 @@
+[
+  {
+    "id": "rep.edhe13.enters.sacrificeAnyNumber.twiceThatMany",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 614.1c",
+      "CR 614.12a",
+      "CR 701.21a",
+      "CR 122.6"
+    ],
+    "pattern": "as ~ enters , you may sacrifice any number of {f:Filter} . if you do , ( it | ~ ) enters with twice that many {k:CounterKind} counter[s] on it",
+    "build": {
+      "kind": "static",
+      "zone": [
+        "stack",
+        "battlefield"
+      ],
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "zoneChange",
+            "subject": {
+              "self": true
+            },
+            "to": "battlefield"
+          },
+          "body": {
+            "b": "enters",
+            "devour": {
+              "filter": "$f",
+              "times": 2,
+              "kind": "$k",
+              "link": "devoured"
+            }
+          }
+        }
+      ]
+    },
+    "consumes": [
+      "may",
+      "any number",
+      "if",
+      "that many",
+      "twice"
+    ],
+    "examples": [
+      {
+        "text": "As ~ enters, you may sacrifice any number of artifacts and/or enchantments. If you do, it enters with twice that many +1/+1 counters on it."
+      },
+      {
+        "text": "As ~ enters, you may sacrifice any number of artifacts. If you do, ~ enters with twice that many +1/+1 counters on it."
+      }
+    ],
+    "counterExamples": [
+      "As ~ enters, you may sacrifice any number of creatures. If you do, it enters with three times that many +1/+1 counters on it.",
+      "As ~ enters, you may sacrifice any number of creatures. If you do, it enters with twice that many -1/-1 counters on it.",
+      "As ~ enters, you may sacrifice a creature. If you do, it enters with twice that many +1/+1 counters on it."
+    ]
+  },
+  {
+    "id": "rep.edhe13.enters.sacrificeAnyNumber.thatMany",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 614.1c",
+      "CR 614.12a",
+      "CR 701.21a",
+      "CR 122.6"
+    ],
+    "pattern": "as ~ enters , sacrifice any number of {f:Filter} . ( it | ~ ) enters with that many {k:CounterKind} counter[s] on it",
+    "build": {
+      "kind": "static",
+      "zone": [
+        "stack",
+        "battlefield"
+      ],
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "zoneChange",
+            "subject": {
+              "self": true
+            },
+            "to": "battlefield"
+          },
+          "body": {
+            "b": "enters",
+            "devour": {
+              "filter": "$f",
+              "times": 1,
+              "kind": "$k",
+              "link": "devoured"
+            }
+          }
+        }
+      ]
+    },
+    "consumes": [
+      "any number",
+      "that many"
+    ],
+    "examples": [
+      {
+        "text": "As ~ enters, sacrifice any number of permanents. ~ enters with that many +1/+1 counters on it."
+      },
+      {
+        "text": "As ~ enters, sacrifice any number of creatures. It enters with that many +1/+1 counters on it."
+      }
+    ],
+    "counterExamples": [
+      "As ~ enters, you may sacrifice any number of permanents. ~ enters with that many +1/+1 counters on it.",
+      "As ~ enters, sacrifice any number of permanents. ~ enters with that many -1/-1 counters on it.",
+      "As ~ enters, sacrifice a permanent. ~ enters with that many +1/+1 counters on it."
+    ]
+  },
+  {
+    "id": "eff.edhe13.counters.putOrRemoveNamedKind",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 122.1",
+      "CR 608.2d"
+    ],
+    "pattern": "put {n:Qty} {k:CounterKind} counter[s] on {o:Obj} or remove {m:Qty} {j:CounterKind} counter[s] from it",
+    "build": [
+      {
+        "op": "chooseValue",
+        "who": {
+          "ref": "you"
+        },
+        "what": "option",
+        "as": "counterMode",
+        "link": "counterMode",
+        "options": [
+          "put",
+          "remove"
+        ]
+      },
+      {
+        "op": "if",
+        "cond": {
+          "cond": "chosen",
+          "link": "counterMode",
+          "equals": "put"
+        },
+        "then": [
+          {
+            "op": "putCounters",
+            "on": "$o",
+            "kind": "$k",
+            "count": "$n"
+          }
+        ]
+      },
+      {
+        "op": "if",
+        "cond": {
+          "cond": "chosen",
+          "link": "counterMode",
+          "equals": "remove"
+        },
+        "then": [
+          {
+            "op": "removeCounters",
+            "from": "$o",
+            "kind": "$j",
+            "count": "$m"
+          }
+        ]
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "or"
+    ],
+    "examples": [
+      {
+        "text": "{4}: Put a charge counter on this artifact or remove a charge counter from it."
+      },
+      {
+        "text": "{2}: Put a blorp counter on this creature or remove a blorp counter from it."
+      }
+    ],
+    "counterExamples": [
+      "{3}: Put a charge counter on this artifact or remove two charge counters from it.",
+      "{3}: Put a charge counter on this artifact and remove a charge counter from it.",
+      "{3}: Put a charge counter on this artifact or remove a charge counter from another artifact."
+    ]
+  },
+  {
+    "id": "sta.edhe13.damageToYou.thatManyCountersOnSelfInstead",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 614.1a",
+      "CR 614.6",
+      "CR 120.3",
+      "CR 122.1"
+    ],
+    "pattern": "if damage would be dealt to you , put that many {k:CounterKind} counters on ~ instead",
+    "build": {
+      "kind": "static",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "damage",
+            "recipient": {
+              "player": "you"
+            }
+          },
+          "body": {
+            "b": "instead",
+            "do": [
+              {
+                "op": "putCounters",
+                "on": {
+                  "ref": "self"
+                },
+                "kind": "$k",
+                "count": {
+                  "q": "eventAmount"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "consumes": [
+      "if",
+      "would",
+      "that many",
+      "instead"
+    ],
+    "examples": [
+      {
+        "text": "If damage would be dealt to you, put that many blorp counters on ~ instead."
+      },
+      {
+        "text": "Vigilance, lifelink, reach, menace, deathtouch\nIf damage would be dealt to you, put that many blorp counters on ~ instead."
+      }
+    ],
+    "counterExamples": [
+      "If damage would be dealt to ~, put that many blorp counters on ~ instead.",
+      "If damage would be dealt to you, put that many blorp counters on ~.",
+      "If damage would be dealt to an opponent, put that many blorp counters on ~ instead."
+    ]
+  },
+  {
+    "id": "rep.edhe13.youDraw.mayPutCounterOnSelfInstead",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 614.1a",
+      "CR 614.6",
+      "CR 121.1",
+      "CR 122.1"
+    ],
+    "pattern": "if you would draw a card , you may put {n:Qty} {k:CounterKind} counter[s] on ~ instead",
+    "build": {
+      "kind": "static",
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "draw",
+            "player": "you"
+          },
+          "optional": true,
+          "body": {
+            "b": "instead",
+            "do": [
+              {
+                "op": "putCounters",
+                "on": {
+                  "ref": "self"
+                },
+                "kind": "$k",
+                "count": "$n"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "consumes": [
+      "if",
+      "would",
+      "may",
+      "instead"
+    ],
+    "examples": [
+      {
+        "text": "If you would draw a card, you may put a blorp counter on ~ instead."
+      },
+      {
+        "text": "Haste, vigilance, reach, menace, deathtouch\nIf you would draw a card, you may put two zork counters on ~ instead."
+      }
+    ],
+    "counterExamples": [
+      "If you would draw a card, put a blorp counter on ~ instead.",
+      "If an opponent would draw a card, you may put a blorp counter on ~ instead.",
+      "If you would draw a card, you may put a blorp counter on ~."
+    ]
+  },
+  {
+    "id": "eff.edhe13.eachPlayer.choosesPermanent.putsCounter",
+    "kind": "effect",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 101.4",
+      "CR 122.1",
+      "CR 608.2d"
+    ],
+    "pattern": "each player chooses ( a | an ) {f:Filter} and puts ( a | an ) {k:CounterKind} counter on it",
+    "build": [
+      {
+        "op": "forEach",
+        "over": {
+          "ref": "each",
+          "who": "player"
+        },
+        "as": "chooser",
+        "do": [
+          {
+            "op": "chooseObjects",
+            "who": {
+              "ref": "iterating"
+            },
+            "from": {
+              "ref": "each",
+              "filter": "$f"
+            },
+            "min": 1,
+            "max": 1,
+            "as": "chosen"
+          },
+          {
+            "op": "putCounters",
+            "on": {
+              "ref": "bound",
+              "name": "chosen"
+            },
+            "kind": "$k",
+            "count": 1,
+            "by": {
+              "ref": "iterating"
+            }
+          }
+        ]
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "each",
+      "and"
+    ],
+    "examples": [
+      {
+        "text": "When ~ enters, each player chooses a nonland permanent and puts a blorp counter on it."
+      },
+      {
+        "text": "When ~ enters, each player chooses a creature and puts a charge counter on it."
+      }
+    ],
+    "counterExamples": [
+      "When ~ enters, each player chooses a creature and puts two charge counters on it.",
+      "When ~ enters, you choose a creature and put a charge counter on it.",
+      "When ~ enters, each player chooses a creature and you put a charge counter on it."
+    ]
+  }
+]

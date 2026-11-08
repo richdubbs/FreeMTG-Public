@@ -108,11 +108,20 @@ const fromOutside: StepHandler<Step> = (cx, st) => {
   }
   const ans = g.choose({
     kind: 'chooseOption', player, min: 1, max: 1, rules: ['CR 400.11b'],
-    prompt: st.reveal ? 'Choose a card you own from outside the game to reveal and put into your hand.' : 'Choose a card you own from outside the game to put into your hand.',
+    prompt: st.reveal ? 'Choose a card you own from outside the game to reveal and put into your hand.' : st.top === true ? 'Choose a card you own from outside the game to put on top of your library.' : 'Choose a card you own from outside the game to put into your hand.',
     options: options.map((d) => ({ id: `card:${d}`, label: g.s.defs[d]!.name })),
   });
   const defId = (ans.ids[0] ?? '').startsWith('card:') ? ans.ids[0]!.slice('card:'.length) : null;
   if (defId === null || !options.includes(defId)) return NOTHING;
+  // edh-e-41 (CR 400.11b, 401.4; The Raven's Warning): "on top of your library" instead of the hand; nobody sees the card
+  if (st.top === true) {
+    if (st.reveal) return NOTHING; // fail closed: a revealed card put on top has no wording
+    const topId = performBringIntoGame(g, player, defId, 'library');
+    if (topId === null) return NOTHING;
+    showCards(g, [topId], [player]); // the owner chose it and knows the card on top (CR 400.2); nobody else sees it
+    g.log(`${name} puts a card from outside the game on top of their library.`, { rules: ['CR 400.11b', 'CR 401.4'], level: 'action', privateText: { players: [player], text: `${name} puts ${g.nameOf(topId)} from outside the game on top of their library.` } });
+    return did(1);
+  }
   const id = performBringIntoGame(g, player, defId);
   if (id === null) return NOTHING;
   if (st.reveal) {

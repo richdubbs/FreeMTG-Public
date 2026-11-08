@@ -59,7 +59,7 @@ import { evalCondition, evalQuantity, type EvalCx } from './match';
 import { objectMatches, spellActor } from './rule-match';
 import { anyZone, charsViewOf, cxOf, overlayZone, refIncludes, ruleContext, type CharsView, type RuleContext, type RuleSource } from './rule-sources';
 import { readLink, readLinkOf } from './links';
-import { manaValue } from '../types/mana';
+import { manaValue, type ManaType } from '../types/mana';
 
 /** The capability names this module makes true (model/capabilities.ts adds them; model/cap-walk.ts emits them). */
 export const PLAY_PERMIT_CAPABILITIES: readonly string[] = [
@@ -81,6 +81,7 @@ export const PLAY_PERMIT_CAPABILITIES: readonly string[] = [
   'permit:spendMana.anyTypeFor',
   'permit:spendMana.anyColorAbilities', // std-rx32 (CR 609.4b): isSpendAnyColorAbilitiesPermit, actions/activate.ts
   'permit:spendMana.anyColorWithAbilities', // edh-next-140 (CR 609.4b): isSpendAnyColorWithAbilitiesPermit, actions/activate.ts
+  'permit:spendMana.asColor', // edh-e-51 (CR 609.4b): isSpendAsColorPermit, rules/pay.ts and rules/cost-pick.ts via rules/sources.ts#spendOptions (Sunglasses of Urza)
   'permit:spendMana.lifeFor', // edhc5 (CR 118.1, 107.4f): isLifeForPermit, rules/life-for.ts, read by rules/pay.ts and rules/cost-pick.ts
   'permit:spendMana.anyColorEverywhere', // edh-mana-keywords-4 (CR 609.4b): isSpendAnyColorEverywherePermit, rules/pay.ts and rules/cost-pick.ts via rules/sources.ts#spendOptions
   // FAST5X E29 (CR 609.4b): "and mana of any type can be spent to cast that spell"; "you may play it if you control a Kavu" (a condition read each time)
@@ -111,6 +112,8 @@ export const PLAY_PERMIT_CAPABILITIES: readonly string[] = [
   'feature:permit.cast.graveyardInstead',
   // edh-next-127 (CR 603.7a, 601.2i): "When you cast a spell this way, ..." on a permission for named objects (onCastPermits, actions/cast.ts)
   'feature:permit.play.onCast', 'feature:permit.cast.onCast',
+  // edh-d-104 (CR 603.7a, 305.1; Fires of Mount Doom): ... and "When you play a card this way, ..." on a play permission, a land played with it too (onCastPermits with `land`, actions/land.ts)
+  'feature:permit.play.onCastLand',
   // r5-dig (CR 715.3): "you may cast it ... as an Adventure" (namedPermitAdventureOnly; actions/cast.ts)
   'feature:permit.cast.asAdventure',
   // std-rx3 (CR 118.9, 601.2b): "you may cast those cards without paying their mana costs" on a permission for named objects (isFreeCost, grantedAlternatives)
@@ -205,6 +208,7 @@ export function isObjectPermit(p: PermissionDef): boolean {
     && !isGenericReduce(p.costChange); // edh-d-100 (CR 601.2f, 118.7): or "Spells you cast this way cost {2} less to cast" (namedPermitReduce)
   if (p.from !== undefined || p.asThough !== undefined || p.count !== undefined || altCost || p.grants !== undefined) return false;
   if (p.fromTop !== undefined || p.oncePerTurn !== undefined) return false; // FAST5X E14: a top-card permission (below)
+  if (p.exiledByOnly !== undefined) return false; // trek-23: resolved into one permission per exiler as the effect begins (effects/handlers/lasting.ts#exiledByPermits), never stored
   if (p.addCost !== undefined || p.addGeneric !== undefined || p.entersWith !== undefined) return false; // C10: honored on graveyard permissions only (fail closed)
   if (p.single !== undefined && p.single !== true) return false; // std-rx27: "a card": one card only (singleKey)
   if (p.uses !== undefined && (!Number.isInteger(p.uses) || p.uses < 2 || p.single !== undefined)) return false; // edh-d-96: "up to two of those cards" (singleKey)
@@ -569,7 +573,8 @@ function spendRiderPermit(s: GameState, player: PlayerId, id: ObjectId, field: '
  * edh-next-127 (CR 603.7a, 601.2i; The Ruinous Powers): the delayed triggers ("When you cast a spell this way, ...") of the permissions for this named object that let `player` cast it now (PermissionDef.onCast),
  * each with its controller, source and name. Every such permission that applies (in timestamp order); a top-card, graveyard or linked permission never carries one (fail closed: isObjectPermit).
  */
-export function onCastPermits(s: GameState, player: PlayerId, id: ObjectId): { steps: EffectStep[]; controller: PlayerId; source: ObjHandle | null; name: string }[] {
+/** edh-d-104 (CR 603.7a, 305.1): with `land`, only the permissions whose delayed trigger is "when you play a card this way" (`onCastLand`), for a land played with them. */
+export function onCastPermits(s: GameState, player: PlayerId, id: ObjectId, land = false): { steps: EffectStep[]; controller: PlayerId; source: ObjHandle | null; name: string }[] {
   if (!s.continuousEffects.some((r) => r.effect.s === 'permit' && r.effect.onCast !== undefined)) return [];
   const ctx = ruleContext(s);
   if (!ctx) return [];
@@ -577,6 +582,7 @@ export function onCastPermits(s: GameState, player: PlayerId, id: ObjectId): { s
   for (const src of ctx.sources) {
     const e = src.effect;
     if (e.s !== 'permit' || e.onCast === undefined || !isObjectPermit(e) || !refIncludes(cxOf(ctx, src), e.who, player)) continue;
+    if (land && !(e.onCastLand === true && e.action === 'play')) continue; // edh-d-104: a land is not cast (CR 305.1): only "when you play a card this way" sees it
     if (e.laterTurn === true && !(src.startedTurn !== undefined && s.turn.number > src.startedTurn)) continue;
     if (e.while !== undefined && !evalCondition(cxOf(ctx, src), e.while)) continue;
     if (!namedObjects(e, s, player).some((h) => h.id === id && s.objects[id]?.zone === h.zone)) continue;
@@ -1292,6 +1298,27 @@ export function staticAnyColorEverywhere(s: GameState, player: PlayerId): boolea
     const e = src.effect;
     return e.s === 'permit' && isSpendAnyColorEverywherePermit(e) && src.source !== null && src.order[1] === 0 && refIncludes(cxOf(ctx, src), e.who, player);
   });
+}
+
+/** edh-e-51: the exact form honored, `{s:'permit', who, action:'spendMana', asThough:'a color', spentType, asColor}` and no other field. */
+export function isSpendAsColorPermit(p: PermissionDef): boolean {
+  return p.action === 'spendMana' && p.asThough === 'a color' && p.spentType !== undefined && p.asColor !== undefined && p.spentType !== p.asColor && p.of === undefined && p.abilities === undefined
+    && Object.keys(p).every((k) => ['s', 'who', 'action', 'asThough', 'spentType', 'asColor'].includes(k));
+}
+
+/**
+ * edh-e-51 (CR 609.4b; Sunglasses of Urza): the pairs of mana types `player` may spend one for the other because of a static ability of an object ("You may spend white mana as
+ * though it were red mana."): mana of `from` pays a symbol that asks for `to`, for every spell and ability cost the player pays. Only a static ability of an object honors it.
+ */
+export function staticSpendAsColors(s: GameState, player: PlayerId): { from: ManaType; to: ManaType }[] {
+  const ctx = ruleContext(s);
+  if (!ctx) return [];
+  const out: { from: ManaType; to: ManaType }[] = [];
+  for (const src of ctx.sources) {
+    const e = src.effect;
+    if (e.s === 'permit' && isSpendAsColorPermit(e) && src.source !== null && src.order[1] === 0 && refIncludes(cxOf(ctx, src), e.who, player)) out.push({ from: e.spentType!, to: e.asColor! });
+  }
+  return out;
 }
 
 /**

@@ -20,6 +20,7 @@ export {
   formatById,
   validateDeck,
   UnknownFormatError,
+  canAddCommander,
   canBeCommander,
   canPartner,
   partnerAbilities,

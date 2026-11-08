@@ -22,6 +22,7 @@ import { MOVE_VERB, tokenText } from './steps-zones';
 import { absorb, cloneState, nestedState, withVariants, type RenderState } from './state';
 import { possessiveStep, STEP_NAME } from './turn';
 import { alt, ALT_CLOSE, ALT_OPEN, COLOR_WORD, firstAlt, hoistFinalPeriod, joinList, lowerFirst, NoRenderer, numWord, pluralize, withArticle } from './text';
+import { cardNameKindWords } from '../types/card';
 
 /**
  * std-ry3: a reference to a role of the triggering event that is a player for sure: the `player` role, or the recipient of a damage trigger whose recipient
@@ -309,6 +310,8 @@ function perText(q: Quantity, st: RenderState): string | null {
         }
         // edh-c-1 (CR 701.9a, 702.29a, 601.2f; Hollow One): "for each card you've cycled or discarded this turn" (render/qty.ts#historyParts: the discards of the turn by you)
         if (live.q === 'happenedCount' && live.event.ev === 'action' && live.event.verb === 'discard' && live.event.actor === 'you') { const cp = countParts(live, st); if (cp) return ` for each ${cp.singular}`; }
+        // edh-e-16 (CR 601.2f, 601.2i; Demilich): "for each instant and sorcery spell you've cast this turn" (render/qty.ts#countParts: the casts of the turn by you)
+        if (live.q === 'happenedCount' && live.event.ev === 'cast' && live.event.player === 'you' && live.by === 'you') { const cp = countParts(live, st); if (cp) return ` for each ${cp.singular}`; }
         const text = K.qty(live, st);
         const m = /^the number of (.*)$/.exec(text);
         if (m) return ` for each ${singularOf(m[1]!, live, st)}`;
@@ -319,7 +322,8 @@ function perText(q: Quantity, st: RenderState): string | null {
       // std-costs-1 (CR 601.2b, 601.2f): "for each permanent sacrificed this way", the number announced for the spell's optional cost (render/qty.ts#countParts)
       case 'costCount': return ` for each ${countParts(live, st)!.singular}`;
       // trek-15 (CR 506.3, 601.2f; Own the Day): "costs {1} less to cast for each opponent you attacked this turn" (family for-each-opponent-you-attacked)
-      case 'opponentsAttacked': return live.scope === 'turn' ? ' for each opponent you attacked this turn' : null;
+      // edh-e-16 (CR 506.3, 508.1, 601.2f; Astral Confrontation): "costs {1} less to cast for each opponent you're attacking" (the combat under way, parser/holes/qty.ts)
+      case 'opponentsAttacked': return live.scope === 'turn' ? ' for each opponent you attacked this turn' : live.present === true && live.scope === undefined ? alt(" for each opponent you're attacking", ' for each opponent you are attacking') : null;
       // T38 (CR 700.8): "for each creature in your party"
       case 'partySize': return live.of.ref === 'you' ? ' for each creature in your party' : null;
       // FAST4 T21: "for each color among permanents you control" (CR 105.1, 105.2: the colors are white, blue, black, red and green; colorless is not one)
@@ -511,6 +515,11 @@ function costMod(e: Extract<StaticEffect, { s: 'costMod' }>, st: RenderState, in
     if (!only) throw new NoRenderer('a loyalty increase other than of the loyalty abilities of planeswalkers you activate');
     return `planeswalkers' loyalty abilities you activate cost an additional [+${change.loyalty}] to activate`;
   }
+  // edh-e-46 (CR 601.2c, 601.2f, 119.4; Phyrexian Purge): "~ costs 3 life more to cast for each target": a spell's own life increase, once for each target
+  if (change.life !== undefined && applies.self === true && change.kind === 'increase' && change.mana === undefined && change.generic === undefined && change.floor === undefined && change.coloredOnly === undefined
+    && inside === '' && applies.caster === 'you' && Object.keys(applies).length === 2 && sameShape(change.times, { q: 'spellTargetCount' })) {
+    return `${K.obj({ ref: 'self' }, st, 'subject').text} costs ${change.life} life more to cast for each target`;
+  }
   // r5-cost (CR 601.2f, 119.4): "Spells your opponents cast that target ~ cost an additional 3 life to cast": a life increase alone, no mana
   if (change.life !== undefined) {
     const { targets: lt, ...lrest } = applies.spells ?? {};
@@ -560,6 +569,14 @@ function costMod(e: Extract<StaticEffect, { s: 'costMod' }>, st: RenderState, in
     // edh-next-117 (CR 702.29a; Gavi, Nest Warden): cycling a card is activating its cycling ability; Oracle says "the cycling cost of the first card you cycle each turn"
     const cycle = kw === 'cycling' && applies.firstEachTurn === true;
     return `you may pay ${alt('{0}', 'nothing')} rather than pay the ${kw} cost of the first ${cycle ? 'card you cycle' : `${kw} ability you activate`} ${applies.firstEachTurn === 'yourTurns' ? 'during each of your turns' : 'each turn'}`; // family pay-zero-nothing
+  }
+  // edh-e-46 (CR 702.29a, 118.9; New Perspectives): "you may pay {0} rather than pay cycling costs": a set cost of {0} for every cycling ability you activate
+  if (applies.abilities?.keyword === 'cycling' && applies.firstEachTurn === undefined && change.kind === 'set') {
+    const free = (change.mana ?? []).length === 0 && change.generic === undefined && change.times === undefined && Object.keys(change).length <= 2;
+    if (applies.abilities.kind !== 'activated' || applies.abilities.source !== undefined || applies.caster !== 'you' || !free || inside !== '' || Object.keys(applies.abilities).length !== 2 || Object.keys(applies).length !== 2) {
+      throw new NoRenderer('a set cycling cost other than "you may pay {0} rather than pay cycling costs"');
+    }
+    return 'you may pay {0} rather than pay cycling costs';
   }
   if (applies.abilities) {
     // FAST5 T60: "exhaust abilities", the activated abilities with a wrapper keyword (CR 702.177a)
@@ -654,6 +671,10 @@ function costMod(e: Extract<StaticEffect, { s: 'costMod' }>, st: RenderState, in
   if (targeted !== undefined && (caster === 'you' || caster === 'opponent') && 'ref' in targeted && targeted.ref === 'self' && Object.keys(untargeted).length === 0) {
     const spells = `${spellsPhrase({}, st)}${who} that target ${K.obj({ ref: 'self' }, st, 'object').text}`;
     return change.kind === 'set' ? `${spells}${mid} cost ${amount} to cast` : `${spells}${mid} cost ${amount} ${word} to cast${per}`;
+  }
+  // edh-e-46 (CR 303.4, 115.1, 601.2f; Infectious Curse): "Spells you cast that target enchanted player cost {1} less to cast": one of the spell's targets is the player the Aura is attached to
+  if (targeted !== undefined && caster === 'you' && 'ref' in targeted && targeted.ref === 'enchantedPlayer' && Object.keys(untargeted).length === 0 && change.kind !== 'set') {
+    return `${spellsPhrase({}, st)} you cast that target enchanted player${mid} cost ${amount} ${word} to cast${per}`;
   }
   // p2-cost-statics-2 (CR 115.9b, 601.2f; family target-a-or-one-or-more): "spells your opponents cast that target a creature or planeswalker you control": one of the
   // spell's targets is an object of the description, which is also "that target one or more <objects>"; of "you", the spells you cast are the spells you control
@@ -852,6 +873,7 @@ const ACTION_CANT: Partial<Record<RuleAction, string>> = {
   becomeMonarch: 'become the monarch', // edh-next-82 (CR 725.1)
   beCopied: 'be copied', // std-copy-1 (CR 707.10)
   phaseIn: 'phase in', // trek-4 (CR 702.26c)
+  phaseOut: 'phase out', // edh-e-25 (CR 702.26b)
   crew: 'crew Vehicles', // edh-c-72 (CR 702.122a)
   beBeamedUp: 'be beamed up', // trek-1 (Star Trek beam me up; CR 702 rule number unverified)
   haveStunCountersRemoved: 'have stun counters removed', // edh-players-22 (CR 122.1d)
@@ -923,7 +945,10 @@ function nextUntapRestriction(e: RestrictionDef, d: Extract<Duration, { d: 'thro
       // edh-c-51 (CR 502.3, 611.2a; Imaginary Threats): "During that player's next untap step, creatures they control don't untap." (family untap-step-first)
       return alt(`${who} ${doesnt} untap during ${step}`, `during ${step}, ${who} ${doesnt} untap`);
     }
-    const step = pl ? alt("their controller's next untap step", "their controllers' next untap steps") : "its controller's next untap step";
+    // edh-e-25 (CR 502.3; Telekinesis): "... during its controller's next two untap steps"
+    const two = d.steps === 2;
+    const step = d.steps !== undefined && !two ? '' : two ? (pl ? "their controllers' next two untap steps" : "its controller's next two untap steps") : pl ? alt("their controller's next untap step", "their controllers' next untap steps") : "its controller's next untap step";
+    if (step === '') throw new NoRenderer('a count of untap steps other than two');
     const said = `${sj} ${doesnt} untap during ${step}`;
     // edh-c-46 (CR 502.3, 611.2c; Spore Cloud): the attacking and the blocking creatures, each said singular ("Each attacking creature and each blocking creature doesn't untap ...")
     const sf: Record<string, unknown> | undefined = e.subject.ref === 'each' && 'filter' in e.subject ? (e.subject.filter as unknown as Record<string, unknown>) : undefined;
@@ -1386,7 +1411,8 @@ function restrictFor(e: RestrictionDef, st: RenderState, sj: string, pl: boolean
       // FAST3 T16: "can't be the target of white spells or abilities from white sources": `other` is the spell, or the source of the ability (statics/hooks.ts
       // canBeTargeted, CR 115.1, 113.7a), so one color filter says both halves
       const c = onlyColor(other);
-      if (c !== null) text = alt(text, `${sj} ${cant} be the target of ${c} spells or abilities from ${c} sources`);
+      // edh-e-61 (family targets-plural-colored; Spellbane Centaur): a group says the noun in the number of its subject, "Creatures you control can't be the targets of blue spells or abilities from blue sources"
+      if (c !== null) text = alt(text, `${sj} ${cant} be the target of ${c} spells or abilities from ${c} sources`, ...(pl ? [`${sj} ${cant} be the targets of ${c} spells or abilities from ${c} sources`] : []));
       // edh-c-60 (Gaea's Revenge): the same for one color a source may NOT have, "nongreen spells or abilities from nongreen sources"
       if (other !== undefined && Object.keys(other).length === 1 && other.notColors?.length === 1) text = alt(text, `${sj} ${cant} be the target of non${COLOR_WORD[other.notColors[0]!]} spells or abilities from non${COLOR_WORD[other.notColors[0]!]} sources`);
       // edh-d-43 (CR 115.1, 113.7a; family cant-target-nongreen-by-opponents; Thrun, Breaker of Silence): the same, only spells and sources an opponent controls
@@ -1426,7 +1452,13 @@ function restrictFor(e: RestrictionDef, st: RenderState, sj: string, pl: boolean
     else text = `${sj} ${cant} ${cantWords(e.action, pl)}`;
   } else if (e.mode === 'mustIfAble') {
     switch (e.action) {
-      case 'attack': text = `${sj} ${pl ? 'attack' : 'attacks'} each combat if able`; break;
+      case 'attack':
+        // edh-e-49 (CR 508.1d, 303.4; Public Enemy): "All creatures attack enchanted creature's controller each combat if able." (the only named player this form says)
+        if (e.otherPlayer !== undefined) {
+          if (JSON.stringify(e.otherPlayer) !== '{"ref":"controllerOf","object":{"ref":"attachedTo"}}') throw new NoRenderer('an attack requirement naming a player other than the controller of the enchanted creature');
+          text = `${sj} ${pl ? 'attack' : 'attacks'} enchanted creature's controller each combat if able`;
+        } else text = `${sj} ${pl ? 'attack' : 'attacks'} each combat if able`;
+        break;
       case 'block': text = `${sj} ${pl ? 'block' : 'blocks'} each combat if able`; break;
       // edh-c-71 (CR 509.1c; Slayer's Cleaver): "must be blocked by an Eldrazi if able": one blocker of that description obeys it
       case 'beBlocked': text = e.exactly !== undefined ? `${sj} must be blocked by exactly ${numWord(e.exactly)} creature${e.exactly === 1 ? '' : 's'} if able` /* edh-d-75 (CR 509.1c; Nacatl War-Pride) */ : e.min !== undefined ? `${sj} must be blocked by ${numWord(e.min)} or more creatures if able` : other ? `${sj} must be blocked by ${K.np(other, st, { det: 'a' })} if able` : `${sj} must be blocked if able`; break;
@@ -1438,6 +1470,12 @@ function restrictFor(e: RestrictionDef, st: RenderState, sj: string, pl: boolean
     const c = e.when ? ` ${K.cond(e.when, st)}` : '';
     text = alt(`${sj} ${cant} ${verb} unless${c}`, `${sj} can ${verb} only if${c}`);
     return text;
+  }
+  // edh-d-109 (CR 508.1c, 500.1; Giant Turtle): "~ can't attack if it attacked during your last turn": the object's own attack in its controller's most recent turn before this one
+  const w0 = e.when;
+  if (e.mode === 'cant' && e.action === 'attack' && e.subject.ref === 'self' && w0?.cond === 'happened' && w0.scope === 'yourLastTurn' && w0.times === undefined && w0.by === undefined
+    && JSON.stringify(w0.event) === '{"ev":"attacks","attacker":{"self":true}}' && e.other === undefined && e.max === undefined && e.min === undefined) {
+    return `${sj} can't attack if it attacked during your last turn`;
   }
   if (e.when) {
     const c = K.cond(e.when, st);
@@ -1600,6 +1638,19 @@ function enters(body: Extract<ReplacementDef['body'], { b: 'enters' }>, subject:
     const n = typeof body.roll.count === 'number' ? numWord(body.roll.count) : K.qty(body.roll.count, st);
     return `as ${subject} ${verb}, roll ${n} d${body.roll.sides}. ${alt('it', subject)} ${verb} with a number of ${c[0]!.kind} counters on it equal to the total of those results`;
   }
+  // edhe28 (CR 614.12a, 701.17a, 702.33d; Urborg Lhurgoyf, Monstrous War-Leech): "As ~ enters, [if it was kicked,] mill N cards [for each time it was kicked]": only that shape, nothing else in the body
+  if (body.mill !== undefined) {
+    const m = body.mill;
+    if (Object.keys(body).some((k) => k !== 'b' && k !== 'mill') || subject !== '~') throw new NoRenderer('a mill as a permanent enters, with anything else in the body');
+    const c = m.count;
+    const perKick = typeof c === 'object' && c.q === 'math' && c.op === '*' && c.args.length === 2 && typeof c.args[0] === 'number' && typeof c.args[1] === 'object' && JSON.stringify(c.args[1]) === '{"q":"kickCount"}';
+    if (perKick && m.if === undefined) {
+      const n = c.args[0] as number;
+      return `as ${subject} ${verb}, mill ${numWord(n)} card${n === 1 ? '' : 's'} for each time ${alt('it', subject)} was kicked`;
+    }
+    if (typeof c !== 'number' || m.if === undefined) throw new NoRenderer('a mill as a permanent enters other than "N cards for each time it was kicked" or "N cards" if a condition holds');
+    return `as ${subject} ${verb}, if ${K.cond(m.if, st)}, mill ${numWord(c)} card${c === 1 ? '' : 's'}`;
+  }
   if (body.dayIfNeither !== undefined) {
     if (Object.keys(body).some((k) => k !== 'b' && k !== 'dayIfNeither') || subject !== '~') throw new NoRenderer('becoming day as a permanent enters, with other entering facts');
     return `if it's neither day nor night, it becomes day as ${subject} ${verb}`;
@@ -1624,7 +1675,11 @@ function enters(body: Extract<ReplacementDef['body'], { b: 'enters' }>, subject:
   // twice the number of counters removed this way."; nothing else in the body
   if (body.removeCounters !== undefined) {
     const x = body.removeCounters;
-    if (Object.keys(body).some((k) => k !== 'b' && k !== 'removeCounters') || x.times !== 2) throw new NoRenderer('counters removed as it enters, other than "twice the number of counters removed this way", with other entering facts');
+    // edh-e-66 (CR 614.12a, 122.1; Thief of Blood): "As ~ enters, remove all counters from all permanents. ~ enters with a +1/+1 counter on it for each counter removed this way."
+    if (x.all === true && x.times === 1 && Object.keys(body).every((k) => k === 'b' || k === 'removeCounters')) {
+      return `as ${subject} ${verb}, remove all counters from all ${K.np(x.filter, st, { det: 'none', plural: true })}. ${subject} ${verb} with a ${x.kind} counter on it for each counter removed this way`;
+    }
+    if (x.all === true || Object.keys(body).some((k) => k !== 'b' && k !== 'removeCounters') || x.times !== 2) throw new NoRenderer('counters removed as it enters, other than "twice the number of counters removed this way", with other entering facts');
     return `as ${subject} ${verb}, remove all counters from any number of ${K.np(x.filter, st, { det: 'none', plural: true })}. ${alt('it', subject)} ${verb} with x ${x.kind} counters on it, where x is twice the number of counters removed this way`;
   }
   // edh-d-54 (CR 614.12a, 400.3; Ulamog's Despoiler): "As ~ enters, you may put two cards your opponents own from exile into their owners' graveyards. If you do, ~ enters with four +1/+1 counters on it."
@@ -1636,6 +1691,17 @@ function enters(body: Extract<ReplacementDef['body'], { b: 'enters' }>, subject:
     const cards = K.np({ ...desc, zone: 'exile', owner: 'opponent' }, st, { det: 'none', plural: x.count !== 1 });
     const counters = `${x.counters.count === 1 ? 'a' : numWord(x.counters.count)} ${x.counters.kind} counter${x.counters.count === 1 ? '' : 's'}`;
     return `as ${subject} ${verb}, you may put ${x.count === 1 ? 'a' : numWord(x.count)} ${cards} into ${x.count === 1 ? "that player's" : 'their owners\''} graveyard${x.count === 1 ? '' : 's'}. if you do, ${alt('it', subject)} ${verb} with ${counters} on it`;
+  }
+  // edh-e-13 (CR 614.1c, 614.12a, 701.21a, 122.6; Devouring Hellion, Shimatsu the Bloodcloaked): "As ~ enters, you may sacrifice any number of creatures and/or planeswalkers. If you do, it enters with twice that many
+  // +1/+1 counters on it." (times 2) / "As ~ enters, sacrifice any number of permanents. ~ enters with that many +1/+1 counters on it." (times 1): the devour body written out as card text (the keyword prints its own text)
+  if (body.devour !== undefined) {
+    const x = body.devour;
+    if (Object.keys(body).some((k) => k !== 'b' && k !== 'devour') || (x.times !== 1 && x.times !== 2) || x.link !== 'devoured') throw new NoRenderer('a sacrifice as it enters other than "any number of ..., enters with that many (or twice that many) counters"');
+    const what = K.np(x.filter, st, { det: 'none', plural: true });
+    const kind = x.kind ?? '+1/+1';
+    return x.times === 2
+      ? `as ${subject} ${verb}, you may sacrifice any number of ${what}. if you do, ${alt('it', subject)} ${verb} with twice that many ${kind} counters on it`
+      : `as ${subject} ${verb}, sacrifice any number of ${what}. ${alt('it', subject)} ${verb} with that many ${kind} counters on it`;
   }
   // edh-c-42 (CR 702.38a, 614.12a): "As ~ enters, you may reveal any number of other artifact cards from your hand. ~ enters with a +1/+1 counter on it for each card revealed this way."
   if (body.revealHand !== undefined) {
@@ -1675,7 +1741,7 @@ function enters(body: Extract<ReplacementDef['body'], { b: 'enters' }>, subject:
         case 'landType': return c.options === undefined ? 'a land type' /* edh-d-72: Traveler's Cloak */ : 'a basic land type';
         case 'planeswalkerType': return 'a planeswalker type'; // edh-d-94 (CR 205.3j; Deification)
         // std-rx28 (CR 201.3): "choose a nonland card name" (Skyseer's Chariot)
-        case 'cardName': return c.cardKind !== undefined ? alt(`a ${c.cardKind} card name`, `any ${c.cardKind} card name`) : alt('a card name', 'any card name'); // std-rx6 (CR 201.3): family a-or-any-card-name
+        case 'cardName': return c.cardKind !== undefined ? alt(cardNameKindWords(c.cardKind), cardNameKindWords(c.cardKind, 'any')) : alt('a card name', 'any card name'); // std-rx6 (CR 201.3): family a-or-any-card-name
         case 'number': return c.min !== undefined && c.max !== undefined ? `a number between ${c.min} and ${c.max}` : 'a number'; // std-rx5
         case 'player': return c.min === 2 && c.max === 2 ? 'two players' /* edhd63 (CR 614.12a; Sower of Discord) */ : 'a player';
         case 'opponent': return 'an opponent';
@@ -1699,6 +1765,10 @@ function enters(body: Extract<ReplacementDef['body'], { b: 'enters' }>, subject:
       // edh-d-72 (CR 614.12a, 608.2d; Callous Oppressor): "As ~ enters, an opponent chooses a creature type." (one choice, made by an opponent)
       if (body.choose.length !== 1 || body.choose[0]!.chooser !== 'opponent' || body.choose[0]!.what !== 'creatureType' || body.choose[0]!.options !== undefined) throw new NoRenderer('an entering choice made by another player, other than "an opponent chooses a creature type"');
       sentences.push(`as ${subject} ${verb}, an opponent chooses ${what[0]!}`);
+    } else if (body.choose.some((c) => c.secret !== undefined)) {
+      // edhe35 (CR 614.12a, 608.2d; Guardian Archon): "As ~ enters, secretly choose an opponent." (one choice, known to the chooser only)
+      if (body.choose.length !== 1 || body.choose[0]!.what !== 'opponent' || body.choose[0]!.secret !== true) throw new NoRenderer('a secret entering choice other than "secretly choose an opponent"');
+      sentences.push(`as ${subject} ${verb}, secretly choose an opponent`);
     } else sentences.push(`as ${subject} ${verb}, choose ${joinList(what)}`);
     // FAST5 T57 (CR 614.1c, 614.12a): "~ enters tapped. As it enters, choose a color." says the tapped sentence first, and "it" for the permanent
     if (body.tapped === true && !body.tappedUnless && !body.tappedUnlessPay && !body.copy && !body.counters && !body.faceDown && !body.transformed && !body.prepared
@@ -1771,6 +1841,11 @@ function enters(body: Extract<ReplacementDef['body'], { b: 'enters' }>, subject:
     if (Object.keys(body).some((k) => k !== 'b' && k !== 'tappedMay') || sentences.length > 0 || only === null || only['op'] !== 'putCounters' || JSON.stringify(only['on']) !== '{"ref":"you"}' || typeof only['count'] !== 'number' || only['kind'] !== 'rad' || Object.keys(only).sort().join() !== 'count,kind,on,op') throw new NoRenderer('an optional tapped entry with steps other than getting rad counters');
     return `you may have ${subject} enter tapped. if you do, you get ${only['count'] as number} rad counter${only['count'] === 1 ? '' : 's'}`;
   }
+  if (body.steps !== undefined) {
+    // edh-e-23 (CR 614.12, 614.12a; Heightened Awareness, Overlaid Terrain): "As this enchantment enters, discard your hand." (the steps said as an instruction)
+    if (Object.keys(body).some((k) => k !== 'b' && k !== 'steps') || sentences.length > 0) throw new NoRenderer('steps carried out as it enters, beside anything else it does');
+    return `as ${subject} ${verb}, ${K.steps(body.steps, st)}`;
+  }
   if (body.payLifeAny !== undefined) {
     // edh-next-138 (CR 614.12a, 119.4; Phyrexian Processor): "As this artifact enters, pay any amount of life."
     if (Object.keys(body).some((k) => k !== 'b' && k !== 'payLifeAny') || sentences.length > 0 || body.payLifeAny.link !== 'lifePaid') throw new NoRenderer('a payment of any amount of life as it enters in another form');
@@ -1779,8 +1854,18 @@ function enters(body: Extract<ReplacementDef['body'], { b: 'enters' }>, subject:
   if (body.countersIfPay !== undefined) {
     // edh-d-54 (CR 614.12a, 701.20a; Dragon's Disciple): "As ~ enters, you may reveal a Dragon card from your hand. If you do or if you control a Dragon, ~ enters with a +1/+1 counter on it."
     const x = body.countersIfPay;
-    if (Object.keys(body).some((k) => k !== 'b' && k !== 'countersIfPay') || x.or === undefined || x.counters.length !== 1 || typeof x.counters[0]!.count !== 'number' || sentences.length > 0) throw new NoRenderer('counters for a payment as it enters in another form');
+    if (Object.keys(body).some((k) => k !== 'b' && k !== 'countersIfPay') || x.counters.length !== 1 || typeof x.counters[0]!.count !== 'number' || sentences.length > 0) throw new NoRenderer('counters for a payment as it enters in another form');
     const pay = K.cost(x.cost, st).replace(/^Pay /, 'pay ');
+    if (x.or === undefined) {
+      // edh-d-112 review (CR 107.3, 614.12a): the entering object's payment is made with X = 0 and before the object is on the battlefield (effects/bodies/m5.ts#countersIfPay), so a
+      // cost that has an X or names the object itself is not this payment: refused (fail closed, the sentence stays manual)
+      const costJson = JSON.stringify(x.cost);
+      if (/"q":"X"/.test(costJson) || /"self":true/.test(costJson) || x.cost.tap === true || x.cost.untap === true) throw new NoRenderer('a payment as it enters with an X or naming the object itself');
+      // edh-d-112 (CR 614.12a, 122.6; Rescuer Sphinx): "As ~ enters, you may return a nonland permanent you control to its owner's hand. If you do, ~ enters with a +1/+1
+      // counter on it.": any payment (no other condition beside it)
+      const c1 = x.counters[0]! as { kind: string; count: number }; // (a number: checked above)
+      return `as ${subject} ${verb}, you may ${lowerFirst(pay)}. if you do, ${alt('it', subject)} ${verb} with ${c1.count === 1 ? 'a' : numWord(c1.count)} ${c1.kind} counter${c1.count === 1 ? '' : 's'} on it`;
+    }
     if (!/^reveal (.+) from your hand$/i.test(firstAlt(pay))) throw new NoRenderer('a payment other than revealing a card from your hand');
     const c = x.counters[0]! as { kind: string; count: number }; // (a number: checked above)
     return `as ${subject} ${verb}, you may ${lowerFirst(pay)}. if you do or if ${K.cond(x.or, st)}, ${alt('it', subject)} ${verb} with ${c.count === 1 ? 'a' : numWord(c.count)} ${c.kind} counter${c.count === 1 ? '' : 's'} on it`;
@@ -2642,8 +2727,9 @@ function replace(e: ReplacementDef, st: RenderState, duration: Duration | undefi
     if (b.becomesOneOf !== undefined) {
       if (!selfSubject || duration !== undefined || e.condition !== undefined || Object.keys(b).some((k) => k !== 'b' && k !== 'becomesOneOf') || b.becomesOneOf.length < 2) throw new NoRenderer('a choice of what this permanent becomes with anything else');
       const opts = b.becomesOneOf.map((o) => {
-        if (o.typesAdded === true || (o.subtypes ?? []).length > 0 || o.types.join() !== 'Creature' || (o.add ?? []).length === 0) throw new NoRenderer('an option other than a creature with abilities');
-        return `a ${o.power}/${o.toughness} creature with ${abilityList(o.add!, st, 'creature')}`;
+        if (o.typesAdded === true || (o.subtypes ?? []).length > 0 || o.types.join() !== 'Creature') throw new NoRenderer('an option other than a creature, with or without abilities');
+        // edhe28 (Primal Plasma: "a 3/3 creature, a 2/2 creature with flying, or a 1/6 creature with defender"): an option may have no abilities
+        return (o.add ?? []).length === 0 ? `a ${o.power}/${o.toughness} creature` : `a ${o.power}/${o.toughness} creature with ${abilityList(o.add!, st, 'creature')}`;
       });
       return `as ${K.obj({ ref: 'self' }, st, 'subject').text} enters, it becomes your choice of ${opts.slice(0, -1).join(', ')}, or ${opts[opts.length - 1]!}`;
     }
@@ -2704,6 +2790,13 @@ function replace(e: ReplacementDef, st: RenderState, duration: Duration | undefi
     const eachTapped = Object.keys(b).length === 2 && b.tapped === true ? `each ${K.np(ev.subject, fork, { det: 'none', plural: false })} enters tapped` : null;
     absorb(st, fork);
     return `${lead}${eachTapped !== null ? alt(each === null ? plural : alt(plural, each), eachTapped) : each === null ? plural : alt(plural, each)}`;
+  }
+  // edh-e-48 (CR 614.1a, 614.6, 121.2, 611.2a; Plagiarize, template eff.edhe48.untilEot.targetPlayerDraw.skipYouDraw): "Until end of turn, if target player would draw a card, instead that player
+  // skips that draw and you draw a card." (the replaced player's draw is skipped, the spell's controller draws one; nothing else in the replacement)
+  if (ev.ev === 'draw' && Object.keys(ev).length === 2 && typeof ev.player === 'object' && ev.player !== null && 'ref' in ev.player && ev.player.ref === 'target' && duration?.d === 'endOfTurn'
+    && JSON.stringify(e.body) === '{"b":"instead","do":[{"op":"draw","who":{"ref":"you"},"count":1}]}' && e.condition === undefined && e.optional !== true && e.shield === undefined && e.selfReplacement !== true) {
+    const who = K.player(ev.player, st, 'subject').text;
+    return `until end of turn, if ${who} would draw a card, instead that player skips that draw and you draw a card`;
   }
   // Cloud r3-repl (CR 614.1a, 120.2b): "If a red source you control would deal an amount of noncombat damage less than ~'s power to an opponent, that source
   // deals damage equal to ~'s power instead" (Ojer Axonil): the damage raised to a number, `set: max(that damage, N)`, said with the comparison it implies
@@ -2823,6 +2916,26 @@ function replace(e: ReplacementDef, st: RenderState, duration: Duration | undefi
     const dur = durationSuffix(duration, st);
     absorb(st, fork);
     return alt(generic, `if damage would be dealt to any creature${dur}, you may have that damage dealt to you instead`, `${dur.trim()}, if damage would be dealt to any creature, you may have that damage dealt to you instead`);
+  }
+  // edh-e-18 (CR 614.9, 506.4, 120.3; Veteran Bodyguard, Weathered Bodyguards, Kjeldoran Royal Guard): all the (combat) damage that sources of a description would deal to you is dealt to an
+  // object instead: "As long as ~ is untapped, all damage that would be dealt to you by unblocked creatures is dealt to ~ instead." (a static ability with its condition) or
+  // "All combat damage that would be dealt to you by unblocked creatures this turn is dealt to ~ instead." (a resolved effect with its duration). Only that shape, said one way.
+  if (b.b === 'redirect' && b.amount === undefined && ev.ev === 'damage' && ev.source !== undefined && ev.source.is === undefined && ev.amount === undefined && ev.combat !== false && !e.shield && e.optional !== true
+    && e.selfReplacement !== true && JSON.stringify(ev.recipient) === '{"player":"you"}' && ((e.condition !== undefined && duration === undefined) || (e.condition === undefined && isLimited(duration)))) {
+    const combat = ev.combat === true ? 'combat ' : '';
+    const srcs = K.np(ev.source, st, { det: 'none', plural: true });
+    const to = refText(b.to, st, 'object').text;
+    return e.condition !== undefined
+      ? `as long as ${K.cond(e.condition, st)}, all ${combat}damage that would be dealt to you by ${srcs} is dealt to ${to} instead`
+      : `all ${combat}damage that would be dealt to you by ${srcs}${durationSuffix(duration, st)} is dealt to ${to} instead`;
+  }
+  // edh-d-103 (CR 614.9, 615.8, 120.3; Aegis of Honor): a one-use shield on the damage the next spell of a description would deal to you, that damage dealt by the spell to its own controller
+  // instead: "The next time an instant or sorcery spell would deal damage to you this turn, that spell deals that damage to its controller instead." Only a described SPELL ("that spell"),
+  // to you, for a duration
+  if (b.b === 'redirect' && b.amount === undefined && ev.ev === 'damage' && ev.source !== undefined && ev.source.is === undefined && ev.source.stackKind === 'spell' && ev.source.zone === 'stack'
+    && ev.amount === undefined && ev.combat === undefined && JSON.stringify(ev.recipient) === '{"player":"you"}' && JSON.stringify(b.to) === '{"ref":"controllerOf","object":{"ref":"event","role":"source"}}'
+    && JSON.stringify(e.shield) === '{"uses":1}' && e.condition === undefined && e.optional !== true && e.selfReplacement !== true && isLimited(duration)) {
+    return `the next time ${K.np(ev.source, st, { det: 'a' })} would deal damage to you${durationSuffix(duration, st)}, that spell deals that damage to its controller instead`;
   }
   if (b.b === 'redirect' && b.amount !== undefined) return redirectBudget(e, b, st, duration);
   // FAST5 T36 (CR 701.9a, 614.1a): "If a spell or ability an opponent controls causes you to discard ~, put it onto the battlefield instead of putting it into your graveyard"
@@ -3019,6 +3132,19 @@ function damageBackToTarget(b: Extract<ReplacementDef['body'], { b: 'prevent' }>
 }
 
 /**
+ * edh-d-103 (CR 615.5, 120.3, 608.2h; Channel Harm): the additional instruction of a prevention may be optional damage the spell deals for the damage prevented to a target it names, "If damage is
+ * prevented this way, you may have ~ deal that much damage to target creature." (a `may` of you whose one step is that damage). Null for any other additional instruction.
+ */
+function mayDamageBackToTarget(b: Extract<ReplacementDef['body'], { b: 'prevent' }>, st: RenderState): string | null {
+  const m = b.then?.length === 1 ? b.then[0] : undefined;
+  if (m?.op !== 'may' || JSON.stringify(m.who) !== '{"ref":"you"}' || m.do.length !== 1 || Object.keys(m).some((k) => m[k as keyof typeof m] !== undefined && !['op', 'who', 'do'].includes(k))) return null;
+  const c = m.do[0]!;
+  if (c.op !== 'damage' || JSON.stringify(c.source) !== '{"ref":"self"}' || JSON.stringify(c.amount) !== '{"q":"preventedAmount"}' || c.to.ref !== 'target') return null;
+  if (Object.keys(c).some((k) => c[k as keyof typeof c] !== undefined && !['op', 'source', 'to', 'amount'].includes(k))) return null;
+  return `if damage is prevented this way, you may have ${K.obj({ ref: 'self' }, st, 'object').text} deal that much damage to ${refText(c.to, st, 'object').text}`;
+}
+
+/**
  * edh-replace-3 (CR 603.12, 615.5; Phyrexian Vindicator): the additional instruction of a named prevention may be a reflexive trigger with targets, "When damage is
  * prevented this way, ~ deals that much damage to any other target." (the targets are announced as it is put on the stack, so they are its own). Null for any other
  * additional instruction.
@@ -3079,7 +3205,7 @@ function preventDamage(e: ReplacementDef, ev: Extract<EventPattern, { ev: 'damag
   // p2-replace-damage-1 (CR 120.3, 109.4): a source described by who controls it and its color only is also "sources": "by sources you don't control" (Energy Field;
   // family prevent-by-sources), any object, a spell as well as a permanent
   const srcKeys = ev.source ? Object.keys(ev.source).filter((k) => (ev.source as Record<string, unknown>)[k] !== undefined) : [];
-  const sources = ev.source && srcKeys.length > 0 && srcKeys.every((k) => k === 'controller' || k === 'not' || k === 'colors' || k === 'notSubtypes' /* edh-next-10: Repel the Abominable, "non-Human sources" */)
+  const sources = ev.source && srcKeys.length > 0 && srcKeys.every((k) => k === 'controller' || k === 'not' || k === 'colors' || k === 'colorless' || k === 'chosen' /* edh-e-18: Lithomancer's Focus, Prismatic Ward */ || k === 'notSubtypes' /* edh-next-10: Repel the Abominable, "non-Human sources" */)
     && (ev.source.not === undefined || Object.keys(ev.source.not).join() === 'controller') ? [K.np(ev.source, st, { det: 'none', plural: true, head: 'source' }), K.np(ev.source, st, { det: 'a', head: 'source' })] : [];
   // edh-next-4 (CR 608.2c; Terrifying Presence): each reading names a target of the sentence on its own copy of the state ("creatures other than target creature")
   // edhd67: a source named by a role of the trigger around the effect is read through that trigger's roles (Impulsive Maneuvers)
@@ -3094,9 +3220,15 @@ function preventDamage(e: ReplacementDef, ev: Extract<EventPattern, { ev: 'damag
   // (coordinator A, 2026-10-31: the kind is read here, not from counterPerPrevented's text, which edh-c-36 made an alt group of two orders)
   const shieldCounters = e.shield && perDamage === null && counterPerPrevented(b) !== null ? (b.then![0] as { kind: string }).kind : null;
   const perDamageCounter = shieldCounters === null ? null : `. for each 1 damage prevented this way, put a ${shieldCounters} counter on that creature`;
-  const wp = perDamage === null && perDamageCounter === null ? whenPreventedThen(b, st) ?? counterPerPrevented(b) ?? backToSource(b, st) ?? damageBackToTarget(b, e, st) : null;
+  const wp = perDamage === null && perDamageCounter === null ? whenPreventedThen(b, st) ?? counterPerPrevented(b) ?? backToSource(b, st) ?? damageBackToTarget(b, e, st) ?? mayDamageBackToTarget(b, st) : null;
   const then = perDamage ?? perDamageCounter ?? (wp !== null ? `. ${wp}` : b.then && b.then.length > 0 ? `. ${K.steps(b.then, st)}` : '');
   const dur = durationSuffix(duration, st);
+  // edh-d-103 (CR 615.7, 611.2c; Kitsune Palliator): one shield for each creature and each player as it resolves (`shield.each`), "Prevent the next 1 damage that would be dealt to each
+  // creature and each player this turn."; only that recipient, nothing else with it
+  if (e.shield?.each !== undefined) {
+    if (JSON.stringify(r) !== '{"object":{"types":["Creature"]},"player":"any"}' || source !== '' || then !== '' || combat !== '' || b.amount === 'all' || e.shield.uses !== 'all' || e.shield.amount !== undefined) throw new NoRenderer('a shield for each creature and player of another shape');
+    return `prevent ${amount} damage that would be dealt to each creature and each player${dur}`;
+  }
   const main = `prevent ${amount} ${combat}damage that would be dealt${to}${source}${dur}${then}`;
   // r4-repl (CR 611.2a, 615.1a): a resolved prevention effect may also say its duration before the sources ("... to you and creatures you control this turn by
   // creatures", Eerie Interference) or first ("Until your next turn, prevent all damage that would be dealt to you.", Morningtide's Light); not a shield, whose
@@ -3118,6 +3250,8 @@ function preventDamage(e: ReplacementDef, ev: Extract<EventPattern, { ev: 'damag
   const twoGroups = ev.source?.anyOf;
   if (twoGroups !== undefined && twoGroups.length === 2 && srcKeys.length === 1 && r === undefined && ev.amount === undefined && b.amount === 'all' && then === '' && !e.shield) {
     placed.push(withVariants(st, [(v) => `prevent all ${combat}damage ${twoGroups.map((g) => K.np(g, v, { det: 'none', plural: true })).join(' and ')} would deal${dur}`])[0]!);
+    // edh-e-18 (Luminesce; family prevent-group-would-deal): "Prevent all damage that black sources and red sources would deal this turn."
+    placed.push(withVariants(st, [(v) => `prevent all ${combat}damage that ${twoGroups.map((g) => K.np(g, v, { det: 'none', plural: true, head: 'source' })).join(' and ')} would deal${dur}`])[0]!);
   }
   // p2-replace-damage-1 (CR 611.2a, 615.1a): the duration of a resolved prevention may also come before its recipients, "Prevent all damage that would be dealt this turn
   // to creatures you control." (Sivvi's Ruse; family prevent-duration-placed)
@@ -3202,7 +3336,7 @@ function genericReplace(e: ReplacementDef, st: RenderState, duration: Duration |
 
 /** The optional fields of a permission that its sentence has words for (design 3.3: any other that is set is refused, never dropped). */
 const PERMIT_FIELDS: Record<Extract<StaticEffect, { s: 'permit' }>['action'], string[]> = {
-  cast: ['of', 'from', 'asThough', 'fromTop', 'oncePerTurn', 'anyManaType', 'anyManaColor', 'while', 'asAdventure', 'onCast' /* edh-next-127 */, 'colorlessAnyColor' /* edh-d-97 */], play: ['of', 'from', 'fromTop', 'anyManaType', 'anyManaColor', 'while', 'onCast' /* edh-next-127 */], playLand: ['count'], activate: ['of', 'asThough'], spendMana: ['asThough', 'of'] /* CLOUD std-fdn */, haveFlash: ['of', 'asThough', 'costChange'],
+  cast: ['of', 'from', 'asThough', 'fromTop', 'oncePerTurn', 'anyManaType', 'anyManaColor', 'while', 'asAdventure', 'onCast' /* edh-next-127 */, 'colorlessAnyColor' /* edh-d-97 */], play: ['of', 'from', 'fromTop', 'anyManaType', 'anyManaColor', 'while', 'onCast' /* edh-next-127 */, 'onCastLand' /* edh-d-104 */], playLand: ['count'], activate: ['of', 'asThough'], spendMana: ['asThough', 'of', 'spentType', 'asColor'] /* CLOUD std-fdn; edh-e-51 */, haveFlash: ['of', 'asThough', 'costChange'],
   attackAsThoughHaste: ['of', 'opponentsOnly'] /* edh-b-14 */,
   attackAsThoughNoDefender: ['of', 'attackedYouLastTurn'] /* r3-static; edh-combat-6 */, blockAsThough: ['asThough', 'attacker', 'of'] /* p2-attack-block-1; edhv31 (`of`: the blocker, Aetherflame Wall) */, lookAt: ['of'] /* FAST5X E25 */, revealTop: [], revealHand: [] /* edh-next-12 */, assignAsUnblocked: ['of', 'mandatory'] /* edh-combat-3; edh-d-25 */,
   activateLoyaltyAsInstant: ['of'], // r4-mech (CR 606.3)
@@ -3413,9 +3547,11 @@ export function anyTypeRider(base: string, plural?: boolean, color = false, who 
  */
 function permitRiders(e: Extract<StaticEffect, { s: 'permit' }>, st: RenderState, d: Duration | undefined): string {
   if (e.action !== 'play' && e.action !== 'cast') throw new NoRenderer(`permit ${e.action} with a rider`);
-  const { anyManaType, anyManaColor, colorlessAnyColor, while: cond, graveyardInstead: gi, laterTurn, freeSubtypes, onCast, ...bare } = e;
+  const { anyManaType, anyManaColor, colorlessAnyColor, while: cond, graveyardInstead: gi, laterTurn, freeSubtypes, onCast, onCastLand, ...bare } = e;
+  // edh-d-104 (CR 603.7a, 305.1; Fires of Mount Doom): "When you play a card this way, <instructions>." on a play permission (a land played with it triggers it too): the instructions said as they are
+  if (onCastLand !== undefined && (onCastLand !== true || onCast === undefined || e.action !== 'play')) throw new NoRenderer('"when you play a card this way" without its delayed trigger');
   // edh-next-127 (CR 603.7a; The Ruinous Powers): "When you cast a spell this way, its owner loses life equal to its mana value." (the one delayed trigger a permission carries, exactly that step)
-  const onCastText = onCast === undefined ? '' : JSON.stringify(onCast) === JSON.stringify([{ op: 'loseLife', who: { ref: 'ownerOf', object: { ref: 'event', role: 'spell' } }, amount: { q: 'stat', stat: 'manaValue', of: { ref: 'event', role: 'spell' } } }])
+  const onCastText = onCast === undefined ? '' : onCastLand === true ? `. when you play a card this way, ${K.steps(onCast, cloneState(st))}` : JSON.stringify(onCast) === JSON.stringify([{ op: 'loseLife', who: { ref: 'ownerOf', object: { ref: 'event', role: 'spell' } }, amount: { q: 'stat', stat: 'manaValue', of: { ref: 'event', role: 'spell' } } }])
     ? '. when you cast a spell this way, its owner loses life equal to its mana value' : (() => { throw new NoRenderer('a permission\'s "when you cast a spell this way" other than "its owner loses life equal to its mana value"'); })();
   if (onCast !== undefined && (laterTurn !== undefined || freeSubtypes !== undefined || gi !== undefined)) throw new NoRenderer('a permission with "when you cast a spell this way" and another rider');
   if ([anyManaType, anyManaColor, colorlessAnyColor].filter((r) => r !== undefined).length > 1) throw new NoRenderer('a permission with two riders for how its spells are paid');
@@ -3510,8 +3646,20 @@ function yoursAndLesserPermit(e: Extract<StaticEffect, { s: 'permit' }>, st: Ren
  * (Summon: Brynhildr): the turn's history of counters you put on it (rules/history.ts). Null for any other condition or duration.
  */
 function duringTurnCounter(cond: Condition | undefined, d: Duration | undefined, st: RenderState): string | null {
-  if (cond === undefined || cond.cond !== 'happened' || cond.scope !== 'turn' || cond.times !== undefined || cond.by !== undefined || (d !== undefined && d.d !== 'permanent')) return null;
+  if (cond === undefined || cond.cond !== 'happened' || cond.scope !== 'turn' || cond.by !== undefined || (d !== undefined && d.d !== 'permanent')) return null;
   const e = cond.event;
+  // edh-e-36 (CR 508.1a, 611.2c; Goblin Researcher, Boros Strike-Captain): "during any turn you attacked with ~" (this object was declared as an attacker this turn) and
+  // "during any turn you attacked with three or more creatures" (at least N different creatures you control of the description were declared, rules/history.ts)
+  if (e.ev === 'attacks' && cond.times !== undefined) {
+    const att = e.attacker as ObjectFilter | undefined;
+    const rec = e as unknown as Record<string, unknown>;
+    const t = cond.times;
+    if (att === undefined || att.controller !== 'you' || att.anyOf?.length !== 1 || Object.keys(att).filter((k) => (att as Record<string, unknown>)[k] !== undefined).length !== 2
+      || Object.keys(rec).filter((k) => rec[k] !== undefined).length !== 2 || t.op !== '>=' || typeof t.value !== 'number') return null;
+    return `during any turn you attacked with ${K.qty(t.value, st)} or more ${K.np(att.anyOf[0]!, st, { det: 'none', plural: true })}`;
+  }
+  if (e.ev === 'attacks' && cond.times === undefined && JSON.stringify(e) === '{"ev":"attacks","attacker":{"is":{"ref":"self"},"controller":"you"}}') return `during any turn you attacked with ${K.obj({ ref: 'self' }, st, 'object').text}`;
+  if (cond.times !== undefined) return null;
   // edh-cast-11 (CR 508.1a, 611.2c; Neyali, Suns' Vanguard): "during any turn you attacked with a token, you may play that card": a creature you control that matches was declared
   // as an attacker this turn (the history of the turn's attacks, rules/history.ts)
   if (e.ev === 'attacks') {
@@ -3894,6 +4042,17 @@ function alternativePermit(e: Extract<StaticEffect, { s: 'permit' }>, st: Render
 }
 
 function permit(e: Extract<StaticEffect, { s: 'permit' }>, st: RenderState, limited = false): string {
+  // trek-23 (CR 608.2c, 611.2a; Vulcan Mind-Meld): "for each card exiled this way, the player who exiled it may play it" (`exiledByOnly`, effects/handlers/lasting.ts#exiledByPermits): each
+  // player's play permission for the cards they exiled, of the cards the ability's moves put into exile (each bound name a move into exile); no other field
+  if (e.exiledByOnly !== undefined) {
+    const keys = Object.keys(e).filter((k) => (e as unknown as Record<string, unknown>)[k] !== undefined);
+    const is = e.of?.is;
+    const parts = is === undefined ? [] : is.ref === 'union' ? is.of : [is];
+    const exiled = parts.length > 0 && parts.every((p) => p.ref === 'bound' && st.info.get(`b:${p.name}`)?.zone === 'exile');
+    if (e.exiledByOnly !== true || e.action !== 'play' || JSON.stringify(e.who) !== '{"ref":"each","who":"player"}' || !exiled || Object.keys(e.of!).length !== 1
+      || keys.some((k) => !['s', 'who', 'action', 'of', 'exiledByOnly'].includes(k))) throw new NoRenderer('a permission of the player who exiled each card other than "the player who exiled it may play it"');
+    return 'for each card exiled this way, the player who exiled it may play it';
+  }
   // std-freecast-5 (CR 702.170a, 702.170f): plot from the top of your library (statics/play-permits.ts#isTopPlotPermit)
   if (e.action === 'plot') {
     const keys = Object.keys(e).filter((k) => (e as unknown as Record<string, unknown>)[k] !== undefined);
@@ -4057,8 +4216,14 @@ function permit(e: Extract<StaticEffect, { s: 'permit' }>, st: RenderState, limi
     const cast = e.of.is.link === 'exiled' ? alt(`cast spells from among cards exiled with ${self}`, 'cast the exiled card') : `cast spells from among cards exiled with ${self}`;
     return e.action === 'play' ? `${subj} ${may} ${alt(`play cards exiled with ${self}`, `play lands and cast spells from among cards exiled with ${self}`)}` : `${subj} ${may} ${cast}`;
   }
+  // edh-d-104 (the parser's rule, parser/lower/anaphora.ts#resolveIn; CR 305.1, 601.2a): what the permission names is a card, never the permanent itself where it is: ~ is no rival of its "it"
+  const namedCard = (is: ObjRef): string => {
+    const saved = st.cardOnly;
+    st.cardOnly = true;
+    try { return K.obj(is, st, 'object').text; } finally { if (saved === undefined) delete st.cardOnly; else st.cardOnly = saved; }
+  };
   const named = (e.action === 'play' || e.action === 'cast') && e.of !== undefined && Object.keys(e.of).length === 1 && e.of.is !== undefined && (e.action === 'play' || e.of.is.ref !== 'target')
-    ? K.obj(e.of.is, st, 'object').text : null;
+    ? namedCard(e.of.is) : null;
   // r5-moved (CR 608.2c, 400.7, 611.2a): the cards a move of this ability exiled are also "cards exiled this way" ("Until the end of your next turn, you may play cards exiled
   // this way", Hex Magic; render/steps-zones.ts marks the binding, the parser's group anaphor parser/holes/object.ts#group)
   const exiledWay = named !== null && e.of?.is?.ref === 'bound' && st.info.get(`b:${e.of.is.name}`)?.thisWay === 'exiled this way' && st.info.get(`b:${e.of.is.name}`)?.plural === true;
@@ -4148,6 +4313,11 @@ function permit(e: Extract<StaticEffect, { s: 'permit' }>, st: RenderState, limi
         if (e.lifeFor.once !== true) throw new NoRenderer('a life payment for each symbol of some spells');
         const spells = isSpellFilter(e.of) ? spellsPhrase(e.of, st) : K.np(e.of, st, { det: 'none', plural: true, head: 'spell' });
         return `as an additional cost to cast ${spells}, you may pay 2 life. those spells cost ${sym} less to cast if you paid life this way. this effect reduces only the amount of ${COLOR_WORD[e.lifeFor.color]} mana you pay`;
+      }
+      // edh-e-51 (CR 609.4b; Sunglasses of Urza): "You may spend white mana as though it were red mana."
+      if (e.asColor !== undefined) {
+        if (e.asThough !== 'a color' || e.spentType === undefined || e.spentType === e.asColor || e.who.ref !== 'you' || e.of !== undefined || e.abilities !== undefined || e.lifeFor !== undefined) throw new NoRenderer('a spend-one-color-as-another permission with other words');
+        return `you may spend ${COLOR_WORD[e.spentType]} mana as though it were ${COLOR_WORD[e.asColor]} mana`;
       }
       // std-rx32 (CR 609.4b): "You may spend mana as though it were mana of any color to activate abilities of creatures you control"
       if (e.abilities === true) {
@@ -4275,7 +4445,12 @@ function permit(e: Extract<StaticEffect, { s: 'permit' }>, st: RenderState, limi
         // edhv31 (CR 609.4, 702.28; Aetherflame Wall): "~ can block creatures with shadow as though they didn't have shadow": the permanent itself is the blocker (`of` self)
         if (e.of !== undefined) {
           if (e.asThough === undefined || JSON.stringify(e.of) !== '{"self":true}' || e.who.ref !== 'you' || JSON.stringify(e.attacker) !== '{"types":["Creature"]}') throw new NoRenderer('a blockAsThough permission with a blocker filter other than the permanent itself');
-          return `${K.obj({ ref: 'self' }, st, 'subject').text} can block creatures with ${e.asThough} as though they didn't have ${e.asThough}`;
+          // edh-e-49 (CR 609.4, 702.28b; Wall of Diffusion; family block-as-though-had-shadow): "~ can block creatures with shadow as though it had shadow": the same permission as "... as though they didn't have shadow"
+          // (the blocker lacks shadow, so the denial that only shadow creatures block them is the one waived)
+          const who = K.obj({ ref: 'self' }, st, 'subject').text;
+          return e.asThough === 'shadow'
+            ? alt(`${who} can block creatures with shadow as though they didn't have shadow`, `${who} can block creatures with shadow as though it had shadow`)
+            : `${who} can block creatures with ${e.asThough} as though they didn't have ${e.asThough}`;
         }
         if (e.of !== undefined || e.asThough === undefined || JSON.stringify(e.who) !== '{"ref":"each","who":"player"}' || JSON.stringify(e.attacker) !== '{"types":["Creature"]}') throw new NoRenderer('a blockAsThough permission for attackers other than "creatures with <keyword>", any player');
         return `creatures with ${e.asThough} can be blocked as though they didn't have ${e.asThough}`;
@@ -4353,6 +4528,7 @@ const RULE_FIELDS: Record<RuleModDef['rule'], string[]> = {
   crewSaddlePowerBonus: ['value'], crewSaddleUsesToughness: [], // FAST5X E3
   crewPowerBonus: ['value'], crewUsesToughness: [], // edh-perms-15, edh-next-15
   lethalDamageUsesPower: ['of'], // edh-next-145
+  spendManaOnlyFrom: ['of'], // edh-e-51 (CR 601.2h, 106.6)
   crewStationPowerTripled: [], // trek-18
   drawDuringOpponentsDrawSteps: [], // edh-next-124 (CR 504.1): "you" only
   revealFirstDraw: ['onYourTurns'], // edh-next-144 (CR 701.20a, 121.2): "you" only
@@ -4384,9 +4560,10 @@ const RULE_FIELDS: Record<RuleModDef['rule'], string[]> = {
   diceAdvantage: [], // p2-c-dieroll-1 (CR 706.6, 614.1a): "you" only
   rollAdjust: ['cost', 'value', 'oncePerTurn'], rollReroll: ['cost', 'oncePerTurn'], // edh-d-49 (CR 706.2, 706.6): "you" only
   tappedLandManaColorless: ['value', 'player', 'manaType' /* edh-next-140: Contamination */], // edh-next-12 (CR 106.12, 614.1a): Damping Sphere
-  tappedLandManaOnlyColorless: ['player'], // edh-c-72 (CR 106.12, 614.1a): Ritual of Subdual
+  tappedLandManaOnlyColorless: ['player', 'of' /* edh-e-48: Pale Moon */], // edh-c-72 (CR 106.12, 614.1a): Ritual of Subdual
   coinAdvantage: [], // edh-next-12 (CR 705.1, 614.1a): "you" only
   extraSpellCopy: [], // edh-cast-13 (CR 707.10, 614.1a): "you" only
+  tappedLandManaByType: ['player'], // edh-e-48 (CR 106.12, 614.1a): Naked Singularity, Reality Twist
   tappedLandManaOnlyType: ['player', 'manaType'], // edh-next-45 (CR 106.12, 614.1a): Infernal Darkness
   damageAsWither: [], // edh-d-44 (CR 702.80a): Everlasting Torment
   devotionBonus: ['value'], // edh-next-140 (CR 700.5): Altar of the Pantheon, "you" only
@@ -4433,6 +4610,14 @@ function combatTax(e: RuleModDef, st: RenderState, n: string): string {
   const announcedX = typeof e.value === 'object' && e.value.q === 'X' && Object.keys(e.value).length === 1;
   let pay = typeof e.value === 'object' ? '{X}' : `{${n}}`;
   const where = typeof e.value === 'object' && !announcedX ? `, where X is ${n}` : '';
+  // edh-e-49 (CR 508.1h, 118.3; Flooded Woodlands, Reclamation): "Green creatures can't attack unless their controller sacrifices a land of their choice for each green creature they control that's attacking."
+  if (e.rule === 'attackTax' && e.defenders === 'any' && e.cost !== undefined && e.of !== undefined && e.player === undefined && e.value === undefined) {
+    const o = e.cost.other;
+    if (Object.keys(e.cost).length === 1 && o?.length === 1 && o[0]!.kind === 'sacrifice' && o[0]!.count === 1 && !o[0]!.self && Object.keys(o[0]!).length === 3
+      && JSON.stringify(o[0]!.filter) === '{"types":["Land"]}') {
+      return `${K.np(e.of, st, { det: 'none', plural: true })} can't attack unless their controller sacrifices a land of their choice for each ${K.np(e.of, st, { det: 'none' })} they control that's attacking`;
+    }
+  }
   if (e.cost !== undefined) {
     const { mana, other, ...rest } = e.cost;
     const life = other?.length === 1 && other[0]!.kind === 'payLife' && typeof other[0]!.amount === 'number' ? other[0]!.amount : undefined;
@@ -4470,6 +4655,7 @@ function ruleMod(e: RuleModDef, st: RenderState, limited = false): string {
     if (e[k] !== undefined && !RULE_FIELDS[e.rule].includes(k)) throw new NoRenderer(`rule ${e.rule} with ${k}`);
   }
   if (e.manaType !== undefined && e.rule !== 'manaDoesNotEmpty' && e.rule !== 'unspentManaBecomes' && e.rule !== 'tappedLandManaOnlyType' && e.rule !== 'tappedLandManaColorless' /* edh-next-140 */) throw new NoRenderer(`rule ${e.rule} with manaType`);
+  if (e.manaByLandType !== undefined && e.rule !== 'tappedLandManaByType') throw new NoRenderer(`rule ${e.rule} with manaByLandType`); // edh-e-48
   if (e.delta !== undefined && e.rule !== 'maxHandSize') throw new NoRenderer(`rule ${e.rule} with delta`); // std-ry3
   if (e.onlyIf !== undefined && e.rule !== 'combatDamageUsesToughness' && e.rule !== 'stationUsesToughness') throw new NoRenderer(`rule ${e.rule} with onlyIf`);
   if ((e.keyword !== undefined) !== (e.rule === 'additionalActivation' || e.rule === 'activateAsUnactivated')) throw new NoRenderer(`rule ${e.rule} with${e.keyword === undefined ? 'out' : ''} keyword`);
@@ -4518,6 +4704,11 @@ function ruleMod(e: RuleModDef, st: RenderState, limited = false): string {
     case 'lethalDamageUsesPower': {
       if (e.of === undefined) throw new NoRenderer('lethal damage by power of the source alone');
       return `lethal damage dealt to ${K.np(e.of, st, { det: 'none', plural: true })} is determined by their power rather than their toughness`;
+    }
+    // edh-e-51 (CR 601.2h, 106.6; Myr Superion, Imperiosaur): "Spend only mana produced by creatures to cast this spell."
+    case 'spendManaOnlyFrom': {
+      if (e.of === undefined) throw new NoRenderer('a spend-only rule without the sources');
+      return `spend only mana produced by ${K.np(e.of, st, { det: 'none', plural: true })} to cast ${K.obj({ ref: 'self' }, st, 'object').text}`;
     }
     case 'combatDamageUsesToughness': {
       const assigns = 'assigns combat damage equal to its toughness rather than its power';
@@ -4591,7 +4782,20 @@ function ruleMod(e: RuleModDef, st: RenderState, limited = false): string {
     case 'tappedLandManaOnlyColorless':
       // edh-c-72 (CR 106.12, 614.1a; Ritual of Subdual): every player's lands
       if (e.player === undefined || JSON.stringify(e.player) !== '{"ref":"each","who":"player"}') throw new NoRenderer('a tapped-land colorless mana rule for lands other than every player\'s');
+      // edh-e-48 (CR 106.12, 614.1a; Pale Moon): "if a player taps a nonbasic land for mana, it produces colorless mana instead of any other type" (nonbasic lands only)
+      if (e.of !== undefined) {
+        if (JSON.stringify(e.of) !== '{"notSupertypes":["Basic"]}') throw new NoRenderer('a tapped-land colorless mana rule for lands other than nonbasic ones');
+        return 'if a player taps a nonbasic land for mana, it produces colorless mana instead of any other type';
+      }
       return 'if a land is tapped for mana, it produces colorless mana instead of any other type';
+    case 'tappedLandManaByType': {
+      // edh-e-48 (CR 106.12, 614.1a; Naked Singularity, Reality Twist): "If tapped for mana, Plains produce {R}, Islands produce {G}, ... instead of any other type": every player's lands
+      if (e.player === undefined || JSON.stringify(e.player) !== '{"ref":"each","who":"player"}') throw new NoRenderer('a land-type mana swap for lands other than every player\'s');
+      const entries = Object.entries(e.manaByLandType ?? {});
+      if (entries.length < 2 || entries.some(([k, t]) => !/^(Plains|Island|Swamp|Mountain|Forest)$/.test(k) || t === undefined || t === 'C')) throw new NoRenderer('a land-type mana swap other than basic land types to colors');
+      const words = entries.map(([k, t]) => `${k === 'Plains' ? 'plains' : `${k.toLowerCase()}s`} produce {${t!.toLowerCase()}}`);
+      return `if tapped for mana, ${words.slice(0, -1).join(', ')}, and ${words[words.length - 1]} instead of any other type`;
+    }
     case 'tappedLandManaOnlyType':
       // edh-next-45 (CR 106.12, 614.1a; Infernal Darkness): every player's lands, a colored type
       if (e.player === undefined || JSON.stringify(e.player) !== '{"ref":"each","who":"player"}' || e.manaType === undefined || e.manaType === 'C') throw new NoRenderer('a tapped-land single-type mana rule for lands other than every player\'s, or for colorless');
@@ -4975,7 +5179,32 @@ export function damageUnpreventableText(duration: Duration | undefined, st: Rend
  * The effects of one static ability as text. Consecutive "can't" restrictions of the same subject read as one sentence ("Enchanted creature can't attack or
  * block"), or as separate ones; everything else is a sentence of its own.
  */
+/**
+ * edh-e-66 (CR 614.1c, 614.12, 107.3m, 122.6; Apocalypse Hydra): "~ enters with X +1/+1 counters on it. If X is 5 or more, it enters with an additional X +1/+1 counters on it.": two replacement effects of
+ * this object's entering, the second only while the X it was cast with is at least a number; each gives X counters of a kind. Null for anything else.
+ */
+function xCountersAdditionalIfXAtLeast(effects: readonly StaticEffect[], st: RenderState): string | null {
+  if (effects.length !== 2) return null;
+  const SELF_ENTERS = '{"ev":"zoneChange","subject":{"self":true},"to":"battlefield"}';
+  const xCounters = (x: StaticEffect): { kind: string; cond: Condition | undefined } | null => {
+    if (x.s !== 'replace' || x.optional === true || x.shield !== undefined || x.selfReplacement === true || JSON.stringify(x.replaces) !== SELF_ENTERS || x.body.b !== 'enters') return null;
+    const keys = Object.keys(x.body).filter((k) => k !== 'b');
+    const cs = x.body.counters;
+    if (keys.length !== 1 || keys[0] !== 'counters' || cs === undefined || cs.length !== 1 || JSON.stringify(cs[0]!.count) !== '{"q":"X"}') return null;
+    return { kind: cs[0]!.kind, cond: x.condition };
+  };
+  const a = xCounters(effects[0]!);
+  const b = xCounters(effects[1]!);
+  if (a === null || b === null || a.cond !== undefined || b.cond === undefined) return null;
+  const c = b.cond as { cond?: string; left?: unknown; op?: string; right?: Quantity };
+  if (c.cond !== 'compare' || JSON.stringify(c.left) !== '{"q":"X"}' || c.op !== '>=' || c.right === undefined || typeof c.right !== 'number') return null;
+  const self = K.obj({ ref: 'self' }, st, 'object').text;
+  return `${self} enters with x ${a.kind} counters on it. if x is ${c.right} or more, it enters with an additional x ${b.kind} counters on it`;
+}
+
 export function staticEffects(effects: StaticEffect[], st: RenderState): string {
+  const hydra = xCountersAdditionalIfXAtLeast(effects, st); // edh-e-66 (Apocalypse Hydra)
+  if (hydra !== null) return hydra;
   // edh-next-136 (CR 701.9a, 701.21a, 109.5; Tamiyo, Collector of Tales; sta.edhn136.cantCauseDiscardOrSacrifice.opponents): the discard and the sacrifice an opponent's spell or ability would make you do, one sentence
   if (JSON.stringify(effects) === '[{"s":"restrict","subject":{"ref":"you"},"mode":"cant","action":"discard","causedByOpponents":true},{"s":"restrict","subject":{"ref":"you"},"mode":"cant","action":"sacrifice","causedByOpponents":true}]') {
     return `spells and abilities ${alt('your opponents control', 'each opponent controls')} can't cause you to discard cards or sacrifice permanents`; // (family each-opponent-controls-discard-sacrifice)
@@ -5978,7 +6207,11 @@ function isCreatureOnlyPump(e: StaticEffect): e is ContinuousEffectDef {
   const m = e.mods[0]!;
   if (m.layer !== '7c' || Object.keys(m).some((k) => !['layer', 'power', 'toughness'].includes(k))) return false;
   const f = e.affects.filter;
-  return JSON.stringify(f.allTypes) === '["Creature"]' && Object.keys(f).length === 2 && f.types?.length === 1;
+  if (JSON.stringify(f.allTypes) === '["Creature"]' && Object.keys(f).length === 2 && f.types?.length === 1) return true;
+  // edh-d-110 (CR 604.1, 613.4c, 301.7; Depala, Pilot Exemplar): "Each Vehicle you control gets +1/+1 as long as it's a creature": the group may be a subtype the source's controller
+  // controls (no card type, so no other wording says the same group)
+  return JSON.stringify(f.allTypes) === '["Creature"]' && f.types === undefined && Array.isArray(f.subtypes) && f.subtypes.length === 1
+    && f.controller === 'you' && Object.keys(f).length === 3;
 }
 function withoutCreatureType(f: ObjectFilter): ObjectFilter {
   const { allTypes: _gone, ...rest } = f;
@@ -6368,6 +6601,12 @@ export function staticEffect(e: StaticEffect, st: RenderState, o: { duration?: D
         && e.change.mana !== undefined && e.change.generic === undefined && e.change.floor === undefined && e.change.life === undefined && e.change.coloredOnly === undefined && sameShape(e.change.times, { q: 'chosenColorsOf', link: 'color' })) {
         return `each spell you cast costs ${formatManaCost(e.change.mana)} less to cast for each of the chosen colors it is`;
       }
+      // edh-e-16 (CR 702.109a, 601.2f, 118.7; Warbringer): "Dash costs you pay cost {2} less." (the dash alternative cost of the spells you cast)
+      if (e.applies.via === 'dash' && !e.applies.self && e.applies.abilities === undefined && e.applies.spells !== undefined && Object.keys(e.applies.spells).length === 0 && o.duration === undefined
+        && e.change.mana !== undefined && e.change.generic === undefined && e.change.times === undefined && e.change.floor === undefined && e.change.life === undefined && e.change.coloredOnly === undefined
+        && e.applies.caster === 'you' && e.change.kind === 'reduce') {
+        return `dash costs you pay cost ${formatManaCost(e.change.mana)} less`;
+      }
       // edh-d-45 (CR 702.34a, 601.2f, 118.7; Catalyst Stone): "Flashback costs you pay cost {2} less." / "Flashback costs your opponents pay cost {2} more." (the flashback alternative cost of the spells a player casts)
       if (e.applies.via === 'flashback' && !e.applies.self && e.applies.abilities === undefined && e.applies.spells !== undefined && Object.keys(e.applies.spells).length === 0 && o.duration === undefined
         && e.change.mana !== undefined && e.change.generic === undefined && e.change.times === undefined && e.change.floor === undefined && e.change.life === undefined && e.change.coloredOnly === undefined
@@ -6458,6 +6697,10 @@ export function staticEffect(e: StaticEffect, st: RenderState, o: { duration?: D
       if (JSON.stringify(e) === JSON.stringify(BITTER_FEUD_REPLACEMENT)) return 'if a source controlled by one of the chosen players would deal damage to the other chosen player or a permanent that player controls, that source deals double that damage to that player or permanent instead';
       // edh-d-98 (CR 614.1a, 121.2; Scion of Halaster, template sta.edhd98.firstDraw.lookTwo.oneGraveyard.otherTop.thenDraw): the first draw of the turn replaced by looking at two cards, one
       // into the graveyard, the other back on top, then a draw; exactly this shape, said whole
+      // edh-e-48 (CR 614.1a, 614.6, 504.1, 121.2; Chains of Mephistopheles, template rep.edhe48.draw.exceptFirstDrawStep.discardInstead.drawElseMill): exactly this shape, said whole
+      if (JSON.stringify(e) === JSON.stringify(CHAINS_REPLACEMENT)) return "if a player would draw a card except the first one they draw in each of their draw steps, that player discards a card instead. if the player discards a card this way, they draw a card. if the player doesn't discard a card this way, they mill a card";
+      // edh-e-48 (CR 614.1a, 121.2, 504.1; Reed Richards, Smartest Man, template sta.edhe48.draw.firstEachTurnExceptDrawStep.four): exactly this shape, said whole
+      if (JSON.stringify(e) === JSON.stringify(REED_FIRST_DRAW_FOUR)) return 'the first time you would draw a card each turn except the first card you draw during each of your draw steps, you draw four cards instead';
       if (JSON.stringify(e) === JSON.stringify(FIRST_DRAW_LOOK_TWO)) return 'the first time you would draw a card each turn, instead look at the top two cards of your library. put one of them into your graveyard and the other back on top of your library. then draw a card';
       // the roles of the replaced event are what `{ref:'event'}` means in the body (design 3.5)
       const saved = st.trigger;
@@ -6616,6 +6859,20 @@ export function staticEffect(e: StaticEffect, st: RenderState, o: { duration?: D
     default: throw new NoRenderer(`static effect ${(e as { s: string }).s}`);
   }
 }
+
+/** edh-e-48 (Chains of Mephistopheles): the one replacement `case 'replace'` above says whole (the build of template rep.edhe48.draw.exceptFirstDrawStep.discardInstead.drawElseMill). */
+const CHAINS_REPLACEMENT = {
+  s: 'replace', replaces: { ev: 'draw', player: 'any', exceptFirstInDrawStep: true }, body: { b: 'instead', do: [
+    { op: 'discard', who: { ref: 'event', role: 'player' }, count: 1, as: 'discarded' },
+    { op: 'draw', who: { ref: 'event', role: 'player' }, count: 1, guard: { cond: 'did', step: 'discarded' } },
+    { op: 'mill', who: { ref: 'event', role: 'player' }, count: 1, guard: { cond: 'did', step: 'discarded', not: true } },
+  ] },
+};
+
+/** edh-e-48 (Reed Richards, Smartest Man): the one replacement `case 'replace'` above says whole (the build of template sta.edhe48.draw.firstEachTurnExceptDrawStep.four). */
+const REED_FIRST_DRAW_FOUR = {
+  s: 'replace', replaces: { ev: 'draw', player: 'you', firstEachTurn: true, exceptFirstInDrawStep: true }, body: { b: 'instead', do: [{ op: 'draw', who: { ref: 'you' }, count: 4 }] },
+};
 
 /** edh-d-98 (Scion of Halaster): the one replacement `case 'replace'` above says whole (the build of template sta.edhd98.firstDraw.lookTwo.oneGraveyard.otherTop.thenDraw). */
 const FIRST_DRAW_LOOK_TWO = {

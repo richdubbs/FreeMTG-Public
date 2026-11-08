@@ -74,8 +74,16 @@ export const resolveDeck: Handler<'POST /api/decks/resolve'> = async (req, ctx) 
         errors.push({ line: l.line, text: l.name, message: `${card.name} is the back face of a meld pair, not a card of its own (CR 712.4b): put the two cards of the pair in the deck instead` });
       } else if (card) {
         const m = merged.get(card);
-        if (m) m.count += l.count;
-        else merged.set(card, { section, count: l.count, name: card.name, oracleId: card.oracle_id ?? '', automation: store.automation.levelOf(card) });
+        // deck-art-1: "(SET) number" picks that printing (the first line's when the card is listed on several); the client checks it exists.
+        const printing = l.set && /^[a-z0-9]{2,8}$/i.test(l.set) ? { set: l.set.toLowerCase(), number: l.collectorNumber ?? '' } : undefined;
+        if (m) {
+          m.count += l.count;
+          if (!m.printing && printing) m.printing = printing;
+        } else
+          merged.set(card, {
+            section, count: l.count, name: card.name, oracleId: card.oracle_id ?? '', automation: store.automation.levelOf(card),
+            ...(printing ? { printing } : {}),
+          });
       } else {
         const m = missing.get(l.name);
         if (m) m.count += l.count;

@@ -7,8 +7,9 @@
  * the text frame) unless a provider passes another one (tests).
  */
 import { createContext, useContext, useMemo, type ComponentType, type ReactNode } from 'react';
-import type { CardDetailResponse, ResolveResponse, SearchQuery, SearchResponse, SetsResponse, ValidateResponse } from '@openmtg/server/api';
+import type { CardDetailResponse, CommanderChoicesResponse, DeckEntry, DeckTokensResponse, PrintingsResponse, ResolveResponse, SearchQuery, SearchResponse, SetsResponse, ValidateResponse } from '@openmtg/server/api';
 import { ApiRequestError, apiGet, apiPost } from '../api/http';
+import { pagePrintings } from '../images/printings';
 import { useShowScryfallImages } from '../images/settings';
 import type { CardViewProps } from './CardPreview';
 import { toDeckList, type Deck } from './model';
@@ -27,6 +28,15 @@ export interface DecksApi {
   resolve(text: string): Promise<ResolveResponse>;
   /** Format validation (work package F1 rules, served by C1). `format` is the deck's format id (formats.ts). */
   validate(deck: Deck, format: string, signal?: AbortSignal): Promise<ValidateResponse>;
+  /**
+   * deck-art-1: which of `names` may be added as a commander next to `commander` in this format (the deck check's own rule, cards/formats/commander.ts
+   * canAddCommander). The deckbuilder offers "Commander" (button, drop on the Commander section) only for those.
+   */
+  commanderChoices(format: string, commander: readonly DeckEntry[], names: readonly string[], signal?: AbortSignal): Promise<CommanderChoicesResponse>;
+  /** deck-art-1: the printings of a card or token (GET /api/printings, Scryfall through our server); `images`: with their picture URLs. */
+  printings(query: { oracleId?: string; name?: string; images: boolean }): Promise<PrintingsResponse>;
+  /** deck-art-1: the tokens and emblems the named cards make (POST /api/decks/tokens). */
+  tokens(names: readonly string[], signal?: AbortSignal): Promise<DeckTokensResponse>;
   /** Every set, for the Advanced search form's Set field (optional: without it the field takes typed codes and names only). */
   sets?(signal?: AbortSignal): Promise<SetsResponse>;
 }
@@ -39,6 +49,11 @@ export const httpDecksApi: DecksApi = {
   card: (name, opts = {}) => apiGet('GET /api/cards/:name', { params: { name }, ...(opts.images ? { query: { images: 1 } } : {}), ...(opts.signal ? { signal: opts.signal } : {}) }),
   resolve: (text) => apiPost('POST /api/decks/resolve', { text }),
   validate: (deck, format, signal) => apiPost('POST /api/decks/validate', { deck: toDeckList(deck), format: validationFormat(format) }, signal ? { signal } : {}),
+  commanderChoices: (format, commander, names, signal) =>
+    apiPost('POST /api/decks/commander-choices', { format: validationFormat(format), commander: [...commander], names: [...names] }, signal ? { signal } : {}),
+  // The page's printing lists: the same ones the pictures of chosen printings are looked up in (images/scryfall.ts).
+  printings: (query) => pagePrintings.get(query),
+  tokens: (names, signal) => apiPost('POST /api/decks/tokens', { names: [...names] }, signal ? { signal } : {}),
   sets: (signal) => apiGet('GET /api/sets', signal ? { signal } : {}),
 };
 

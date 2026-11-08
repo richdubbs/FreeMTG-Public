@@ -49,6 +49,9 @@ export function possessiveStep(step: TurnStep, whose: PlayerPred | PlayerRef | u
     const of = K.player(whose, cloneState(st), 'object').text;
     return alt(`${K.player(whose, st, 'possessive').text} ${name}`, `the ${name} of ${of}`);
   }
+  // edh-d-105 (CR 502.1, 611.2a; Orcish Farmer): "until its controller's next untap step" of the object the effect is about: said from the state as it is before (the object is named
+  // by the sentence's subject, which is said after the duration is worked out), as "its controller's" or the object's own controller
+  if (typeof whose === 'object' && whose.ref === 'controllerOf' && next && step === 'untap') return alt(`its controller's ${nx}${name}`, `${K.player(whose, cloneState(st), 'possessive').text} ${nx}${name}`);
   // edh-players-8 (CR 603.7, 108.3; The Eternal Wanderer): "at the beginning of that player's next end step" of the owner of the card just moved (family delayed-owners-next-step)
   if (typeof whose === 'object' && whose.ref === 'ownerOf' && next) return alt(`${K.player(whose, st, 'possessive').text} ${nx}${name}`, `that player's ${nx}${name}`, `their ${nx}${name}`); // edh-next-79: "... at the beginning of their next upkeep" after "under its owner's control" (Phytotitan)
   return `${K.player(whose, st, 'possessive').text} ${nx}${name}`;

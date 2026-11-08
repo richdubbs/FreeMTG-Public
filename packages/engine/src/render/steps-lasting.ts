@@ -403,6 +403,8 @@ const ACTION_OBJECT: Partial<Record<KeywordActionName, (obj: string, n: string |
   doubleEachKind: (o) => (o === 'you' ? 'double the number of each kind of counter you have' : `double the number of each kind of counter on ${o}`), // edh-top-9 (CR 122.1; Aetheric Amplifier): the player's own counters
   // r5-refs (CR 122.6): one more counter of each kind; the holder is named again by its demonstrative ("target permanent or player" ... "that permanent or player")
   anotherOfEachKind: (o) => `for each kind of counter on ${o}, give ${o.includes('target ') ? o.replaceAll('target ', 'that ') : o} another counter of that kind`,
+  // edh-e-67 (CR 122.1; Dramatist's Puppet): one more counter of that kind or one removed, the holder named again by "it"
+  addOrRemoveEachKind: (o) => `for each kind of counter on ${o}, put another counter of that kind on it or remove one from it`,
   manifest: (o) => `manifest ${o}`,
   cloak: (o) => `cloak ${o}`,
   // FAST5X E10: "airbend target nonland permanent" (CR 701.65a: the objects are named after the word)
@@ -1074,6 +1076,9 @@ export const CLAUSES_LASTING = {
       const nt = only.newTargets === true || only.newTargets === 'may' ? '. you may choose new targets for the copy' : '';
       return plain(`copy the next loyalty ability you activate this turn when you activate it${nt}`, { standalone: true });
     }
+    // edh-e-24 (CR 603.7b, 115.1; Spiritualize): "Until end of turn, whenever target creature deals damage, ...": a target named in the event is first said in this lead, so the
+    // "until end of turn" lead is also said from the state before the lead's own words mention it (afterwards the same words read "that creature")
+    const preLead = s.when.at === 'event' && s.duration?.d === 'endOfTurn' && s.once !== true ? cloneState(st) : null;
     const lead = delayedLead(s, st);
     // inside the delayed trigger `{ref:'event'}` is the event it waits for (CR 603.7)
     const saved = st.trigger;
@@ -1117,6 +1122,7 @@ export const CLAUSES_LASTING = {
         return plain(alt(`${thenBody} ${lead} if ${condText}`, `${lead}, if ${condText}, ${thenBody}`, `${oldBody} ${lead}`, `${lead}, ${oldBody}`, ...(unlessText !== null ? [`${lead}, ${thenBody} unless ${unlessText}`, `${thenBody} ${lead} unless ${unlessText}`] : [])), { standalone: true });
       }
       const savedBody = st.inDelayBody;
+      const before = cloneState(st); // edh-e-2: the state before the body names anything (delay-flip-then-result below)
       st.inDelayBody = true; // edh-next-79
       try { body = K.steps(s.do, st, { nested: true, sentences: true }); } finally { if (savedBody === undefined) delete st.inDelayBody; else st.inDelayBody = savedBody; } // (a step-timed delayed trigger too: parser/lower/delay-tail.ts, trek-8)
       if (moveThen !== undefined) {
@@ -1132,6 +1138,16 @@ export const CLAUSES_LASTING = {
         const first = K.steps([s.do[0]!], again, { nested: true, sentences: true });
         const second = K.steps([s.do[1]!], again, { nested: true, sentences: true });
         return plain(alt(`${lead}, ${body}`, `${first} ${lead}, then ${second}`), { standalone: true });
+      }
+      // edh-e-2 (CR 705.2, 603.7; Fickle Efreet; family delay-flip-then-result): "Flip a coin at end of combat. If you lose the flip, an opponent gains control of ~.": a delayed trigger whose one
+      // instruction is a flip with a result, the time words closing the flip's sentence, the result its own sentence (the source is named again, ~, in that sentence)
+      if (only?.op === 'flipCoin' && (only.onWin !== undefined || only.onLose !== undefined)) {
+        const again = before;
+        again.inDelayBody = true;
+        again.mentioned.delete('self');
+        const flipText = K.steps(s.do, again, { nested: true, sentences: true });
+        const cut = flipText.indexOf('. ');
+        if (cut > 0) return plain(alt(`${lead}, ${body}`, `${flipText.slice(0, cut)} ${lead}${flipText.slice(cut)}`), { standalone: true });
       }
       if (counted !== undefined) {
         // edh-next-133: the copy's own words without its counters, then the time words, then the counters' sentence (the body may hold several wordings: its last ". " is not the cut)
@@ -1158,9 +1174,11 @@ export const CLAUSES_LASTING = {
     const untilLead = s.when.at === 'event' && s.duration?.d === 'endOfTurn' && s.once !== true ? `until end of turn, whenever ${K.events([s.when.event], st, 'present', { batch: s.batch === true, ...(s.wholeBatch === true ? { wholeBatch: true } : {}) })}` : null;
     // edh-c-76 (CR 603.7b, 514.2; Harsh Justice; template eff.edhv76.thisTurn.whenever): and "This turn, whenever ..." (the same lead with "this turn" for "until end of turn")
     const thisLead = untilLead === null ? null : untilLead.replace(/^until end of turn,/, 'this turn,');
-    if (hasBreak(body)) return plain(untilLead === null ? `${lead}, ${body}` : alt(`${lead}, ${body}`, `${untilLead}, ${body}`, `${thisLead}, ${body}`), { standalone: true });
+    const earlyLead = preLead !== null && s.when.at === 'event' ? `until end of turn, whenever ${K.events([s.when.event], preLead, 'present', { batch: s.batch === true, ...(s.wholeBatch === true ? { wholeBatch: true } : {}) })}` : null; // edh-e-24
+    // edh-e-1 (Tzaangor Shaman): "copy the next ... spell you cast this turn when you cast it. You may choose new targets for the copy." is a second wording beside the "when you next cast ..., copy it. ..." one, though the body has a sentence break
+    if (hasBreak(body)) return plain(untilLead === null ? alt(`${lead}, ${body}`, ...(nextWords !== null ? [nextWords] : [])) : alt(`${lead}, ${body}`, `${untilLead}, ${body}`, `${thisLead}, ${body}`), { standalone: true });
     // (the leading wording first: a body that ends inside the quotes of a granted ability ends the sentence there, render/clause.ts#endSentence reads the first option)
-    if (untilLead !== null) return plain(alt(`${lead}, ${body}`, `${untilLead}, ${body}`, `${thisLead}, ${body}`, `${body} ${lead}`), { standalone: true });
+    if (untilLead !== null) return plain(alt(`${lead}, ${body}`, `${untilLead}, ${body}`, `${thisLead}, ${body}`, `${body} ${lead}`, ...(earlyLead !== null && earlyLead !== untilLead ? [`${earlyLead}, ${body}`] : [])), { standalone: true });
     // one instruction reads "Sacrifice it at the beginning of the next end step"; several read "At the beginning of ..., do this and that"
     return plain(s.do.length === 1 ? alt(`${body} ${lead}`, `${lead}, ${body}`, ...(nextWords !== null ? [nextWords] : [])) : alt(`${lead}, ${body}`, `${body} ${lead}`), { standalone: true });
   },
@@ -1194,7 +1212,8 @@ export const CLAUSES_LASTING = {
     const info = st.info.get(`b:${s.when.did}`);
     const actor = info?.actor;
     const you = actor === undefined || actor === null || actor === 'you';
-    const lead = you ? (info?.paidTimes === true ? alt('when you do', 'when you did', 'when you pay this cost one or more times') : alt('when you do', 'when you did')) : alt('when that player does', 'when the player does', 'when they do' /* edh-d-84 (CR 603.12; Yes Man, Personal Securitron): the one player whose action it waits for is "they" */); // edhn81: after "you may pay {M} any number of times"
+    const lead0 = you ? (info?.paidTimes === true ? alt('when you do', 'when you did', 'when you pay this cost one or more times') : alt('when you do', 'when you did')) : alt('when that player does', 'when the player does', 'when they do' /* edh-d-84 (CR 603.12; Yes Man, Personal Securitron): the one player whose action it waits for is "they" */); // edhn81: after "you may pay {M} any number of times"
+    const lead = info?.connived === true ? 'when it connives this way' : lead0; // edh-e-26 (Psychic Pickpocket, Obscura Interceptor)
     // r5-cost (CR 603.12, 700.2): a reflexive trigger with modes, "when you do, choose one -- • ... • ..." (its program: the modes, then its own instructions)
     if (s.modes !== undefined) return plain(`${lead}, ${K.program({ targets: s.targets, modes: s.modes, steps: s.do }, st)}`, { standalone: true });
     // std-rx32 (CR 701.3a, 603.12): after an attach of targets, "when one or more Equipment become attached to that creature this way" (render/steps-zones.ts#attach)
@@ -1304,8 +1323,9 @@ export const CLAUSES_LASTING = {
     return plain('you choose which creatures attack this turn');
   },
   putSticker: (s: StepOf<'putSticker'>, st: RenderState): Clause => { // edh-next-147 (CR 123.3, 123.6; _____ Goblin): "put a name sticker on it"
-    if (s.who.ref !== 'you' || s.sticker !== 'name') throw new NoRenderer('a sticker put by a player other than you, or a sticker other than a name sticker');
-    return plain(`put a name sticker on ${K.obj(s.on, st, 'object').text}`);
+    if (s.who.ref !== 'you') throw new NoRenderer('a sticker put by a player other than you');
+    // edh-e-30 (CR 123.3; Ticketomaton): "put a sticker on a nonland permanent you own", a sticker of any kind the player has access to
+    return plain(`put a${s.sticker === 'name' ? ' name' : ''} sticker on ${K.obj(s.on, st, 'object').text}`);
   },
   reselectAttack: (s: StepOf<'reselectAttack'>, st: RenderState): Clause => {
     const which = s.playersOnly === true ? 'player' : 'player or permanent';
@@ -1337,6 +1357,11 @@ export const CLAUSES_LASTING = {
     // edh-mana-keywords-10 (CR 706.1): "Roll X six-sided dice, where X is ..." (Luck Bobblehead): a computed number of dice, said as X with its definition after the dice
     // edh-d-49 (CR 706.2, 706.6; Iron Mastiff): "roll a d20 for each player being attacked and ignore all but the highest roll": one die for each opponent attacked this combat, the result the highest
     // edh-next-129 (CR 706.1, 602.2b; Mr. House, President and CEO): "Roll a six-sided die plus an additional six-sided die for each mana from Treasures spent to activate this ability"
+    // edhe34 (CR 701.52a; Line Cutter): "Roll to visit your Attractions": the one six-sided die of the controller, rolled to visit (parser/lower: the template eff.edhe34.rollToVisit)
+    if (s.visit === true) {
+      if (s.sides !== 6 || s.count !== undefined || s.modifier !== undefined || s.chooseOne !== undefined || s.keepHighest !== undefined || s.highest !== undefined || s.afterRoll !== undefined || (s.table?.length ?? 0) > 0 || JSON.stringify(s.who) !== '{"ref":"you"}') throw new NoRenderer('a roll to visit in another form');
+      return byPlayer(s.who, st, 'roll', 'to visit your Attractions');
+    }
     const plusEach = s.count !== undefined && typeof s.count === 'object' && s.count.q === 'math' && s.count.op === '+' && s.count.args.length === 2 && s.count.args[0] === 1
       && typeof s.count.args[1] === 'object' && s.count.args[1].q === 'activationManaFrom' ? s.count.args[1] : null;
     if (plusEach !== null) {
@@ -1510,6 +1535,8 @@ export const CLAUSES_LASTING = {
   },
 
   action: (s: StepOf<'action'>, st: RenderState): Clause => {
+    // edh-e-26 (CR 701.50a, 603.12; Psychic Pickpocket): the connive a later "When it connives this way" waits for
+    if (s.action === 'connive' && s.as !== undefined) bind(st, s.as, { nouns: [], plural: false, connived: true });
     // T20 (FAST4): a computed N is written "discover X, where X is that spell's mana value" (CR 701.57a, 107.3)
     // FAST5 MX6: and "earthbend X, where X is ...", "it endures X, where X is ...", "empower Jace X, where X is ..." (CR 701.66a, 701.63a)
     // FAST5 T76: "it endures X, where X is the number of counters on this creature": the permanent that endures comes first in the text, so it is named before the amount
@@ -1530,6 +1557,12 @@ export const CLAUSES_LASTING = {
     if (s.action === 'amass') bind(st, s.as, { nouns: ['army'], plural: false, alts: ['the amassed Army', 'the Army you amassed'] });
     // edh-perms-15 (CR 701.36a, 608.2c; the parser's mention, parser/lower/mentions.ts#producedBy): the token a populate created is "the token created this way" later (Determined Iteration)
     if (s.action === 'populate' && s.n === undefined) bind(st, s.as, { nouns: ['token', 'creature'], plural: false, alts: ['the token created this way'] });
+    // edh-d-105 (CR 701.36a, 508.4, 110.5b; Ghired, Conclave Exile): "populate. The token enters tapped and attacking.": the token copy enters with both flags (the second sentence is the
+    // status it enters with, as copy-token-then-enters-tapped-attacking says of a token copy)
+    if (s.action === 'populate' && s.n === undefined && (s.tapped === true || s.attacking === true)) {
+      if (s.tapped !== true || s.attacking !== true || s.subject !== undefined || s.arg !== undefined || s.who.ref !== 'you') throw new NoRenderer('populate with only one of tapped and attacking');
+      return plain('populate. the token enters tapped and attacking', { standalone: true });
+    }
     // p2-attack-block-2 (CR 701.15a, 608.2c; parser/lower/mentions.ts#producedBy): the group a goad of a description goaded is "those creatures" / "they" later
     // edh-d-75 (CR 701.15a, 608.2c; Havoc Eater): and the targets of a goad "for each opponent" (a set: one target for each opponent), counted as "creatures goaded this way"
     if (s.action === 'goad' && s.as !== undefined && s.subject !== undefined && (s.subject as { ref?: string }).ref === 'target' && st.specs.get((s.subject as { id: string }).id)?.perOpponent === true) bind(st, s.as, { nouns: ['creature'], plural: true, thisWay: 'goaded this way' });

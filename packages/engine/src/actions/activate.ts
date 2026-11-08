@@ -270,9 +270,9 @@ function activationDenialIn(s: GameState, player: PlayerId, source: GameObject, 
     if (planDenial(s, player, source.id, cc.apply(abilityPlan(s, def, dx, source.id))) !== null) return deny(`You can't pay for that ability with X = ${dx}.`, 'CR 107.3c', 'CR 601.2h');
   }
   // std-rx12 (CR 107.3a, 602.2b): "X can't be 0." (`xMin`): some X at least that must be payable; with no X in the cost it never is
-  if (def.xMin !== undefined && def.xMin > 0) {
+  if (leastX(def) > 0) {
     const xs = costHasX(def.cost) ? payableXs((n) => planDenial(s, player, source.id, cc.apply(abilityPlan(s, def, n, source.id))) === null, costFilterHasX(def.cost)) : [0];
-    if (!xs.some((n) => n >= def.xMin!)) return deny("You can't pay for that ability with any value of X it allows (X can't be 0).", 'CR 107.3a', 'CR 602.2b');
+    if (!xs.some((n) => n >= leastX(def))) return deny("You can't pay for that ability with any value of X it allows (X can't be 0).", 'CR 107.3a', 'CR 602.2b');
   }
   // edh-next-141 (CR 601.2b, 601.2d, 701.3d): an effect that reads what the unattach cost will unattach is playable when SOME permanent the cost could unattach makes it so (the player
   // chooses it as the ability is announced, chooseUnattachedAhead)
@@ -471,7 +471,7 @@ export function activateAbility(g: Game, action: Extract<Action, { type: 'activa
   if (announcedX) { // CR 107.3a: X in the mana cost, in "pay X life", "remove X counters", in a part's filter, or in the cost of a chosen mode
     // An X in a part's filter ("Sacrifice an artifact with mana value X") fits only some values: every value up to the cap is tried (rules/cost.ts#payableXs).
     // std-rx12 (CR 107.3a, 602.2b): "X can't be 0." (`xMin`): only values of X at least that
-    const xs = payableXs((n) => planDenial(g.s, player, source.id, planAt(n)) === null, costFilterHasX(def.cost) || modeCostDefs.some(costFilterHasX)).filter((n) => n >= (def.xMin ?? 0));
+    const xs = payableXs((n) => planDenial(g.s, player, source.id, planAt(n)) === null, costFilterHasX(def.cost) || modeCostDefs.some(costFilterHasX)).filter((n) => n >= leastX(def));
     if (xs.length === 0) throw new IllegalAction(`You can't pay for ${what} with any value of X.`, ['CR 601.2h', 'CR 107.3a']);
     // p2-counters-move-2 (CR 118.3, 107.3a): "Remove all charge counters from ~" is X with no choice: the number of those counters on ~ now
     // edh-next-132 (CR 107.3c): the X the text defines is no choice either
@@ -482,7 +482,7 @@ export function activateAbility(g: Game, action: Extract<Action, { type: 'activa
     x = fixed ?? chooseX(g, player, xs[xs.length - 1]!, what, xs);
     obj.stack.x = x;
   }
-  else if (def.xMin !== undefined && def.xMin > 0) throw new IllegalAction(`${what} has no X to announce, and X can't be 0.`, ['CR 107.3a', 'CR 602.2b']); // std-rx12: fail closed
+  else if (leastX(def) > 0) throw new IllegalAction(`${what} has no X to announce, and X can't be 0.`, ['CR 107.3a', 'CR 602.2b']); // std-rx12: fail closed
   aenv.x = x;
   // edh-next-141 (CR 601.2b, 601.2d, 701.3d; Captain America, First Avenger): an effect that reads the permanent the unattach cost will unattach ("damage equal to that Equipment's mana value divided as you
   // choose ...") defines its amount by a choice made later, as the cost is paid: that choice is made now, before targets and division are announced; the cost then unattaches that permanent
@@ -526,6 +526,8 @@ export function activateAbility(g: Game, action: Extract<Action, { type: 'activa
   // CR 602.5b / 606.3: remember the activation for "once each turn" and loyalty abilities.
   const k = `${source.id}|${act.key}`;
   g.s.turnActivations[k] = (g.s.turnActivations[k] ?? 0) + 1;
+  // edh-d-108 (CR 602.2, 404.1; Laboratory Drudge): an ability of a card in a graveyard, activated there ("if you've ... activated an ability of a card in a graveyard this turn")
+  if (sourceZone === 'graveyard') { const ts = g.player(player).turnStats; ts.activatedFromGraveyard = (ts.activatedFromGraveyard ?? 0) + 1; }
   if (def.isLoyalty || def.cost.loyalty !== undefined) g.s.turnActivations[`${source.id}|loyalty`] = (g.s.turnActivations[`${source.id}|loyalty`] ?? 0) + 1; // edh-players-6: a count (CR 606.3 allows one each turn unless a rule allows more)
   // std-rx27 (CR 602.2b): an ability with a wrapper keyword ("equip") activated by the player this turn: "the first equip ability you activate each turn"
   const kw = def.keyword ?? (def.prov?.by === 'keyword' ? def.prov.id : undefined);
@@ -537,7 +539,7 @@ export function activateAbility(g: Game, action: Extract<Action, { type: 'activa
   // FAST5X E20: what kind of ability was activated: an exhaust ability (CR 702.177a) or a loyalty ability (CR 606.3)
   // Standard round 3, r3-trig (CR 606.4): the loyalty counters the cost removed ("if you removed two or more loyalty counters to activate it"), after X and cost changes
   const loyaltyRemoved = total.loyalty !== undefined && total.loyalty < 0 ? -total.loyalty : undefined;
-  g.emit({ type: 'abilityActivated', objectId: obj.id, sourceId: source.id, player, ...(def.keyword === 'exhaust' ? { exhaust: true as const } : {}), ...(kw === 'ninjutsu' ? { ninjutsu: true as const } : {}), ...(kw === 'boast' ? { boast: true as const } : {}) /* edh-c-104: CR 702.142a */, /* edh-zones-19: CR 702.49a */ ...(def.isLoyalty || def.cost.loyalty !== undefined ? { loyalty: true as const } : {}), ...(loyaltyRemoved !== undefined ? { loyaltyRemoved } : {}), ...(paid.lifePaid ? { lifePaid: paid.lifePaid } : {}), ...(paid.manaSpent.length > 0 ? { manaSpent: paid.manaSpent.length } : {}) /* edh-d-50 (CR 602.2b, 106.3) */, ...(countX(def.cost.mana) > 0 || modeCostDefs.some((c) => countX(c.mana) > 0) ? { xInCost: true as const } : {}) /* edh-next-74: the mana symbol {X} only, not "pay X life" or loyalty -X (CR 107.3a, 602.2b; Unbound Flourishing ruling 2019-06-14) */, fromZone: sourceZone });
+  g.emit({ type: 'abilityActivated', objectId: obj.id, sourceId: source.id, player, ...(def.keyword === 'exhaust' ? { exhaust: true as const } : {}), ...(kw === 'ninjutsu' ? { ninjutsu: true as const } : {}), ...(kw === 'boast' ? { boast: true as const } : {}), ...(kw === 'outlast' ? { outlast: true as const } : {}) /* edh-e-43: CR 702.107a */ /* edh-c-104: CR 702.142a */, /* edh-zones-19: CR 702.49a */ ...(def.isLoyalty || def.cost.loyalty !== undefined ? { loyalty: true as const } : {}), ...(loyaltyRemoved !== undefined ? { loyaltyRemoved } : {}), ...(paid.lifePaid ? { lifePaid: paid.lifePaid } : {}), ...(paid.manaSpent.length > 0 ? { manaSpent: paid.manaSpent.length } : {}) /* edh-d-50 (CR 602.2b, 106.3) */, ...(countX(def.cost.mana) > 0 || modeCostDefs.some((c) => countX(c.mana) > 0) ? { xInCost: true as const } : {}) /* edh-next-74: the mana symbol {X} only, not "pay X life" or loyalty -X (CR 107.3a, 602.2b; Unbound Flourishing ruling 2019-06-14) */, fromZone: sourceZone });
   // FAST5 T37 (CR 702.29a, 702.29d-e, 701.9): activating a cycling or typecycling ability is cycling the card: "when you cycle ~" / "whenever you cycle a card"
   // trigger as the cost (the discard) is paid. The subject is the card as it is now, in the graveyard (it may be elsewhere if a replacement moved it: then the
   // event names that object).
@@ -585,9 +587,20 @@ function withUnattachAhead(plan: CostPlan, id: ObjectId | undefined): CostPlan {
 export function definedX(s: GameState, def: ActivatedAbilityDef, sourceId: ObjectId): number | undefined {
   const q = def.xIs;
   if (q === undefined) return undefined;
+  // edh-d-111 (CR 107.3c, 122.1; Voodoo Doll): the counters of one kind on the source as the ability is activated
+  if (q.q === 'counters') return s.objects[sourceId]?.counters[q.kind] ?? 0;
   const here = (readLink(s.objects[sourceId], q.of.link)?.objects ?? []).filter((h) => h.zone === 'exile' && s.objects[h.id]?.zone === 'exile');
   if (here.length !== 1) return undefined;
   return groupStat(s, { kind: 'object', id: here[0]!.id }, 'manaValue');
+}
+
+/**
+ * The least X the activation may announce: "X can't be 0." (`xMin`, std-rx12), and edh-d-111 (CR 107.1c, 107.3a, 602.2b; Arcee, Sharpshooter): 1 for a cost "Remove one or more <kind>
+ * counters from ~" (`oneOrMore`), whose X is the number of counters removed.
+ */
+export function leastX(def: ActivatedAbilityDef): number {
+  const oneOrMore = (def.cost.other ?? []).some((p) => p.kind === 'removeCounters' && p.oneOrMore === true);
+  return Math.max(def.xMin ?? 0, oneOrMore ? 1 : 0);
 }
 
 export function fixedCounterX(s: GameState, def: ActivatedAbilityDef, sourceId: ObjectId): number | undefined {

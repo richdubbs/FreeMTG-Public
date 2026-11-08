@@ -15,6 +15,15 @@ import { alt, NoRenderer, numWord, pluralize, withArticle } from './text';
 const refText = (ref: Ref, st: RenderState, form: 'subject' | 'object' | 'possessive' = 'object', prefer?: 'all' | 'each'): string =>
   isPlayerRef(ref as ObjRef | PlayerRef, st) ? K.player(ref as PlayerRef, st, form).text : K.obj(ref as ObjRef, st, form, { prefer }).text;
 
+/**
+ * FAST4 T25 / edh-d-106 (CR 115.1, 601.2c; family damage-each-of; Shellshock, Mega Flare): the targets of one spec are a set ("each of those creatures") when the spec may have more than one
+ * target, or one target for each opponent or each player (`perOpponent` / `perPlayer`: up to one each, several in all).
+ */
+function targetSet(st: RenderState, id: string): boolean {
+  const spec = st.specs.get(id);
+  return (spec?.max ?? 1) !== 1 || spec?.perOpponent === true || spec?.perPlayer === true;
+}
+
 /** std-rx1: `n` is the count of the "prime number of ..." condition of the intervening "if" being rendered (the whole condition or one part of its "and"). */
 function statedByIf(n: Quantity, st: RenderState): boolean {
   const c = st.interveningIf;
@@ -306,6 +315,16 @@ const damageClause = (s: StepOf<'damage'>, st: RenderState): Clause => {
     const dt = recipientText(s, dividedCopy);
     dividedX = `X damage divided as you choose among ${dt}, where X is ${K.qty(s.amount, dividedCopy)}`;
   }
+  // edh-e-61 (CR 120.3, 107.1a, 107.3, 608.2h; Banshee; family damage-half-rounded-split): "~ deals half X damage, rounded down, to T, and half X damage, rounded up, to you": the X paid, split
+  // between the first recipient (rounded down, `math floorDiv`) and one further recipient (rounded up, `math ceilDiv`); only the announced X, exactly this pair
+  const halfOfX = (q: unknown, op: string): boolean => typeof q === 'object' && q !== null && (q as { q?: string }).q === 'math' && (q as { op?: string }).op === op && JSON.stringify((q as { args?: unknown }).args) === '[{"q":"X"},2]';
+  if (!itself && s.divided === undefined && s.unpreventable !== true && (s.also ?? []).length === 1 && halfOfX(s.amount, 'floorDiv') && halfOfX(s.also![0]!.amount, 'ceilDiv')) {
+    const hc = cloneState(st);
+    const ht = recipientText(s, hc);
+    const hx = `${src.text} ${src.plural ? 'deal' : 'deals'} half X damage, rounded down, to ${ht}, and half X damage, rounded up, to ${refText(s.also![0]!.to, hc, 'object', 'each')}`;
+    absorb(st, hc);
+    return plain(hx);
+  }
   // edh-c-79 (CR 120.3, 107.1a, 107.3, 608.2h; Eternal Flame; family damage-half-rounded-up): "~ deals X damage to T and half X damage, rounded up, to you, where X is ...": the further
   // recipient takes half of the first, computed amount rounded up (`math ceilDiv` of the same amount and 2); only this pair, one further recipient
   const alsoAmt = (s.also ?? []).length === 1 ? s.also![0]!.amount : undefined;
@@ -360,11 +379,11 @@ const damageClause = (s: StepOf<'damage'>, st: RenderState): Clause => {
   }
   else if (reordered !== null) {
     // FAST4 T30 (family damage-each-of): "deals damage equal to its power to each of two other target creatures"
-    const eachOf = s.to.ref === 'target' && (st.specs.get(s.to.id)?.max ?? 1) !== 1 && more === '' ? [`${amount} to each of ${to}`] : [];
+    const eachOf = s.to.ref === 'target' && targetSet(st, s.to.id) && more === '' ? [`${amount} to each of ${to}`] : []; // edh-d-106: one target for each opponent is a set too
     // r4-refs (CR 120.3, 608.2h): "target creature deals damage equal to its power to itself" says the source as its own recipient after the amount too
     rest = itself ? alt(reordered, `${amount} to ${to}`) : alt(`${amount} to ${to}`, reordered, ...selfPronounReordered, ...eachOf, ...(whereX !== null && more === '' ? [whereX] : []), ...(whereXPlus !== null && more === '' ? [whereXPlus] : []));
   }
-  else if (s.to.ref === 'target' && (st.specs.get(s.to.id)?.max ?? 1) !== 1 && more === '') rest = alt(`${amount} to ${to}`, `${amount} to each of ${to}`); // FAST4 T25 (family damage-each-of)
+  else if (s.to.ref === 'target' && targetSet(st, s.to.id) && more === '') rest = alt(`${amount} to ${to}`, `${amount} to each of ${to}`); // FAST4 T25 (family damage-each-of); edh-d-106: one target for each opponent too
   else {
     // edh-d-61 (CR 120.3, 115.1, 601.2c; Volatile Arsonist; family damage-each-of, parser template eff.edhd61.damage.eachOfUpToThree): the same plain amount to three targets of their own is also
     // "deals 1 damage to each of up to one target creature, up to one target player, and/or up to one target planeswalker" (the Cone of Flame form `alsoText` made, said once)
@@ -540,6 +559,17 @@ export const CLAUSES_LIFE = {
       const each = perForms(s.count, st, before);
       return plain(alt(main, ...each.map((x) => `remove ${withArticle(`${s.kind} counter`)} from ${from} for each ${x}`)));
     }
+    // edhe44 (CR 122.1, 608.2c; Temporal Distortion): every counter of a kind from a group said without "all" before the group, "remove all hourglass counters from permanents that
+    // player controls": the same group (the `all` is said once, before the counters)
+    if (s.kind !== 'any' && s.count === 'all' && s.from.ref === 'each' && 'filter' in s.from && !('who' in s.from)) {
+      const bare = K.np(s.from.filter, cloneState(st), { det: 'none', plural: true });
+      return plain(alt(`remove ${countersText(s.count, s.kind, st)} from ${from}`, `remove ${countersText(s.count, s.kind, st)} from ${bare}`));
+    }
+    // edh-e-15 (CR 122.1, 107.3, 608.2h; Thornmantle Striker; family remove-counters-where-x): "remove X counters from target permanent, where X is the number of Elves you control" is the same
+    // number as "remove a number of counters equal to the number of Elves you control from it": the count a definition of X names
+    if (s.kind === 'any' && typeof s.count === 'object' && s.count.q === 'count' && s.as === undefined && s.upTo === undefined) {
+      return plain(alt(`remove ${countersText(s.count, s.kind, st)} from ${from}`, `remove x counters from ${from}, where x is ${K.qty(s.count, st)}`));
+    }
     return plain(`remove ${countersText(s.count, s.kind, st)} from ${from}`);
   },
 
@@ -609,7 +639,9 @@ function energyAmount(n: Quantity, st: RenderState): string {
   if (typeof n === 'object' && (n.q === 'eventAmount' || n.q === 'X' || n.q === 'var')) return `${q} {E}`;
   // pc-counters-3 (CR 107.14, 122.1): "you get {E} for each creature you control" (Aetherwind Basker): the same count said per object
   const per = countParts(n, cloneState(st));
-  return alt(`an amount of {E} equal to ${q}`, `${q} {E}`, ...(per ? [`{E} for each ${per.singular}`] : []));
+  // edh-e-61 (CR 120.10, 107.14, 608.2h; Overclocked Electromancer): the excess part of the damage the trigger saw is "X {E}, where X is that excess damage" (family energy-amount-equal-to)
+  const whereExcess = typeof n === 'object' && n.q === 'eventExcess' ? ['X {E}, where X is that excess damage'] : [];
+  return alt(`an amount of {E} equal to ${q}`, `${q} {E}`, ...(per ? [`{E} for each ${per.singular}`] : []), ...whereExcess);
 }
 
 /** The text of a putCounters step (STEPS.putCounters adds a target for each opponent's "for each opponent,"). */
@@ -668,6 +700,8 @@ function putCountersClause(s: StepOf<'putCounters'>, st: RenderState): Clause {
     if (isPlayerRef(s.on as ObjRef | PlayerRef, st)) {
       const who = s.on as PlayerRef;
       if (s.kind === 'energy') return byPlayer(who, st, 'get', () => (typeof s.count === 'number' ? (s.count >= 5 ? alt('{E}'.repeat(s.count), `${numWord(s.count)} {E}`) : '{E}'.repeat(s.count)) : energyAmount(s.count, st)));
+      // edh-e-30 (CR 107.17; Ticketomaton): "you get {TK}", one ticket symbol for each ticket counter
+      if (s.kind === 'ticket') { if (typeof s.count !== 'number' || s.count < 1 || s.count > 4) throw new NoRenderer('a computed or large number of ticket counters'); return byPlayer(who, st, 'get', () => '{TK}'.repeat(s.count as number)); }
       // edh-d-70 (CR 122.1, 107.1, 603.2c, 608.2h; Struggle for Project Purity): "that player gets twice that many rad counters": twice the amount of the triggering event (the attackers of a declaration)
       if (typeof s.count === 'object' && s.count.q === 'math' && s.count.op === '*' && s.count.args.length === 2 && s.count.args[0] === 2 && typeof s.count.args[1] === 'object'
         && s.count.args[1].q === 'eventAmount' && Object.keys(s.count.args[1]).length === 1 && s.kind !== 'any' && s.kind !== 'energy') {
@@ -687,8 +721,13 @@ function putCountersClause(s: StepOf<'putCounters'>, st: RenderState): Clause {
     // opponents control" (effects/handlers/counters.ts#distributedShares)
     // std-mana-2 (CR 608.2d): "put up to three lore counters on it"
     if (s.upTo === true) {
-      if (s.distribute === true || typeof s.count !== 'number') throw new NoRenderer('put up to a computed number of counters, or divided');
-      return plain(`put up to ${numWord(s.count)} ${s.kind} ${s.count === 1 ? 'counter' : 'counters'} on ${K.obj(s.on as ObjRef, st, 'object').text}`);
+      // edh-e-14 (CR 122.1, 608.2d; Clockwork Avian): "Put up to X +1/+0 counters on ~. This ability can't cause the total number of +1/+0 counters on ~ to be greater than four." (X, with a total)
+      const xCount = typeof s.count === 'object' && s.count.q === 'X' && s.maxTotal !== undefined;
+      if (s.distribute === true || (typeof s.count !== 'number' && !xCount)) throw new NoRenderer('put up to a computed number of counters, or divided');
+      if (s.maxTotal !== undefined && !xCount) throw new NoRenderer('a total limit beside a number other than X');
+      const holder = K.obj(s.on as ObjRef, st, 'object').text;
+      if (xCount) return plain(`put up to x ${s.kind} counters on ${holder}. this ability can't cause the total number of ${s.kind} counters on ${holder} to be greater than ${numWord(s.maxTotal!)}`, { standalone: true });
+      return plain(`put up to ${numWord(s.count as number)} ${s.kind} ${s.count === 1 ? 'counter' : 'counters'} on ${holder}`);
     }
     if (s.distribute === true) {
       if (s.on.ref !== 'each' || !('filter' in s.on) || s.as !== undefined) throw new NoRenderer('a distribution among something other than a described group');
@@ -779,7 +818,7 @@ function putCountersClause(s: StepOf<'putCounters'>, st: RenderState): Clause {
     // the result", Ancient Bronze Dragon), the counters going on each of several targets as FAST2 T8 says below
     const dieTargets = typeof s.count === 'object' && s.count.q === 'dieResult' && s.on.ref === 'target' ? st.specs.get(s.on.id) : undefined;
     const dieEach = dieTargets !== undefined && (dieTargets.max !== 1 || dieTargets.perOpponent === true || dieTargets.perPlayer === true) ? [`put X ${pluralize(noun)} on each of ${on}, where X is ${K.qty(s.count, st)}`] : [];
-    if (typeof s.count === 'object' && (s.count.q === 'cardsDrawnThisTurn' || s.count.q === 'lifeGainedThisTurn' || s.count.q === 'lifeLostThisTurn' /* edh-next-99 */ || s.count.q === 'life' /* edh-c-9: "where X is your life total" (Ajani, Valiant Protector) */ || s.count.q === 'zoneSize' || s.count.q === 'math' || s.count.q === 'dieResult' || (s.count.q === 'X' && st.costAllCountersX !== undefined))) return plain(alt(main, `put X ${pluralize(noun)} on ${on}, where X is ${K.qty(s.count, st)}`, ...dieEach, ...timesText, ...(s.count.q === 'dieResult' || s.count.q === 'lifeGainedThisTurn' /* edh-next-27: Betor, Ancestor's Voice */ || s.count.q === 'lifeLostThisTurn' || (s.count.q === 'math' && s.count.op === 'max') /* edh-next-99: Willowdusk, Essence Seer */ || (s.count.q === 'math' && amount === 'the difference') /* edh-perms-22 */ ? equalTo : []))); // edh-mana-keywords-9 (Vexing Puzzlebox): "put a number of charge counters on ~ equal to the result"
+    if (typeof s.count === 'object' && (s.count.q === 'cardsDrawnThisTurn' || s.count.q === 'lifeGainedThisTurn' || s.count.q === 'lifeLostThisTurn' /* edh-next-99 */ || s.count.q === 'life' /* edh-c-9: "where X is your life total" (Ajani, Valiant Protector) */ || s.count.q === 'zoneSize' || s.count.q === 'math' || s.count.q === 'dieResult' || (s.count.q === 'X' && st.costAllCountersX !== undefined))) return plain(alt(main, `put X ${pluralize(noun)} on ${on}, where X is ${K.qty(s.count, st)}`, ...dieEach, ...timesText, ...(s.count.q === 'dieResult' || s.count.q === 'lifeGainedThisTurn' /* edh-next-27: Betor, Ancestor's Voice */ || s.count.q === 'lifeLostThisTurn' || (s.count.q === 'math' && s.count.op === 'max') /* edh-next-99: Willowdusk, Essence Seer */ || (s.count.q === 'math' && amount === 'the difference') /* edh-perms-22 */ || (s.count.q === 'math' && (s.count.op === 'ceilDiv' || s.count.op === 'floorDiv') /* edh-e-38 (Torrent Sculptor): "equal to half that card's mana value, rounded up" */) ? equalTo : []))); // edh-mana-keywords-9 (Vexing Puzzlebox): "put a number of charge counters on ~ equal to the result"
     // FAST4 T28 (CR 107.3, 608.2h): a statistic of an object ("where X is ~'s power", "where X is that spell's mana value") or another read value, with the
     // amount after the recipient ("put a number of +1/+1 counters on ~ equal to that creature's power")
     if (typeof s.count === 'object' && (s.count.q === 'stat' || s.count.q === 'counters' || s.count.q === 'distinct' || s.count.q === 'spellManaSpent' /* edh-next-89 (CR 601.2h, 608.2h; Smoldering Egg): "put a number of ember counters on ~ equal to the amount of mana spent to cast that spell" */ || s.count.q === 'manaProduced' /* edh-d-90 (CR 106.3, 608.2h; Tyvar the Bellicose): "... on it equal to the amount of mana ~ produced" */)) { // std-sos: or the names / colors among a group ("where X is the number of differently named lands you control")
@@ -793,6 +832,15 @@ function putCountersClause(s: StepOf<'putCounters'>, st: RenderState): Clause {
     // edh-d-30 (CR 122.6, 601.2c; Omo, Queen of Vesuva): the same counters on each of two targets named together, "on each of up to one target land and up to one target creature"
     if (s.on.ref === 'union' && s.on.of.length === 2 && s.on.of.every((x) => x.ref === 'target')) return plain(alt(main, `put ${counters} on each of ${on}`));
     // FAST3 T18: the same for a group named earlier ("put a +1/+1 counter on each of them", "... on each of those creatures")
+    // edhe45 (CR 122.1, 608.2c, 702.62a; Ecstatic Beauty, family exiled-top-each-of-those): the cards an earlier exile of the top cards put there that have a keyword are also "each of those cards that has suspend"
+    const keywordGroup = ((): string | null => {
+      if (s.on.ref !== 'each' || !('filter' in s.on)) return null;
+      const f = s.on.filter as Record<string, unknown> & { is?: { ref?: string } };
+      const keys = Object.keys(f).filter((k) => f[k] !== undefined);
+      return f.is?.ref === 'bound' && f['zone'] === 'any' && typeof f['keyword'] === 'string' && keys.length === 3 && on.includes('all cards') ? (f['keyword'] as string) : null;
+    })();
+    const eachOfThose = keywordGroup === null ? [] : [`put ${counters} on each of those cards that has ${keywordGroup}`];
+    if (eachOfThose.length > 0) return plain(alt(main, `put ${counters} on each of ${on}`, ...eachOfThose));
     if (onPhrase.plural && (s.on.ref === 'bound' || s.on.ref === 'event' || (s.on.ref === 'each' && 'filter' in s.on && groupPart(s.on.filter) !== null))) return plain(alt(main, `put ${counters} on each of ${on}`));
     // edh-perms-12 (CR 608.2c; family and-you-plain-clause): also "... and you put a -1/-1 counter on up to one target creature they control" after another player's clause (Persistent Constrictor)
     // edh-d-3 (CR 119.3, 122.1, 603.2; Cradle of Vitality, family that-many-event): the amount of a life-gain trigger's event is also "for each 1 life you gained"

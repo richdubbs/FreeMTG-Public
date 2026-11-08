@@ -18,9 +18,20 @@ signal zone_requested(player: String, zone: String)
 
 const CARD_SCENE: PackedScene = preload("res://scenes/Card.tscn")
 const BOARD_SCALE: float = 0.72
-const HAND_SCALE: float = 0.85
+const HAND_SCALE: float = 1.3
+## How much of a hand card shows above the bottom edge of the screen.
+const HAND_SHOWN: float = 0.55
+## Where the viewer's hand spreads (its cards overlap when there are many): from the left of the middle up to the prompt panel
+## on the right, so the newest card (on the right end) is never under it.
+const HAND_LEFT: float = 340.0
+const HAND_RIGHT_ROOM: float = 460.0
+## Room the card rows leave on each side for the player panels.
+const ROW_MARGIN: float = 340.0
+## Room under the viewer's panel (the game log's bar).
+const INFO_BOTTOM_ROOM: float = 56.0
 const BACK_SCALE: float = 0.5
-const INFO_WIDTH: float = 170.0
+## The command zone's cards (the commanders), beside the player panel.
+const COMMAND_SCALE: float = 0.5
 const GAP: float = 8.0
 const ROW_GAP: float = 10.0
 ## How far above the hand's top edge a dragged card must be let go to be played.
@@ -47,6 +58,8 @@ var _command: Button = null
 var _hand_order: Array[String] = []
 ## The hand card being dragged, and where the hand was laid out (for the slots the other cards make room in).
 var _dragging: String = ""
+## A hand card picked up by a click: it follows the pointer until the next click plays it (above the hand) or puts it back.
+var _held: String = ""
 var _drag_slot: int = -1
 var _hand_args: Array = []
 
@@ -116,8 +129,9 @@ func show_side(view: Dictionary, pid: String, top: bool, area: Rect2, selection:
 	var others: Array[String] = []
 	others.assign(rows["others"])
 	var hand := _ordered_hand(View.hand_of(view, pid))
+	var command := View.command_of(view, pid)
 	var wanted: Dictionary = {}
-	for id: String in creatures + lands + others + hand:
+	for id: String in creatures + lands + others + hand + command:
 		wanted[id] = true
 		for a: String in View.attachments_of(view, id):
 			wanted[a] = true
@@ -131,7 +145,9 @@ func show_side(view: Dictionary, pid: String, top: bool, area: Rect2, selection:
 		if not _cards.has(id):
 			var card: CardView = CARD_SCENE.instantiate()
 			_layer.add_child(card)
-			card.clicked.connect(func(cid: String) -> void: card_clicked.emit(cid))
+			card.clicked.connect(func(cid: String) -> void:
+				if not _pick_up(cid):
+					card_clicked.emit(cid))
 			card.right_clicked.connect(func(cid: String) -> void: card_right_clicked.emit(cid))
 			card.hovered.connect(func(cid: String, inside: bool) -> void:
 				_on_hovered(cid, inside)
@@ -142,9 +158,16 @@ func show_side(view: Dictionary, pid: String, top: bool, area: Rect2, selection:
 			_cards[id] = card
 		var shown: CardView = _cards[id]
 		shown.show_object(view, String(id))
-	# Rows.
-	var x0: float = INFO_WIDTH
-	var x1: float = size.x - 10.0
+	# Rows, centred on the side (the player panels sit in the corners: the viewer's bottom left, an opponent's top right).
+	var margin: float = minf(ROW_MARGIN, size.x * 0.15)
+	var x0: float = margin
+	var x1: float = size.x - margin
+	# A container never shrinks by itself: the panel keeps the size of its contents (a long line once made it grow for good).
+	_info.reset_size()
+	# An opponent's narrow share of the top row (three or four players): its cards keep left of its panel, not under it.
+	if top and size.x - 2.0 * margin < _info.size.x * 2.0 + 200.0:
+		x0 = 8.0
+		x1 = size.x - _info.size.x - 16.0
 	var row_h: float = CardView.SIZE.y * BOARD_SCALE
 	var hand_h: float = CardView.SIZE.y * (BACK_SCALE if top else HAND_SCALE)
 	var creature_y: float
@@ -157,19 +180,46 @@ func show_side(view: Dictionary, pid: String, top: bool, area: Rect2, selection:
 	else:
 		creature_y = 6.0
 		back_y = creature_y + row_h + ROW_GAP
-		hand_y = size.y - hand_h
-	var split: float = x0 + (x1 - x0) * 0.55
-	_place_row(view, creatures, x0, x1, creature_y, false)
-	_place_row(view, lands, x0, split - GAP, back_y, false)
-	_place_row(view, others, split + GAP, x1, back_y, true)
+		# The viewer's hand: big, at the bottom centre, its lower half off the screen (a card pointed at comes up whole).
+		hand_y = size.y - hand_h * HAND_SHOWN
+	_place_row(view, creatures, x0, x1, creature_y)
+	# The lands (then the other permanents) in a row beside the player's panel: from the right of the viewer's (bottom left), as
+	# high as the panel while clear of the hand; up to the left of an opponent's (top right), nearest it.
+	_info.reset_size()
+	_info.position = Vector2(size.x - _info.size.x - 8.0, 0.0) if top else Vector2(4.0, size.y - _info.size.y - INFO_BOTTOM_ROOM)
+	if top:
+		_place_row(view, others + lands, x0, _info.position.x - GAP, back_y, 1)
+	else:
+		var land_y: float = minf(_info.position.y, hand_y - row_h - 4.0)
+		_place_row(view, lands + others, _info.position.x + _info.size.x + GAP * 2.0, size.x - HAND_RIGHT_ROOM, land_y, -1)
 	for id: String in hand:
 		(_cards[id] as CardView).draggable = not top and View.viewer(view) == pid
-	_hand_args = [hand, x0, x1, hand_y, top]
+	var hand_x0: float = HAND_LEFT if not top else x0
+	var hand_x1: float = size.x - HAND_RIGHT_ROOM if not top else x1
+	_hand_args = [hand, hand_x0, hand_x1, hand_y, top]
 	if _dragging == "":
-		_place_hand(hand, x0, x1, hand_y, top)
-	_hand_rect = Rect2(x0, hand_y, x1 - x0, hand_h)
+		_place_hand(hand, hand_x0, hand_x1, hand_y, top)
+	_hand_rect = Rect2(hand_x0, hand_y, hand_x1 - hand_x0, hand_h)
 	_set_glows(view, selection, client)
-	_info.position = Vector2(0.0, size.y - _info.size.y - 4.0 if top else 4.0)
+	_place_command(command, top)
+
+
+## The command zone (CR 408) as small cards beside the player panel: above the viewer's, under an opponent's; face up for everyone.
+func _place_command(ids: Array[String], top: bool) -> void:
+	var w: float = CardView.SIZE.x * COMMAND_SCALE
+	var h: float = CardView.SIZE.y * COMMAND_SCALE
+	var y: float = (_info.position.y + _info.size.y + GAP) if top else (_info.position.y - GAP - h)
+	for i: int in range(ids.size()):
+		if not _cards.has(ids[i]):
+			continue
+		var card: CardView = _cards[ids[i]]
+		for m: StringName in [&"hand_base", &"hand_rot", &"hand_z"]:
+			if card.has_meta(m):
+				card.remove_meta(m)
+		card.draggable = false
+		card.rotation_degrees = 0.0
+		var x: float = (_info.position.x + _info.size.x - w * 0.5 - i * (w + GAP)) if top else (_info.position.x + 4.0 + w * 0.5 + i * (w + GAP))
+		_put(card, Vector2(x, y + h * 0.5), COMMAND_SCALE, 2)
 
 
 # ---- what the animator reads (fx/Animator.gd) ------------------------------------------------------------------------------------
@@ -476,8 +526,47 @@ func _ordered_hand(ids: Array[String]) -> Array[String]:
 	return out
 
 
+## A click on a card of the viewer's hand that has something to do, while they have priority, picks it up instead of playing it
+## at once: the player may still change their mind. Elsewhere (a prompt choosing hand cards) a click stays a click.
+func _pick_up(id: String) -> bool:
+	if at_top or _dragging != "" or not _cards.has(id) or not (_cards[id] as CardView).draggable:
+		return false
+	if Val.text(View.pending(GameClient.view), "kind") != "priority" or GameClient.legal_for(id).is_empty():
+		return false
+	_held = id
+	_on_drag_started(id)
+	_on_drag_moved(id, get_viewport().get_mouse_position())
+	return true
+
+
+func _input(event: InputEvent) -> void:
+	if _held == "":
+		return
+	if not _cards.has(_held):
+		_held = ""
+		_dragging = ""
+		return
+	var id := _held
+	var motion := event as InputEventMouseMotion
+	if motion != null:
+		_on_drag_moved(id, motion.global_position)
+		return
+	var mb := event as InputEventMouseButton
+	var key := event as InputEventKey
+	var put_back := (mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT) 			or (key != null and key.pressed and key.keycode == KEY_ESCAPE)
+	if put_back:
+		_held = ""
+		_on_drag_ended(id, get_global_transform() * _hand_rect.get_center())
+		get_viewport().set_input_as_handled()
+	elif mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+		_held = ""
+		_on_drag_ended(id, mb.global_position)
+		get_viewport().set_input_as_handled()
+
+
 func _on_drag_started(id: String) -> void:
 	_dragging = id
+	_raised = ""
 	_drag_slot = _hand_order.find(id)
 	_raise(_cards[id] as CardView, false, false)
 	(_cards[id] as CardView).z_index = 60
@@ -537,7 +626,8 @@ func _on_drag_ended(id: String, at: Vector2) -> void:
 
 
 ## A row of permanents between x0 and x1 (squeezed when there is no room), each with its attachments peeking out behind it.
-func _place_row(view: Dictionary, ids: Array[String], x0: float, x1: float, y: float, align_right: bool) -> void:
+## `align`: -1 from x0, 0 centred, 1 up to x1.
+func _place_row(view: Dictionary, ids: Array[String], x0: float, x1: float, y: float, align: int = 0) -> void:
 	if ids.is_empty():
 		return
 	var widths: Array[float] = []
@@ -549,7 +639,7 @@ func _place_row(view: Dictionary, ids: Array[String], x0: float, x1: float, y: f
 		total += w
 	var room: float = maxf(1.0, x1 - x0)
 	var squeeze: float = minf(1.0, room / total)
-	var x: float = (x1 - total * squeeze) if align_right else x0
+	var x: float = x0 if align < 0 else (x1 - total * squeeze if align > 0 else (x0 + x1 - total * squeeze) / 2.0)
 	var center_y: float = y + CardView.SIZE.y * BOARD_SCALE * 0.5
 	for i: int in range(ids.size()):
 		var w: float = widths[i] * squeeze
@@ -571,7 +661,7 @@ func _place_hand(ids: Array[String], x0: float, x1: float, y: float, top: bool) 
 		return
 	var s: float = BACK_SCALE if top else HAND_SCALE
 	var card_w: float = CardView.SIZE.x * s
-	var step: float = minf(card_w * (0.55 if top else 0.92), (x1 - x0 - card_w) / maxf(1.0, n - 1.0))
+	var step: float = minf(card_w * (0.55 if top else 0.8), (x1 - x0 - card_w) / maxf(1.0, n - 1.0))
 	var width: float = step * (n - 1) + card_w
 	var start: float = x0 + (x1 - x0 - width) * 0.5 + card_w * 0.5
 	for i: int in range(n):
@@ -597,7 +687,7 @@ func _put(card: CardView, center: Vector2, s: float, z: int) -> void:
 
 func _set_glows(view: Dictionary, selection: BoardSelection, client: Node) -> void:
 	# With priority, every card that has an action is clickable (lands and mana sources too), but only what can be cast or
-	# activated now glows (GameClient.is_playable): a land never does.
+	# activated now, or a land that can be played, glows (GameClient.is_playable).
 	var priority := Val.text(View.pending(view), "kind") == "priority"
 	for id: Variant in _cards.keys():
 		var card: CardView = _cards[id]
@@ -632,6 +722,9 @@ func _on_info_input(event: InputEvent) -> void:
 # ---- the hand raising the card pointed at -------------------------------------------------------------------------------
 
 func _on_hovered(cid: String, inside: bool) -> void:
+	# A card being dragged or held follows the pointer: no raising or lowering under it.
+	if _dragging != "":
+		return
 	if at_top or not _cards.has(cid) or not (_cards[cid] as CardView).has_meta(&"hand_base"):
 		return
 	var card: CardView = _cards[cid]
@@ -650,7 +743,8 @@ func _on_hovered(cid: String, inside: bool) -> void:
 ## Raise a hand card toward the player (upright, on top of the others) or put it back in the fan.
 func _raise(card: CardView, up: bool, animate: bool) -> void:
 	var base: Vector2 = card.get_meta(&"hand_base")
-	var to := base - Vector2(0.0, CardView.SIZE.y * HAND_SCALE * 0.22 + 4.0) if up else base
+	# Up far enough to show the whole card (the hand hangs half off the screen).
+	var to := base - Vector2(0.0, CardView.SIZE.y * HAND_SCALE * (1.0 - HAND_SHOWN) + 8.0) if up else base
 	var rot: float = 0.0 if up else float(card.get_meta(&"hand_rot", 0.0))
 	card.z_index = 60 if up else int(card.get_meta(&"hand_z", 3))
 	if not animate or Settings.reduced_motion:

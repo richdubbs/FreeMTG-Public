@@ -132,6 +132,8 @@ function teamWords(f: ObjectFilter): boolean {
   const keys = Object.keys(f).filter((k) => (f as Record<string, unknown>)[k] !== undefined);
   // edh-next-61 (Pir, Imaginative Rascal): also the plain "permanent you control" ("a permanent your team controls"), no other field
   if (keys.length === 1 && f.controller === 'you') return true;
+  // edh-e-61 (Combo Attack: "Two target creatures your team controls"): also the plain "creatures you control" (the one card type creature and the controller, no other field)
+  if (keys.length === 2 && f.controller === 'you' && Array.isArray(f.types) && f.types.length === 1 && f.types[0] === 'Creature') return true;
   return Array.isArray(f.subtypes) && f.subtypes.length > 0 && f.controller === 'you' && keys.every((k) => k === 'subtypes' || k === 'controller' || k === 'other');
 }
 
@@ -169,7 +171,7 @@ function checkSubtypeTypes(types: string[], subtypes: string[], other = false): 
   }
 }
 
-function zonePhrase(f: ObjectFilter, st: RenderState, zs: (ZoneName | 'any')[], plural: boolean, forEach = false): string {
+function zonePhrase(f: ObjectFilter, st: RenderState, zs: (ZoneName | 'any')[], plural: boolean, forEach = false, every = false): string {
   const real = zs.filter((z): z is ZoneName => z !== 'any' && z !== 'battlefield');
   if (real.length === 0) return '';
   // r5-mech (CR 108.3, 404.1, 406.1): cards you own in either zone, "cards you own in exile and in your graveyard" (parser/holes/filter.ts)
@@ -183,7 +185,7 @@ function zonePhrase(f: ObjectFilter, st: RenderState, zs: (ZoneName | 'any')[], 
     const poss = possessorOf(own, st, plural);
     const words = mine.map((z) => ZONE_WORD[z]!);
     // r4-fxz (CR 400.1): two zones of one player are also "your hand and/or graveyard" (a card in either: the same set)
-    const list = words.length === 2 ? alt(joinList(words, 'or'), words.join(' and/or '), ...(plural && Object.keys(f).filter((k) => (f as Record<string, unknown>)[k] !== undefined).every((k) => k === 'zone' || k === 'owner' || k === 'isCard') ? [words.join(' and ')] : []) /* edh-c-36 (Identity Crisis; family hand-and-graveyard-all): all cards of both zones, no other description */) : joinList(words, 'or');
+    const list = words.length === 2 ? alt(joinList(words, 'or'), words.join(' and/or '), ...(plural && (every /* edh-e-38 (Thought Distortion): "all <description> cards from <player>'s hand and graveyard", every card of the description in either zone */ || Object.keys(f).filter((k) => (f as Record<string, unknown>)[k] !== undefined).every((k) => k === 'zone' || k === 'owner' || k === 'isCard')) ? [words.join(' and ')] : []) /* edh-c-36 (Identity Crisis; family hand-and-graveyard-all): all cards of both zones; edh-e-38 (Thought Distortion): or all cards of a description, "noncreature, nonland cards from that player's hand and graveyard" */) : joinList(words, 'or');
     // r5-fxz (CR 102.3, 404.1): cards every opponent owns are also in "your opponents' graveyards" (the zone word plural, as Oracle prints it)
     // p2-pt-3 (CR 102.3, 404.1, 613.4c): also one card of such a count, "for each creature card in your opponents' graveyards" (Wight of Precinct Six)
     const owned = poss === 'a' ? `a ${list}` : own === 'opponent' && plural && words.length === 1 ? alt(`${poss} ${list}`, `your opponents' ${pluralize(words[0]!)}`)
@@ -726,7 +728,7 @@ function build(f: ObjectFilter, st: RenderState, plural: boolean, o: NpOpts): Pa
   const colorAt = f.colors?.length === 1 ? p.adj.length - 1 : -1;
   if (p.negs.length === 1 && colorAt === 0 && p.adj[0] === (COLOR_WORD[f.colors![0]!] ?? f.colors![0]!)) p.adj.splice(0, 1, alt(`${p.adj[0]!} ${p.negs[0]!}`, `${p.negs[0]!} ${p.adj[0]!}`));
   // edh-c-54 (CR 506.4, 205.2; family attacking-nonwhite-order; Exile): "nonwhite attacking creature" is Oracle's order of "attacking nonwhite creature" (design 3.3: the fields are ANDed, the order says nothing); one negated color after "attacking"
-  else if (p.negs.length === 1 && (f.notColors?.length ?? 0) === 1 && p.adj.length > 0 && p.adj[p.adj.length - 1] === 'attacking') p.adj.splice(p.adj.length - 1, 1, alt(`attacking ${p.negs[0]!}`, `${p.negs[0]!} attacking`));
+  else if (p.negs.length === 1 && ((f.notColors?.length ?? 0) === 1 || (f.notSupertypes?.length ?? 0) === 1 /* edh-e-1 (Tilonalli's Skinshifter): "nonlegendary attacking creature" */) && p.adj.length > 0 && p.adj[p.adj.length - 1] === 'attacking') p.adj.splice(p.adj.length - 1, 1, alt(`attacking ${p.negs[0]!}`, `${p.negs[0]!} attacking`));
   else if (p.negs.length === 1) p.adj.push(p.negs[0]!);
   else if (p.negs.length > 1) p.adj.push(negationList(p.negs));
   // edh-next-22 (CR 111.1, 708.2; family nontoken-face-order; Whisperwood Elemental): "nontoken face-up creatures" is Oracle's order of "face-up nontoken creatures" (design 3.3: the fields are ANDed, the order says nothing)
@@ -861,16 +863,21 @@ function build(f: ObjectFilter, st: RenderState, plural: boolean, o: NpOpts): Pa
     if (zs.length !== 1 || zs[0] !== 'graveyard' || f.owner !== undefined || f.controller !== undefined) throw new NoRenderer('a single zone that is not "a single graveyard"');
     zoneAt = p.post.push('from a single graveyard') - 1;
   } else if (!o.noZone && !onStack && !f.stackKind) {
-    const z = zonePhrase(f, st, zs, plural, o.forEach === true);
+    const z = zonePhrase(f, st, zs, plural, o.forEach === true, o.det === 'all');
     // edh-c-61 (CR 400.3, 700.4; Fell Shepherd; family put-into-your-graveyard-from-battlefield): "cards that were put into your graveyard from the battlefield this turn" says the zone inside the history words, below
     if (z && f.putThereThisTurn === true && f.putThereFrom === 'battlefield' && f.owner === 'you' && f.controller === undefined && zs.length === 1 && zs[0] === 'graveyard') zoneInHistory = z;
     else if (z) zoneAt = p.post.push(z) - 1;
   }
   let ctrlAt = -1;
+  // edh-e-50 (CR 302.6, 400.7; parser/holes/filter.ts#controlForms): "the active player has controlled continuously since the beginning of the turn" says the controller and the length of
+  // their control in one phrase (the controller's own field); no other controller wording, and never without the controller
+  const sinceStart = f.controlledSinceTurnStart === true;
+  if (sinceStart && (o.noController || f.controller === undefined || f.controller === 'opponent' || f.controller === 'any' || f.wasAttachedTo !== undefined)) throw new NoRenderer('controlledSinceTurnStart without its controller phrase');
   if (!o.noController && f.controller !== undefined) {
     const c = f.controller;
     // edh-perms-20 (CR 608.2h; Hateful Eidolon): "an Aura you controlled that was attached to it": the controller as the object last existed (wasAttachedTo)
-    if (c === 'you') { ctrlAt = p.post.push(butNotOwn ? "you control but don't own" : f.wasAttachedTo !== undefined ? 'you controlled' : 'you control') - 1; if (!butNotOwn && f.wasAttachedTo === undefined && teamWords(f)) p.teamAt = ctrlAt; } // edh-next-35 (family team-controls): said in compose(), at the end, so no caller comparing the controller words sees the alternative
+    if (sinceStart && c === 'you') ctrlAt = p.post.push('you have controlled continuously since the beginning of the turn') - 1;
+    else if (c === 'you') { ctrlAt = p.post.push(butNotOwn ? "you control but don't own" : f.wasAttachedTo !== undefined ? 'you controlled' : 'you control') - 1; if (!butNotOwn && f.wasAttachedTo === undefined && teamWords(f)) p.teamAt = ctrlAt; } // edh-next-35 (family team-controls): said in compose(), at the end, so no caller comparing the controller words sees the alternative
     // edh-c-36 (CR 109.4, 102.1; family each-opponent-controls): "each creature each opponent controls" (Aku Djinn) names the same set as "each creature your opponents control"
     // FAST1 T6: "each creature your opponents control" names the same set as "each creature an opponent controls"; FAST3 T12: so does "for each Swamp your
     // opponents control" (NpOpts.forEach)
@@ -881,8 +888,8 @@ function build(f: ObjectFilter, st: RenderState, plural: boolean, o: NpOpts): Pa
       const who = K.player(c as PlayerRef, st, 'subject');
       const text = who.text;
       // r3-choose: several players named before control ("creatures those players control", a plural player target: render/refs.ts#player)
-      const verb = who.person === 'pl' ? 'control' : 'controls';
-      const at = p.post.push(known ? alt(`${text} ${verb}`, 'they control') : `${text} ${verb}`) - 1;
+      const verb = sinceStart ? (who.person === 'pl' ? 'have controlled continuously since the beginning of the turn' : 'has controlled continuously since the beginning of the turn') : who.person === 'pl' ? 'control' : 'controls';
+      const at = p.post.push(known && !sinceStart ? alt(`${text} ${verb}`, 'they control') : `${text} ${verb}`) - 1;
       if ((c as PlayerRef).ref === 'iterating') ctrlAt = at; // C6: "with power 2 or less that player controls" (below)
       // p2-damage-3 (family without-keyword-controller-order): "each creature without flying that player controls" (Siege Dragon) after a player named before
       else if (known && f.notKeyword !== undefined && f.keyword === undefined) ctrlAt = at;
@@ -1109,6 +1116,7 @@ function build(f: ObjectFilter, st: RenderState, plural: boolean, o: NpOpts): Pa
   // attacking-you-relative)
   if (attackingYou) p.post.push(alt('attacking you', ...(plural ? ['that are attacking you'] : ["that's attacking you", 'that is attacking you'])));
   if (f.enteredThisTurn === true && f.enteredUnderYourControl === true) enteredAt = p.post.push('that entered the battlefield under your control this turn') - 1; // edh-next-109 (CR 110.2; Shaile, Dean of Radiance)
+  else if (f.enteredSinceYourLastTurn === true) enteredAt = p.post.push('that entered since your last turn ended') - 1; // edh-e-27 (CR 500.1; Premature Burial)
   else if (f.enteredThisTurn === true) enteredAt = p.post.push(alt('that entered the battlefield this turn', 'that entered this turn')) - 1;
   else if (f.enteredThisTurn === false) p.post.push(f.attackedThisTurn === false ? "that didn't attack or enter this turn" /* edh-next-89 (CR 508.1a, 400.7; The Fifth Doctor): the two negations are one phrase */ : alt("that didn't enter the battlefield this turn", "that didn't enter this turn"));
   // edh-c-61 (CR 120.1; family dealt-damage-participle): "that was dealt damage", "that has been dealt damage" and the bare participle "dealt damage this turn"
@@ -1150,6 +1158,11 @@ function build(f: ObjectFilter, st: RenderState, plural: boolean, o: NpOpts): Pa
     if (atLeast < 2 || f.controller !== undefined) throw new NoRenderer('controllerDealtCombatDamageBy with a count below two or with a controller of its own');
     p.post.push(`controlled by a player who was dealt combat damage by ${numWord(atLeast)} or more ${K.np(by, cloneState(st), { det: 'none', plural: true })} this turn`);
   }
+  // edhe33 (CR 109.4; Seasinger): "whose controller controls an Island"
+  if (f.controllerControls !== undefined) {
+    if (f.controller !== undefined) throw new NoRenderer('controllerControls with a controller of its own');
+    p.post.push(`whose controller controls ${K.np(f.controllerControls, cloneState(st), { det: 'a', noZone: true })}`);
+  }
   // Cloud std-woe (CR 400.7, 120.3; family dealt-by-spell): an instant or sorcery is that object only while it is a spell, so the damage it dealt was dealt this
   // turn: "If a permanent dealt damage by ~ would die this turn, exile it instead" (Torch the Tower)
   const spellSelf = st.ctx.selfTypes?.some((t) => t === 'Instant' || t === 'Sorcery') === true;
@@ -1171,6 +1184,15 @@ function build(f: ObjectFilter, st: RenderState, plural: boolean, o: NpOpts): Pa
   if (f.blockedThisTurn === true) p.post.push('that blocked this turn');
   else if (f.blockedThisTurn === false) p.post.push("that didn't block this turn");
   if (f.wasBlockedThisTurn === true) p.post.push(plural ? 'that were blocked this turn' : 'that was blocked this turn'); // edh-c-18 (CR 509.1h)
+  // edh-e-20 (CR 509.1g-h, 506.4; You Cannot Pass!, Defiant Vanguard, Joven's Ferrets): the block pairs of this turn, said by the creature's role in each: "that blocked ~ this turn",
+  // "it blocked this turn" (one of them blocked the creature), "that blocked or was blocked by it this turn"
+  if (f.blockedWithThisTurn) {
+    const bw = f.blockedWithThisTurn;
+    // a described creature ("a legendary creature", judged as it was when the pair formed): said as a noun phrase
+    const w = bw.with.ref === 'each' && 'filter' in bw.with ? K.np(bw.with.filter, st, { det: 'a' }) : K.obj(bw.with, st, 'object').text;
+    const when = bw.combat === true ? 'this combat' : 'this turn';
+    p.post.push(bw.role === 'blocker' ? `that blocked ${w} ${when}` : bw.role === 'blocked' ? `${w} blocked ${when}` : `that blocked or ${plural ? 'were' : 'was'} blocked by ${w} ${when}`);
+  }
   // cloud std-dsk (CR 201.2); edh-next-126 (Light-Paws, Emperor's Voice): "with a different name than each Aura you control", after a "with" phrase of its own "and with ..."
   if (p.notSameName !== undefined) p.post.push(p.notSameNameEach === undefined ? p.notSameName : alt(p.notSameName, `${p.withAt === p.post.length - 1 ? 'and ' : ''}with a different name than ${p.notSameNameEach}`));
   if (f.sharesWith && f.sharesWith.with.ref === 'each' && f.sharesWith.quality === 'name') {
@@ -1270,7 +1292,7 @@ function build(f: ObjectFilter, st: RenderState, plural: boolean, o: NpOpts): Pa
   if (f.saddledThisTurn) p.post.push(`that saddled ${K.obj(f.saddledThisTurn, st, 'object').text} this turn`);
   if (f.crewedThisTurn) p.post.push(`that crewed ${K.obj(f.crewedThisTurn, st, 'object').text} this turn`); // r5-fxb (CR 702.122)
   if (f.couldEnchant) p.post.push(`that could enchant ${K.obj(f.couldEnchant, st, 'object').text}`); // edh-d-24 (CR 303.4a, 702.5a)
-  if (f.wasAttachedTo) p.post.push(`that was attached to ${K.obj(f.wasAttachedTo, st, 'object').text}`); // r5-fxb (CR 603.10a)
+  if (f.wasAttachedTo) p.post.push(`that ${plural && f.controller === undefined ? 'were' : 'was'} attached to ${K.obj(f.wasAttachedTo, st, 'object').text}`); // r5-fxb (CR 603.10a)
   const choice = f.chosen ? st.choiceWords?.get(f.chosen.link) : undefined;
   if (f.chosen && choice !== undefined && choice.quality === f.chosen.quality) {
     choice.used++; // FAST3 T13: the choice made as the ability resolves, said where it is used (render/fold.ts#choiceThenEffect)
@@ -1345,6 +1367,7 @@ function build(f: ObjectFilter, st: RenderState, plural: boolean, o: NpOpts): Pa
   if (notCastFromHand(f.not)) p.post.push("that wasn't cast from its owner's hand");
   if (f.castFrom) p.post.push(`that ${was} cast from ${f.castFrom === 'hand' ? 'a hand' : `a ${ZONE_WORD[f.castFrom] ?? f.castFrom}`}`);
   if (f.isCopy === true) p.post.push("that's a copy of something");
+  if (f.castNthThisTurn !== undefined) { const w = ['', 'first', 'second', 'third', 'fourth', 'fifth'][f.castNthThisTurn]; if (w === undefined || w === '') throw new NoRenderer('a spell ordinal this renderer cannot state'); p.post.push(`that's the ${w} spell cast this turn`); } // edh-e-17 (CR 601.2i)
   if (f.uncast === true) p.post.push("that wasn't cast"); // edhd60 (CR 707.10, 707.12)
   // FAST5 T68 (CR 303.4b): "creatures you control that are enchanted by Auras you control", "each creature that's enchanted by an Aura you control"
   if (f.enchantedBy !== undefined) {
@@ -1442,6 +1465,8 @@ function abilitySourceText(f: ObjectFilter): string {
   const keys = Object.entries(f).filter(([, v]) => v !== undefined).map(([k]) => k);
   if (keys.length === 1 && keys[0] === 'colorless' && f.colorless === true) return 'a colorless source';
   if (keys.length === 1 && keys[0] === 'types' && f.types!.length === 2) return `${withArticle(lowerType(f.types![0]!))} or ${lowerType(f.types![1]!)} source`; // edhd43: "from an artifact or enchantment source"
+  // edh-e-14 (CR 113.7a; Interdict): "from an artifact, creature, enchantment, or land" (three or more card types, no "source" after the list)
+  if (keys.length === 2 && keys.includes('types') && f.zone === 'battlefield' && f.types!.length >= 3) return `${withArticle(lowerType(f.types![0]!))}, ${f.types!.slice(1, -1).map(lowerType).join(', ')}, or ${lowerType(f.types![f.types!.length - 1]!)}`;
   if (keys.length === 1 && keys[0] === 'types' && f.types!.length === 1) return `${withArticle(lowerType(f.types![0]!))} source`;
   if (keys.length === 1 && keys[0] === 'notTypes' && f.notTypes!.length === 1) return `${withArticle(`non${lowerType(f.notTypes![0]!)}`)} source`; // edhd36: "from a noncreature source"
   if (JSON.stringify(f) === JSON.stringify({ supertypes: ['Legendary'], other: true, not: { commander: true } })) return "another legendary source that's not a commander"; // edh-next-131: The Peregrine Dynamo
@@ -1456,7 +1481,9 @@ function abilitySourceText(f: ObjectFilter): string {
 function statBeforeController(f: ObjectFilter): boolean {
   if (f.controller !== 'you' && f.controller !== 'opponent') return false;
   const stats = [f.power, f.toughness, f.manaValue].filter((c) => c !== undefined);
-  return stats.length === 1 && typeof stats[0]!.value === 'number';
+  // edhe33 (Spawnbroker): also the comparison with the stat of an earlier target ("target creature with power less than or equal to that creature's power an opponent controls")
+  const ofEarlierTarget = (v: unknown): boolean => typeof v === 'object' && v !== null && (v as { q?: string }).q === 'stat' && (v as { of?: { ref?: string } }).of?.ref === 'target';
+  return stats.length === 1 && (typeof stats[0]!.value === 'number' || ofEarlierTarget(stats[0]!.value));
 }
 
 /** FAST4 T25: the one comparison of `[{power: c}, {toughness: c}]` (in either order), or null. */
@@ -1553,6 +1580,8 @@ function sharedCardKinds(f: ObjectFilter, plural = false): string | null {
     const keys = Object.keys(opt).filter((k) => (opt as Record<string, unknown>)[k] !== undefined).sort().join();
     // edh-next-116 (Rob the Hoard): "artifact, enchantment, or legendary card": the last option is the supertype alone, after two or more bare card types
     if (i === a.length - 1 && i >= 1 && keys === 'supertypes' && opt.supertypes?.length === 1 && opt.supertypes[0] === 'Legendary' && items.length === i) { items.push('legendary'); continue; }
+    // edh-e-9 (CR 205.2a, 712.1; Overgrown Pest): the last option is the double-faced quality alone, "land or double-faced card" (only among cards of a library: a condition on one card, Invasion of Pyrulea, has its own wording in cond.ts)
+    if (i === a.length - 1 && i >= 1 && keys === 'doubleFaced' && opt.doubleFaced === true && items.length === i && f.zone === 'library') { items.push('double-faced'); continue; }
     if (opt.types?.length !== 1) return null;
     if (i < a.length - 1) {
       if (keys !== 'types') return null;
@@ -1695,7 +1724,8 @@ function buildAnyOfPlain(f: ObjectFilter, st: RenderState, plural: boolean, o: N
     if (rest.keyword !== undefined || rest.power || rest.toughness || rest.manaValue || rest.counters || rest.hasAbility) throw new NoRenderer('"with mana value, power, or toughness" beside another feature');
     const inner = build(rest, st, plural, o);
     if (inner.whole !== undefined) throw new NoRenderer('"with mana value, power, or toughness" after a whole reference');
-    inner.post.push(`with mana value, power, or toughness ${cmpPhrase(mpt, st)}`);
+    // edh-d-106 (CR 202.3, 208.1; The Fantastic Four): Oracle also prints the order "power, toughness, or mana value"; the parser keeps the printed order in `anyOf` (power first)
+    inner.post.push(anyOf![0]!.power !== undefined ? `with power, toughness, or mana value ${cmpPhrase(mpt, st)}` : `with mana value, power, or toughness ${cmpPhrase(mpt, st)}`);
     return inner;
   }
   // FAST4 T25 (CR 208.1): "with power or toughness 4 or greater": one comparison that either statistic meets (parser/holes/filter.ts#featureAt); only beside
@@ -1805,6 +1835,16 @@ function buildAnyOfPlain(f: ObjectFilter, st: RenderState, plural: boolean, o: N
     const a = compose(ps[0]!, { det: 'none' }, plural);
     const b = compose(ps[1]!, { det: 'none' }, plural);
     return { ...first, adj: [], heads: [], post: [], whole: alt(`${a} or ${b}`, `${a} and ${b}`) };
+  }
+  // edh-d-111 (CR 105.2, 205.2a; family color-or-type-card, Tezzeret's Gatebreaker): a card of one color or of one card type, "a blue or artifact card", the card noun said once after
+  // both (the parser's `ColorOrTypeCard` hole), beside the two descriptions spelled out as the lines below say them ("blue card or artifact card", the display, and "a blue card or an artifact card"); only with the article
+  if (anyOf?.length === 2 && ps.length === 2 && Object.keys(anyOf[0]!).join() === 'colors' && anyOf[0]!.colors?.length === 1 && Object.keys(anyOf[1]!).join() === 'types' && anyOf[1]!.types?.length === 1 && !plural
+    && o.det === 'a' && Object.keys(rest).every((k) => k === 'zone') && ps[1]!.whole === undefined && ps[1]!.adj.length === 0 && ps[1]!.heads.length === 1 && ps[1]!.suffix === 'card' && ps[1]!.post.length === 0) {
+    const color = COLOR_WORD[anyOf[0]!.colors![0]!];
+    if (color !== undefined) {
+      const each = ps.map((p) => p.whole ?? compose(p, { det: 'none' }, plural));
+      return { ...merged, whole: alt(each.join(' or '), each.map(withArticle).join(' or '), withArticle(`${color} or ${ps[1]!.heads[0]} card`)) };
+    }
   }
   if (ps.some((p) => p.whole !== undefined)) {
     merged.whole = ps.map((p) => p.whole ?? compose(p, { det: 'none' }, plural)).join(' or ');
@@ -1966,6 +2006,12 @@ function buildAnyOfPlain(f: ObjectFilter, st: RenderState, plural: boolean, o: N
     merged.whole = alt(ps.map((p) => compose(p, { det: 'a' }, plural)).join(' or '), `${article(bare)} ${bare} ${first.post.join(' ')}`);
     merged.wholeHasDet = true;
   }
+  // edh-e-23 (CR 205.2a, 303.4, 115.1; Nyx Herald): the same coordination after "target", "target enchanted creature or enchantment creature you control" (the determiner before the first, what follows both once)
+  else if (spelled.length === 2 && !plural && o.det === 'target' && o.count === undefined && first.post.length > 0 && first.suffix === '' && ps.every((p) => p.whole === undefined && !p.other && p.heads.length === 1 && same(p.post, first.post))) {
+    const bare = ps.map((p) => compose({ ...p, post: [] }, { det: 'none' }, plural)).join(' or ');
+    merged.whole = alt(`${compose(ps[0]!, { det: 'target' }, plural)} or ${compose(ps[1]!, { det: 'none' }, plural)}`, `target ${bare} ${first.post.join(' ')}`);
+    merged.wholeHasDet = true;
+  }
   // cmd1 (CR 700.6; family historic): "each historic card in your hand": the three kinds of cards said by their one word (a card head, "historic card")
   // std-rk (same family): and of permanents, "the number of historic permanents you control" (Alistair, the Brigadier), "affinity for historic permanents"
   if (isHistoric(anyOf ?? []) && ps.every((p) => p.whole === undefined)) {
@@ -2083,7 +2129,7 @@ function compose(p: Parts, o: NpOpts, plural: boolean): string {
     return alt(compose(rest, o, plural), compose({ ...rest, adj: [], post: [...p.post, 'that are equipped'] }, o, plural));
   }
   // edh-c-20 (CR 303.4b; Infiltrator's Magemark): plural creatures an Aura is attached to are "enchanted creatures you control" or "creatures you control that are enchanted"
-  if (p.enchantedPost === true && p.whole === undefined && p.notSubs === undefined && p.adj.includes('enchanted') && p.adj.length === 1 && p.post.length > 0) {
+  if (p.enchantedPost === true && p.whole === undefined && p.notSubs === undefined && p.adj.includes('enchanted') && p.adj.length === 1 && (p.post.length > 0 || o.det === 'none' /* edh-e-19: bare "creatures that are enchanted can't attack or block" (Song of Serenity) */)) {
     const { enchantedPost: _e, ...rest } = p;
     return alt(compose(rest, o, plural), compose({ ...rest, adj: [], post: [...p.post, 'that are enchanted'] }, o, plural));
   }
@@ -2320,6 +2366,14 @@ export function np(f: ObjectFilter, st: RenderState, o: NpOpts = {}): string {
     const q = build({ ...f, zone: 'any', owner: undefined }, st, plural, o);
     const isCardHead = q.suffix === 'card' || (q.suffix === '' && q.heads.length === 1 && q.heads[0] === 'card');
     if (owns !== '' && q.whole === undefined && isCardHead) return alt(text, compose({ ...q, adj: ['exiled', ...q.adj], post: [owns, ...q.post] }, o, plural), ...(q.post.length > 0 ? [compose({ ...q, adj: ['exiled', ...q.adj], post: [...q.post, owns] }, o, plural), compose({ ...q, post: [...q.post, owns, 'from exile'] }, o, plural) /* edh-d-76 (Rootcoil Creeper): "target card with flashback you own from exile" */] : []));
+  }
+  // edhe44 (CR 406.1, 108.3, 122.1; Flamewar, Livio): a group of cards in exile that a player owns (or any card in exile) with counters, after "all", is also "all exiled cards you own with
+  // intel counters on them": the participle before the noun, the owner's words after it (family exiled-cards-with-counters)
+  if (plural && o.det === 'all' && f.zone === 'exile' && f.controller === undefined && f.counters !== undefined) {
+    const owns = f.owner === undefined ? '' : ownerWords(f.owner, st);
+    const q = build({ ...f, zone: 'any', owner: undefined }, st, plural, o);
+    const isCardHead = q.suffix === 'card' || (q.suffix === '' && q.heads.length === 1 && q.heads[0] === 'card');
+    if (q.whole === undefined && isCardHead && (f.owner === undefined || owns !== '')) return alt(text, compose({ ...q, adj: ['exiled', ...q.adj], post: owns === '' ? q.post : [owns, ...q.post] }, o, plural));
   }
   // edh-d-17 (CR 406.1, 108.3; Seize the Storm): a group of cards in exile that a player owns, counted, is also "the number of cards with flashback you own in exile": the owner's words
   // and the zone after the rest of the description

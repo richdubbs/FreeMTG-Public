@@ -8,7 +8,7 @@
  */
 import { readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
-import type { DeckEntry, LibraryDeck } from '../api';
+import type { DeckEntry, LibraryDeck, PrintingRef, TokenPrinting } from '../api';
 import { badRequest, type Handler, type ServerContext } from '../context';
 import { readJsonFile, serialized, writeAtomic } from './files';
 
@@ -50,9 +50,31 @@ function entries(v: unknown): DeckEntry[] | string {
     if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > MAX_COUNT) return `has a count that is not a whole number from 1 to ${MAX_COUNT}`;
     const oracleId = r['oracleId'];
     if (oracleId !== undefined && !text(oracleId, 64)) return 'has an Oracle id that is not text';
-    out.push({ name: r['name'], count, ...(typeof oracleId === 'string' && oracleId !== '' ? { oracleId } : {}) });
+    // deck-art-1: the chosen printing; a malformed one is dropped (the default printing), never a reason to refuse the deck.
+    const printing = printingRef(r['printing']);
+    out.push({ name: r['name'], count, ...(typeof oracleId === 'string' && oracleId !== '' ? { oracleId } : {}), ...(printing ? { printing } : {}) });
   }
   return out;
+}
+
+/** deck-art-1: a printing reference ("(SET) number"), or undefined. */
+export function printingRef(v: unknown): PrintingRef | undefined {
+  const r = v as Record<string, unknown> | null;
+  if (!r || typeof r !== 'object' || !text(r['set'], 12) || !text(r['number'], 16) || r['set'] === '') return undefined;
+  return { set: r['set'].toLowerCase(), number: r['number'] };
+}
+
+/** deck-art-1: the tokens' chosen printings by token image slot key; malformed entries are dropped. */
+function tokenPrintings(v: unknown): Record<string, TokenPrinting> | undefined {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const out: Record<string, TokenPrinting> = {};
+  for (const [key, e] of Object.entries(v as Record<string, unknown>).slice(0, MAX_ENTRIES)) {
+    const r = e as Record<string, unknown> | null;
+    const printing = r && typeof r === 'object' ? printingRef(r['printing']) : undefined;
+    if (!printing || key.length > 1000 || !text(r!['oracleId'], 64) || !text(r!['name'], MAX_NAME)) continue;
+    out[key] = { oracleId: r!['oracleId'], name: r!['name'], printing };
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /**
@@ -74,6 +96,7 @@ export function readDeck(v: unknown): LibraryDeck | string {
     if (typeof list === 'string') return `The ${s} section ${list}.`;
     sections[s] = list;
   }
+  const tokens = tokenPrintings(d['tokens']);
   return {
     id: d['id'],
     name: d['name'],
@@ -86,6 +109,7 @@ export function readDeck(v: unknown): LibraryDeck | string {
     createdAt: d['createdAt'],
     updatedAt: d['updatedAt'],
     ...(typeof d['cover'] === 'string' && d['cover'] !== '' ? { cover: d['cover'] } : {}),
+    ...(tokens ? { tokens } : {}),
   };
 }
 

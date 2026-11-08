@@ -39,7 +39,8 @@ function pumpChoice(list: EffectStep[], i: number, st: RenderState): Folded | nu
     } else {
       if (quality.layer !== 6 || quality.add?.length !== 1 || quality.remove !== undefined || quality.removeAll !== undefined || quality.cantHave !== undefined) return null;
       const a = quality.add[0]!;
-      if (a.kind !== 'keyword' || a.text !== answers[k] || a.quality !== undefined) return null;
+      // edh-e-61 (CR 702.16a; Jodah's Avenger): one of the listed keywords may be protection from a color (its quality `color:R`, its text the option said back), nothing else with a quality
+      if (a.kind !== 'keyword' || a.text !== answers[k] || (a.quality !== undefined && !(a.keyword === 'protection' && /^color:[WUBRG]$/.test(a.quality)))) return null;
       keywords.push(a.text);
     }
     if (first === null) first = e;

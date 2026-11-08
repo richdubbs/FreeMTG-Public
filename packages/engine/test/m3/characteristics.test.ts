@@ -130,13 +130,13 @@ describe('the local mana-ability recognizer (until the milestone 5 parser)', () 
     const persist = compiledDef('Kitchen Finks');
     expect(persist.faces[0]!.abilities.map((a) => a.kind)).toEqual(['triggered', 'keyword']);
     expect(persist.automation.level).toBe('full');
-    // An unimplemented keyword stays a manual ability: Charging Binox's trample is automated, its assist (CR 702.132) is manual with the capability it needs
+    // An unimplemented keyword stays a manual ability: Endless Swarm's spell is automated, its epic (CR 702.50) is manual (edh-e-29: assist is native now) with the capability it needs
     // (std-ry8: Hexbane Tortoise, and edh-c-42: Aven Warhawk, the examples before, are full now that enlist and amplify are implemented).
-    const assist = compiledDef('Charging Binox');
+    const assist = compiledDef('Endless Swarm');
     expect(assist.automation.level).toBe('partial');
-    const raw = getCard('Charging Binox');
+    const raw = getCard('Endless Swarm');
     const def = compileCard(raw);
-    expect(def.faces[0]!.abilities[0]).toMatchObject({ kind: expect.stringMatching(/^(manual|keyword)$/), reason: expect.stringContaining('keyword:assist') });
+    expect(def.faces[0]!.abilities[1]).toMatchObject({ kind: expect.stringMatching(/^(manual|keyword)$/), reason: expect.stringContaining('keyword:epic') });
     const elves = compiledDef('Llanowar Elves');
     expect(elves.automation).toMatchObject({ level: 'full', unsupported: [] });
   });

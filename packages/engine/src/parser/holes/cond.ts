@@ -39,6 +39,7 @@ import { edhn55CondAt, greatestOrTied } from './edhn55';
 import { edhv110CondAt } from './edhv110'; // edh-c-110
 import { edhd93CondAt } from './edhd93'; // edh-d-93
 import { edhd87CondAt } from './edhd87'; // edh-d-87
+import { colorsSpentAtLeast } from './edhd112'; // edh-d-112
 import { p2cst1CondAt } from './p2cst1';
 import { allExiledShareCond } from './trek9'; // trek-9
 import { domain, landsOnly } from './qty'; // edh-c-2
@@ -115,6 +116,7 @@ const W_EVIDENCE_COLLECTED = [P('evidence was collected')];
 // "the player" is Oracle's second mention of a player named just before ("that player may pay {2}. If the player doesn't, ...", CR 118.12; WP23)
 // std-rq (CR 608.2d, 101.4): after "any opponent may ...", "if a player does" / "if no one does" (whether one of them did; render/cond.ts prints these only there)
 const W_DID = [P('you do'), P('you pay'), P('they do'), P('that player does'), P('the player does'), P('a player does')];
+const W_CONNIVES_THIS_WAY = P('it connives this way'); // edh-e-26 (CR 701.50a, 603.12; Psychic Pickpocket): the reflexive trigger of the connive right before it
 // edh-top-9 (CR 701.12a, 608.2c; Gilded Drake): "If you don't or can't make an exchange, ...": the exchange right before it was not performed (lower/conditions.ts#resolveDid, `$exchange`)
 /** edh-next-138 (CR 701.20a, 608.2c; Fisher's Talent): "if you revealed it this way" after an option of yours to reveal one card (lower/conditions.ts#resolveDid, `$revealed`). */
 const W_REVEALED_IT_THIS_WAY = [P('you revealed it this way'), P('you revealed that card this way')];
@@ -131,6 +133,8 @@ const W_CANT = [P("you can't"), P('you cannot'), P("the player can't"), P("that 
 const W_LIBRARY_NO_CARDS = P('your library has no cards in it'); // std-tdm
 const W_A_CARD_EXILED_WITH_SELF = P('a card is exiled with ~'); // edh-mana-keywords-4
 const W_CARDS_EXILED_WITH_SELF = P('there are cards exiled with ~'); // edh-zones-14 (CR 607.2a, 603.4; Valakut Exploration)
+// edh-e-15 (CR 122.1, 608.2c; Bounty of the Luxa): "no counters were removed this way": the counters the removeCounters instruction right before removed (q:countersRemoved, resolved by lower/conditions.ts) are none
+const W_NO_COUNTERS_REMOVED = [P('no counters were removed this way'), P('no counters are removed this way')];
 const W_DIDNT_DRAW = [P("you don't draw a card this way"), P("you didn't draw a card this way"), P('you do not draw a card this way'), P('you did not draw a card this way')];
 // edh-d-26 (CR 121.1, 608.2c, 614.11; Mr. Foxglove): "If you didn't draw cards this way": the draw right before it, of any number (a computed one too), drew nothing (lower/conditions.ts#drewThisWay)
 const W_DIDNT_DRAW_CARDS = [P("you don't draw cards this way"), P("you didn't draw cards this way"), P('you do not draw cards this way'), P('you did not draw cards this way')];
@@ -233,6 +237,7 @@ function withController(f: ObjectFilter, pred: PlayerPred): ObjectFilter | null 
 const W_THAN = P('than'); // edh-c-6
 const W_FEWER = P('fewer'); // edh-c-25
 const W_THAN_AN_OPPONENT = P('than an opponent'); // edh-c-25
+const W_THAN_EACH_OPPONENT = P('than each opponent'); // edh-e-24
 const W_COMMANDER_THATS = P("commander that's");
 /** CMD2: "commander that's a creature", "commander that's a creature or planeswalker" (card types, CR 205.2a), from `pos` (after "a"). */
 function commanderThatsTypes(ctx: HoleCtx, pos: number): { end: number; types: string[] }[] {
@@ -450,6 +455,15 @@ function control(ctx: HoleCtx, pos: number): Alt[] {
         push(than, compare({ q: 'countPlayers', of: { ref: 'each', who: 'opponent' }, controlsVs: { filter: n.filter, op: '>', than: { ref: 'you' } } }, '>=', 1), n.flags);
       }
     }
+    // edh-e-24 (CR 109.4, 102.3, 603.4; Even the Odds): "you control fewer creatures than each opponent": no opponent controls as many of that description as you (each judged alone)
+    if (fewerMine >= 0) {
+      for (const n of npAlts(ctx, fewerMine)) {
+        if (n.number !== 'plural' || n.filter.controller !== undefined) continue;
+        const than = phraseAt(ctx, n.end, W_THAN_EACH_OPPONENT);
+        if (than < 0 || !withController(n.filter, 'you') || !withController(n.filter, 'opponent')) continue;
+        push(than, compare({ q: 'countPlayers', of: { ref: 'each', who: 'opponent' }, controlsVs: { filter: n.filter, op: '<=', than: { ref: 'you' } } }, '==', 0), n.flags);
+      }
+    }
     // edh-c-6 (CR 109.4, 608.2c; Unified Will): "you control more creatures than that spell's controller": the permanents of the description you control outnumber those the named
     // player controls (each counted as the instruction resolves). Only a plural description with no controller of its own and a player who is the controller of an object
     const moreMine = !s.neg && s.pred === 'you' ? phraseAt(ctx, s.end, W_MORE) : -1;
@@ -575,6 +589,46 @@ function cardsInYourGraveyard(ctx: HoleCtx, pos: number): Alt[] {
       if (two < 0) continue;
       const flags = [...flagsA, ...b.flags.filter((f) => f !== 'zone-unstated')];
       out.push({ end: two, value: { cond: 'all', of: [exists({ ...a.filter, ...where }), exists({ ...b.filter, ...where })] }, ...(flags.length > 0 ? { flags } : {}) });
+    }
+  }
+  return out;
+}
+
+
+/**
+ * edhe7 (CR 404.1, 404.2, 400.3, 113.6m; Nether Spirit, Death Spark, Krovikan Horror, Nether Shadow; value `{cond:'graveyardPos'}`): "~ is the only creature card in your
+ * graveyard", "~ is in your graveyard with a creature card directly above it", "~ is in your graveyard with three or more creature cards above it". Your graveyard only (a card
+ * is in its owner's graveyard, CR 400.3); the description is a card description with no zone, owner or controller.
+ */
+function graveyardPosition(ctx: HoleCtx, pos: number): Alt[] {
+  const out: Alt[] = [];
+  const plain = (f: ObjectFilter): boolean => f.zone === undefined && f.owner === undefined && f.controller === undefined;
+  const only = phraseAt(ctx, pos + 1, P('is the only'));
+  if (only >= 0) {
+    for (const a of npAlts(ctx, only)) {
+      if (a.number !== 'singular' || !plain(a.filter)) continue;
+      const end = phraseAt(ctx, a.end, P('in your graveyard'));
+      if (end >= 0) out.push({ end, value: { cond: 'graveyardPos', mode: 'only', filter: a.filter } as unknown as Condition, flags: a.flags.filter((f) => f !== 'zone-unstated') });
+    }
+  }
+  const withAt = phraseAt(ctx, pos + 1, P('is in your graveyard with'));
+  if (withAt >= 0) {
+    const art = ctx.toks[withAt]?.norm;
+    if (art === 'a' || art === 'an') {
+      for (const a of npAlts(ctx, withAt + 1)) {
+        if (a.number !== 'singular' || !plain(a.filter)) continue;
+        const end = phraseAt(ctx, a.end, P('directly above it'));
+        if (end >= 0) out.push({ end, value: { cond: 'graveyardPos', mode: 'directlyAbove', filter: a.filter } as unknown as Condition, flags: a.flags.filter((f) => f !== 'zone-unstated') });
+      }
+    }
+    for (const c of cmpAt(ctx, withAt)) {
+      const v = c.cmp.value;
+      if (c.cmp.op !== '>=' || typeof v !== 'number' || v < 2) continue;
+      for (const a of npAlts(ctx, c.end)) {
+        if (a.number !== 'plural' || !plain(a.filter)) continue;
+        const end = phraseAt(ctx, a.end, P('above it'));
+        if (end >= 0) out.push({ end, value: { cond: 'graveyardPos', mode: 'above', filter: a.filter, atLeast: v } as unknown as Condition, flags: a.flags.filter((f) => f !== 'zone-unstated') });
+      }
     }
   }
   return out;
@@ -791,9 +845,22 @@ function youHave(ctx: HoleCtx, pos: number): Alt[] {
   return out;
 }
 
+const EXTREME_CONDS: readonly (readonly [string[], PlayerRef])[] = [
+  [P('a player has more life than each other player'), { ref: 'extremePlayer', stat: 'life' }],
+  [P('a player has less life than each other player'), { ref: 'extremePlayer', stat: 'life', fewest: true }],
+  [P('a player has more cards in hand than each other player'), { ref: 'extremePlayer', stat: 'hand' }],
+  [P('a player has fewer cards in hand than each other player'), { ref: 'extremePlayer', stat: 'hand', fewest: true }],
+  [P('two or more players are tied for most life'), { ref: 'extremePlayer', stat: 'life', tied: true }],
+  [P('two or more players are tied for lowest life total'), { ref: 'extremePlayer', stat: 'life', fewest: true, tied: true }],
+  [P('two or more players are tied for most cards in hand'), { ref: 'extremePlayer', stat: 'hand', tied: true }],
+  [P('two or more players are tied for fewest cards in hand'), { ref: 'extremePlayer', stat: 'hand', fewest: true, tied: true }],
+];
+
 function misc(ctx: HoleCtx, pos: number): Alt[] {
   const out: Alt[] = [];
   const add = (words: readonly (readonly string[])[], v: Condition): void => { for (const w of words) { const e = phraseAt(ctx, pos, w); if (e >= 0) out.push({ end: e, value: v }); } };
+  // edh-e-62 (CR 603.4, 119.1, 402.1; Wild Dogs, Sokenzan Renegade, Loxodon Peacekeeper): "a player has more life than each other player" (the one such player), "two or more players are tied for lowest life total"
+  for (const [words, v] of EXTREME_CONDS) add([words], { cond: 'hasPlayer', who: v });
   add(W_ITS_YOUR_TURN, { cond: 'turnOf', whose: 'you' });
   add(W_ITS_NOT_YOUR_TURN, { cond: 'not', of: { cond: 'turnOf', whose: 'you' } });
   add([P("it's an opponent 's turn")], { cond: 'turnOf', whose: 'opponent' });
@@ -826,6 +893,9 @@ function misc(ctx: HoleCtx, pos: number): Alt[] {
   add(W_OPPONENT_MONARCH, { cond: 'designation', who: { ref: 'each', who: 'opponent' }, what: 'monarch' });
   // edh-c-114 (CR 725.1, 725.2; M'Baku, Jabari Chieftain): "if there is no monarch" (no player has the designation); "if that player is the monarch" (the player an event or earlier instruction named)
   add([P('there is no monarch'), P("there's no monarch")], { cond: 'not', of: { cond: 'designation', who: { ref: 'each', who: 'player' }, what: 'monarch' } });
+  // edh-d-107 (CR 404.1, 608.2c; Nezumi Graverobber): "if no cards are in that graveyard" after "target card from an opponent's graveyard": the graveyard of the player an earlier
+  // instruction named (its owner; the anaphora pass binds "that player"), with no card in it
+  add([P('no cards are in that graveyard')], { cond: 'compare', left: { q: 'zoneSize', zone: 'graveyard', of: anaphorObj({ sort: 'player', number: 'singular', head: 'player', text: 'that player' }) as never }, op: '==', right: 0 } as Condition);
   add([P('that player is the monarch')], { cond: 'designation', who: anaphorObj({ sort: 'player', number: 'singular', text: 'that player' }) as never, what: 'monarch' });
   // edh-next-53 (CR 506.2, 508.1b, 603.4; Suppressor Skyguard): "that player has another opponent who isn't being attacked": the attacking player of the event has an opponent besides you with no creature attacking them
   add([P("that player has another opponent who isn't being attacked")], { cond: 'otherOpponentNotAttacked', of: anaphorObj({ sort: 'player', number: 'singular', text: 'that player' }) as never });
@@ -857,6 +927,7 @@ function misc(ctx: HoleCtx, pos: number): Alt[] {
   for (const [ws, not] of [[W_DID, false], [W_DIDNT, true]] as const) {
     for (const w of ws) { const e = phraseAt(ctx, pos, w); if (e >= 0) out.push({ end: e, value: { cond: 'did', step: '', $step: 'previous', ...(not ? { not: true } : {}) } }); }
   }
+  { const e = phraseAt(ctx, pos, W_CONNIVES_THIS_WAY); if (e >= 0) out.push({ end: e, value: { cond: 'did', step: '', $step: 'previous', $connive: true } as unknown as Condition }); } // edh-e-26
   for (const w of W_CAST_A_SPELL_THIS_WAY) { const e = phraseAt(ctx, pos, w); if (e >= 0) out.push({ end: e, value: { cond: 'did', step: '', $step: 'previous' } }); } // edh-d-59
   for (const w of W_REVEALED_IT_THIS_WAY) { const e = phraseAt(ctx, pos, w); if (e >= 0) out.push({ end: e, value: { cond: 'did', step: '', $step: 'previous', $revealed: true } as unknown as Condition }); } // edh-next-138
   for (const w of W_PAY_THIS_COST_TIMES) { const e = phraseAt(ctx, pos, w); if (e >= 0) out.push({ end: e, value: { cond: 'did', step: '', $step: 'previous' } }); } // edhn81: the same condition as "you do"; render/steps-lasting.ts#reflexive says it only after a payment made "any number of times"
@@ -866,6 +937,7 @@ function misc(ctx: HoleCtx, pos: number): Alt[] {
   for (const w of W_DIDNT_CREATE_TOKEN) { const e = phraseAt(ctx, pos, w); if (e >= 0) out.push({ end: e, value: { cond: 'did', step: '', $step: 'tokenThisWay', not: true } as unknown as Condition }); } // edh-perms-6
   // edh-next-142 (CR 701.20a, 608.2c; Omnath, Locus of All): "If you don't reveal it, put it into your hand.": the ONE reveal of one named card by you earlier in the ability (lower/conditions.ts)
   for (const w of W_DIDNT_REVEAL_IT) { const e = phraseAt(ctx, pos, w); if (e >= 0) out.push({ end: e, value: { cond: 'did', step: '', $step: 'revealThisWay', not: true } as unknown as Condition }); }
+  for (const w of W_NO_COUNTERS_REMOVED) { const e = phraseAt(ctx, pos, w); if (e >= 0) out.push({ end: e, value: compare({ q: 'countersRemoved', step: '', $step: 'previous' } as never, '==', 0) }); } // edh-e-15
   for (const w of W_DIDNT_DRAW) { const e = phraseAt(ctx, pos, w); if (e >= 0) out.push({ end: e, value: { cond: 'did', step: '', $step: 'drawThisWay', not: true } as unknown as Condition }); }
   for (const w of W_DIDNT_CAST_THIS_WAY) { const e = phraseAt(ctx, pos, w); if (e >= 0) out.push({ end: e, value: { cond: 'did', step: '', $step: 'previous', not: true, $cast: true } as unknown as Condition }); } // std-rj
   // std-rx32 (CR 701.3a-b, 603.12): "When one or more Equipment become attached to that creature this way, ...": the attach right before it attached at least one
@@ -926,6 +998,7 @@ function misc(ctx: HoleCtx, pos: number): Alt[] {
   if (xi >= 0) out.push({ end: xi, value: compare({ q: 'count', of: { ref: 'linked', link: 'exiled' } }, '>=', 1) });
   out.push(...destroyedThisWay(ctx, pos)); // FAST5X E17
   out.push(...thatDiesThisWay(ctx, pos)); // edh-perms-5
+  out.push(...aDiesThisWay(ctx, pos)); // edh-e-27
   out.push(...countersPutThisWay(ctx, pos)); // trek-6
   out.push(...attachedAtLeast(ctx, pos)); // edh-next-1
   out.push(...putIntoHandThisWay(ctx, pos)); // FAST5 T75
@@ -1066,6 +1139,13 @@ function misc(ctx: HoleCtx, pos: number): Alt[] {
   // ability (`by`). The pronoun must name the object itself (`$self`, as "it was kicked" above): anywhere else the reading stays manual
   const yci = phraseAt(ctx, pos, P('you cast it'));
   if (yci >= 0) out.push({ end: yci, value: { cond: 'wasCast', by: 'you', $self: anaphorObj({ sort: 'object', number: 'singular', text: 'it' }) } });
+  // edh-d-111 (CR 601.2i, 603.4; Codespell Cleric): "it was the second spell you cast this turn", the intervening "if" of "When this creature enters, if it was the second spell you cast
+  // this turn, ...": the object was cast by the controller of the ability as the nth spell they cast this turn (`nth`); the pronoun names the object itself (`$self`), as above
+  const nthWords: [string, number][] = [['first', 1], ['second', 2], ['third', 3], ['fourth', 4], ['fifth', 5]];
+  for (const [w, n] of nthWords) {
+    const e = phraseAt(ctx, pos, P(`it was the ${w} spell you cast this turn`));
+    if (e >= 0) out.push({ end: e, value: { cond: 'wasCast', by: 'you', nth: n, $self: anaphorObj({ sort: 'object', number: 'singular', text: 'it' }) } });
+  }
   // edh-next-37 (CR 601.2i, 505.1, 603.4; Sentinel's Mark): "you cast it during your main phase", the addendum of "When this Aura enters, if you cast it during your main phase, ...": the same
   // record as std-rn's "you cast ~ during your main phase" (whether it was a main phase of your turn when the spell became cast), with the pronoun naming the object itself (`$self`)
   if (yci >= 0) {
@@ -1120,6 +1200,7 @@ function misc(ctx: HoleCtx, pos: number): Alt[] {
         }
       }
     }
+    out.push(...graveyardPosition(ctx, pos));
     // edh-next-103 (CR 113.6m, 602.5b; Skyblade's Boon): the same condition said the other way round, "~ is on the battlefield or in your graveyard" (one reading: the model keeps one order)
     const onBfOrGy = phraseAt(ctx, pos + 1, P('is on the battlefield or in your graveyard'));
     if (onBfOrGy >= 0) out.push({ end: onBfOrGy, value: { cond: 'any', of: [{ cond: 'matches', object: { ref: 'self' }, filter: { zone: 'graveyard', owner: 'you' } }, { cond: 'matches', object: { ref: 'self' }, filter: { zone: 'battlefield' } }] } });
@@ -1503,6 +1584,26 @@ function thatDiesThisWay(ctx: HoleCtx, pos: number): Alt[] {
 }
 
 /**
+ * edh-e-27 (CR 700.4, 701.8a, 608.2c, 608.2h; Cinder Cloud): "If a white creature dies this way, ...": the same single-target destroy right before it
+ * (`$dies`, lower/conditions.ts) put that ONE object into a graveyard AND the object matched the description as it last existed on the battlefield. Only "a" / "an" with one
+ * singular description that says more than the card type ("a creature dies this way" after a destroy of one target is the same as "that creature dies this way" and is
+ * left to thatDiesThisWay), whose controller is not said.
+ */
+function aDiesThisWay(ctx: HoleCtx, pos: number): Alt[] {
+  const t = ctx.toks[pos]?.norm;
+  if (t !== 'a' && t !== 'an') return [];
+  const out: Alt[] = [];
+  for (const n of npAlts(ctx, pos + 1)) {
+    if (n.number !== 'singular' || n.flags.some((f) => f !== 'zone-unstated') || n.filter.controller !== undefined || n.filter.owner !== undefined || n.filter.zone !== undefined) continue;
+    const keys = Object.keys(n.filter).filter((k) => (n.filter as Record<string, unknown>)[k] !== undefined);
+    if (keys.length < 2 || n.filter.types === undefined || n.filter.types.length !== 1) continue;
+    const e = phraseAt(ctx, n.end, W_DIES_THIS_WAY);
+    if (e >= 0) out.push({ end: e, value: { cond: 'did', step: '', $step: 'previous', $dies: true, which: n.filter, to: 'graveyard' } as unknown as Condition });
+  }
+  return out;
+}
+
+/**
  * FAST5X E17 (CR 608.2c, 608.2h): "a creature you controlled was destroyed this way", "a permanent you controlled or a token was destroyed this way": the
  * destroy step right before it (lower/conditions.ts resolves the `$step` marker and insists on a destroy) actually destroyed such an object, read as it last
  * existed on the battlefield (`did` with `which`). Each noun phrase is singular after "a" / "an"; "you controlled" after one of them is its controller.
@@ -1773,6 +1874,7 @@ function milledThisWayCond(ctx: HoleCtx, pos: number): Alt[] {
   return out;
 }
 
+const W_YOU_REVEAL_WAY = P('you reveal'); // edh-e-1
 const W_REVEALED_WAY_VERB = [P('is revealed this way'), P('was revealed this way')]; // p2-dig-2
 
 /**
@@ -1785,17 +1887,20 @@ const W_REVEALED_WAY_VERB = [P('is revealed this way'), P('was revealed this way
 function revealedThisWayCond(ctx: HoleCtx, pos: number): Alt[] {
   const out: Alt[] = [];
   if (ctx.discourse?.handLook === true && ctx.discourse.seen !== true) return out; // edh-d-33: after a reveal of a hand (and no reveal of a library) the group is `revealedHandCond`'s (two readings would be guard G5)
-  const art = ctx.toks[pos]?.norm;
+  // edh-e-1 (CR 701.20a, 608.2c; Vesuvan Drifter): "If you reveal a creature card this way" says the same as "If a creature card is revealed this way" (the reveal step is the player's own)
+  const youReveal = ctx.discourse?.revealedUntil === true ? -1 : phraseAt(ctx, pos, W_YOU_REVEAL_WAY); // not after a reveal "until" (Yuna's Whistle: that wording is another hole's, guard G5)
+  const at = youReveal >= 0 ? youReveal : pos;
+  const art = ctx.toks[at]?.norm;
   if (art !== 'a' && art !== 'an') return out;
-  for (const n of npAlts(ctx, pos + 1)) {
+  for (const n of npAlts(ctx, at + 1)) {
     if (n.number !== 'singular' || n.head !== 'card' || n.flags.some((f) => f !== 'zone-unstated')) continue;
     if (n.filter.controller !== undefined || n.filter.owner !== undefined || n.filter.zone !== undefined || n.filter.is !== undefined) continue;
-    for (const w of W_REVEALED_WAY_VERB) {
+    for (const w of youReveal >= 0 ? [P('this way')] : W_REVEALED_WAY_VERB) {
       const e = phraseAt(ctx, n.end, w);
       if (e < 0) continue;
       // the one card a reveal of the top card revealed (lower/mentions.ts: a singular mention with the participle); several revealed cards are not read here (fail closed)
       const card = anaphorObj({ sort: 'object', number: 'singular', head: 'card', participle: REVEALED_THIS_WAY, text: REVEALED_THIS_WAY });
-      out.push({ end: e, value: { cond: 'matches', object: card, filter: n.filter } as unknown as Condition });
+      out.push({ end: e, ...(youReveal >= 0 ? { weak: 1 } : {}), value: { cond: 'matches', object: card, filter: n.filter } as unknown as Condition });
     }
   }
   return out;
@@ -1855,6 +1960,7 @@ const ITS_STATS: [string[], 'power' | 'toughness' | 'manaValue'][] = [[P('power'
 const W_COUNTERS_ON_IT = P('counters on it'); // FAST5X E21
 const W_WAS_DEALT_DAMAGE = P('was dealt damage this turn');
 const W_WAS_DEALT_EXCESS_DAMAGE = P('was dealt excess damage this turn'); // edh-d-38 (CR 120.10)
+const W_WAS_DEALT_NONCOMBAT_DAMAGE = P('was dealt noncombat damage this turn'); // edh-e-50 (CR 120.1, 510.2; Grisly Sigil)
 const W_WASNT_DEALT_DAMAGE = [P("wasn't dealt damage this turn"), P('was not dealt damage this turn')]; // r3-fx
 const W_CAST_FOR_ALT_COST: readonly { words: string[]; via: string }[] = [{ words: P('was cast for its warp cost'), via: 'warp' }]; // std-rx14
 
@@ -1883,7 +1989,9 @@ function castForAltCost(ctx: HoleCtx, pos: number, object: unknown, out: Alt[]):
  */
 function pastTense(ctx: HoleCtx, pos: number, object: unknown, out: Alt[]): void {
   const push = (end: number, filter: ObjectFilter, neg: boolean, flags: readonly string[] = []): void => {
-    const c: Condition = { cond: 'matches', object: object as never, filter };
+    // edh-e-39 (CR 108.2b, 608.2h; Misfortune Teller): the past tense too: "If it was a land card" asks about a card, never a token the ability made (AnaphorInfo.cardNoun, as `matches` below)
+    const o = filter.isCard === true && typeof object === 'object' && object !== null && '$anaphor' in object ? { ...object, $anaphor: { ...(object as { $anaphor: object }).$anaphor, cardNoun: true } } : object;
+    const c: Condition = { cond: 'matches', object: o as never, filter };
     const fl = flags.filter((f) => f !== 'zone-unstated');
     out.push({ end, value: neg ? { cond: 'not', of: c } : c, ...(fl.length > 0 ? { flags: fl } : {}) });
   };
@@ -1935,9 +2043,23 @@ function pastTense(ctx: HoleCtx, pos: number, object: unknown, out: Alt[]): void
   if (dd >= 0) push(dd, { dealtDamageThisTurn: true }, false);
   const dx = phraseAt(ctx, pos, W_WAS_DEALT_EXCESS_DAMAGE);
   if (dx >= 0) push(dx, { dealtExcessDamageThisTurn: true }, false); // edh-d-38 (CR 120.10)
+  const dn = phraseAt(ctx, pos, W_WAS_DEALT_NONCOMBAT_DAMAGE);
+  if (dn >= 0) push(dn, { dealtNoncombatDamageThisTurn: true }, false); // edh-e-50 (CR 120.1, 510.2)
   // Standard round 3, r3-fx (CR 120.1, 608.2h): "if that creature wasn't dealt damage this turn": the same history read as it last existed (a destroyed creature's
   // damage this turn is its own), negated in the filter, as render/cond.ts says it
   for (const w of W_WASNT_DEALT_DAMAGE) { const e = phraseAt(ctx, pos, w); if (e >= 0) push(e, { dealtDamageThisTurn: false }, false); }
+}
+
+const W_AURA_YOU_CONTROLLED_WAS_ATTACHED = P('an aura you controlled was attached to');
+/**
+ * edh-e-39 (CR 303.4, 603.4, 603.10a, 608.2h; Dawn Evangel): "if an Aura you controlled was attached to it": some Aura you controlled, in any zone, was attached to the object as it last existed
+ * (the filter field `wasAttachedTo` of edh-perms-20, "an Aura you controlled that was attached to it"). Only "an Aura" and the bare pronoun "it".
+ */
+function auraYouControlledWasAttached(ctx: HoleCtx, pos: number): Alt[] {
+  const e = phraseAt(ctx, pos, W_AURA_YOU_CONTROLLED_WAS_ATTACHED);
+  if (e < 0 || ctx.toks[e]?.norm !== 'it') return [];
+  const filter = { subtypes: ['Aura'], controller: 'you', zone: 'any', wasAttachedTo: anaphorObj({ sort: 'object', number: 'singular', text: 'it' }) } as unknown as ObjectFilter;
+  return [{ end: e + 1, value: { cond: 'exists', of: { ref: 'each', filter } } as Condition }];
 }
 
 /** Quantity comparisons: "your life total is 5 or less", "the number of cards in your hand is 3 or greater". */
@@ -1973,6 +2095,7 @@ const W_THIS_GAME_CAST = P('this game'); // edh-cast-2
 const W_ATTACKED_THIS_TURN = P('attacked this turn'); // r5-fxb
 const W_WERE_ATTACKED_BY = [P('were attacked this turn by'), P('was attacked this turn by')]; // edh-next-146
 const W_DIDNT_ATTACK_THIS_TURN = [P("didn't attack this turn"), P('did not attack this turn')]; // edh-c-94
+const W_DIDNT_ATTACK_OR_COME_UNDER_YOUR_CONTROL = [P("didn't attack or come under your control this turn"), P('did not attack or come under your control this turn')]; // edh-e-50
 const W_AND_WORD = P('and'); // FAST5 T62
 const W_OPP_NONCOMBAT_DAMAGE = P('an opponent was dealt noncombat damage this turn');
 const W_OPP_NONCOMBAT_DAMAGE_LAST = P('an opponent was dealt noncombat damage last turn'); // Standard round I
@@ -2011,6 +2134,20 @@ function history(ctx: HoleCtx, pos: number): Alt[] {
   for (const lead of [P("you've activated a loyalty ability this turn"), P('you activated a loyalty ability this turn')]) {
     const e = phraseAt(ctx, pos, lead);
     if (e >= 0) hap(e, { ev: 'activate', player: 'you', ability: 'loyalty' });
+  }
+  // edhe34 (CR 706.2, 603.4; Eelectrocute, The Space Family Goblinson): "you've rolled a 6 this turn" (a die whose result was that number) and "you've rolled three or more dice
+  // this turn" (the dice rolled by you this turn; a rerolled or ignored die is counted once or not at all, CR 706.6, as the history records only kept rolls)
+  for (const lead of [P("you've rolled a"), P('you rolled a')]) {
+    const e = phraseAt(ctx, pos, lead);
+    const n = e >= 0 ? numberAt(ctx, e) : undefined;
+    const end = n !== undefined ? phraseAt(ctx, e + 1, P('this turn')) : -1;
+    if (end >= 0 && n !== undefined && Number.isInteger(n) && n >= 1) hap(end, { ev: 'dieRoll', player: 'you', result: { op: '==', value: n } });
+  }
+  for (const [i, w] of ['two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'].entries()) {
+    for (const lead of [P(`you've rolled ${w} or more dice this turn`), P(`you rolled ${w} or more dice this turn`)]) {
+      const e = phraseAt(ctx, pos, lead);
+      if (e >= 0) hap(e, { ev: 'dieRoll', player: 'you' }, { times: { op: '>=', value: i + 2 } });
+    }
   }
   for (const lead of [P('you attacked this turn'), P("you've attacked this turn")]) {
     const e = phraseAt(ctx, pos, lead);
@@ -2098,6 +2235,13 @@ function history(ctx: HoleCtx, pos: number): Alt[] {
     const sa = phraseAt(ctx, pos + 1, W_ATTACKED_THIS_TURN);
     const who = ctx.toks[pos]?.kind === 'SELF' ? { self: true } : { is: anaphorObj({ sort: 'object', number: 'singular', text: 'it' }) };
     if (sa >= 0) out.push({ end: sa, value: { cond: 'happened', event: { ev: 'attacks', attacker: who as never }, scope: 'turn' } });
+    // edh-e-50 (CR 302.6, 508.1, 400.7; Mad Dog): "~ didn't attack or come under your control this turn": it did not attack, and you have controlled it since before this turn began
+    if (ctx.toks[pos]?.kind === 'SELF') {
+      for (const w of W_DIDNT_ATTACK_OR_COME_UNDER_YOUR_CONTROL) {
+        const cu = phraseAt(ctx, pos + 1, w);
+        if (cu >= 0) out.push({ end: cu, value: { cond: 'matches', object: { ref: 'self' }, filter: { attackedThisTurn: false, controlledSinceTurnStart: true, controller: 'you' } } as Condition });
+      }
+    }
     // edh-c-94 (CR 508.1; Aggression): "it didn't attack this turn", the other way round
     for (const w of W_DIDNT_ATTACK_THIS_TURN) {
       const didnt = phraseAt(ctx, pos + 1, w);
@@ -2479,6 +2623,9 @@ const W_BLOCKING_OR_BLOCKED_BY_A = [P('blocking or blocked by a'), P('blocking o
 const W_FACE_UP = P('face up'); // std-typechange-1
 const W_ENTER_UNDER_YOUR_CONTROL_THIS_TURN = P('enter the battlefield under your control this turn'); // p2-damage-3
 const W_ENTER_UNDER_YOUR_CONTROL_LAST_TURN = P('enter the battlefield under your control last turn'); // edh-next-47 (Ephara, God of the Polis: scope lastTurn, M6-4)
+const W_ENTER_UNDER_THEIR_CONTROL_THIS_TURN = P('enter the battlefield under their control this turn'); // edh-e-16 (Baloth Cage Trap, Permafrost Trap)
+const W_YOU_DEALT_DAMAGE_BY = [P("you've been dealt damage by"), P('you have been dealt damage by')]; // edh-e-16 (Inferno Trap)
+const W_CREATURES_THIS_TURN = P('creatures this turn');
 
 /**
  * FAST4 T23 (CR 603.4, 603.10a): history conditions about objects that changed zones this turn. "a creature died under your control this turn" (the
@@ -2499,6 +2646,26 @@ function zoneHistory(ctx: HoleCtx, pos: number): Alt[] {
       if (n.number !== 'singular' || n.filter.controller !== undefined || n.filter.zone !== undefined || n.filter.isCard !== undefined || n.filter.stackKind !== undefined) continue;
       const e = phraseAt(ctx, n.end, W_ENTER_UNDER_YOUR_CONTROL_THIS_TURN);
       if (e >= 0) out.push({ end: e, value: { cond: 'happened', event: { ev: 'zoneChange', subject: { ...n.filter, controller: 'you' }, to: 'battlefield' }, scope: 'turn' }, ...(n.flags.length > 0 ? { flags: n.flags } : {}) });
+    }
+  }
+  // edh-e-16 (CR 603.4, 207.2c, 118.9; Baloth Cage Trap, Permafrost Trap): "an opponent had an artifact enter the battlefield under their control this turn": the history of this
+  // turn holds an object of the kind entering the battlefield under an opponent's control (the "you had" form, with the opponent as the controller)
+  if (t === 'an' && ctx.toks[pos + 1]?.norm === 'opponent' && ctx.toks[pos + 2]?.norm === 'had' && ['a', 'an'].includes(ctx.toks[pos + 3]?.norm ?? '')) {
+    for (const n of npAlts(ctx, pos + 4)) {
+      if (n.number !== 'singular' || n.filter.controller !== undefined || n.filter.zone !== undefined || n.filter.isCard !== undefined || n.filter.stackKind !== undefined || n.filter.other !== undefined || (n.filter.subtypes?.length ?? 0) > 1) continue;
+      const e = phraseAt(ctx, n.end, W_ENTER_UNDER_THEIR_CONTROL_THIS_TURN);
+      if (e >= 0) out.push({ end: e, value: { cond: 'happened', event: { ev: 'zoneChange', subject: { ...n.filter, controller: 'opponent' }, to: 'battlefield' }, scope: 'turn' }, ...(n.flags.length > 0 ? { flags: n.flags } : {}) });
+    }
+  }
+  // edh-e-16 (CR 120.1, 603.4, 118.9; Inferno Trap): "you've been dealt damage by two or more creatures this turn": the different creatures that dealt damage to you this turn
+  // (`happenedCount` per source without a sum counts the sources; a creature that dealt damage twice is one creature)
+  for (const w of W_YOU_DEALT_DAMAGE_BY) {
+    const d = phraseAt(ctx, pos, w);
+    if (d < 0) continue;
+    for (const c of cmpAt(ctx, d)) {
+      if (c.cmp.op !== '>=' || typeof c.cmp.value !== 'number' || c.cmp.value < 2) continue;
+      const e = phraseAt(ctx, c.end, W_CREATURES_THIS_TURN);
+      if (e >= 0) out.push({ end: e, value: compare({ q: 'happenedCount', event: { ev: 'damage', source: { types: ['Creature'] }, recipient: { player: 'you' } }, scope: 'turn', per: 'source' }, '>=', c.cmp.value) });
     }
   }
   // edh-c-27 (CR 603.4, 207.2c; Saddled Rimestag, Park Heights Pegasus): "you had another creature enter the battlefield under your control this turn" and "you had two or more
@@ -3137,6 +3304,7 @@ function t51ManaSpent(ctx: HoleCtx, pos: number): Alt[] {
 }
 
 const W_DESCENDED = P('you descended this turn');
+const W_GRAVEYARD_USES = [P("you've cast a spell from a graveyard or activated an ability of a card in a graveyard this turn"), P('you have cast a spell from a graveyard or activated an ability of a card in a graveyard this turn')]; // edh-d-108
 const W_GAINED_OR_LOST = [P('you gained or lost life this turn'), P("you've gained or lost life this turn")];
 const W_GAINED_AND_LOST = [P('you gained and lost life this turn'), P("you've gained and lost life this turn")];
 const W_DIDNT_CAST_SPELL = [P("you didn't cast a spell this turn"), P('you did not cast a spell this turn'), P("you haven't cast a spell this turn")];
@@ -3332,6 +3500,19 @@ export function spentObjects(ctx: HoleCtx, pos: number): { end: number; value: n
     const a = v.$anaphor;
     return a !== undefined && (a.head === 'spell' || (a.head === undefined && a.text === 'it'));
   }).map((o) => ({ end: o.end, value: o.value as never, ...(o.flags ? { flags: o.flags } : {}) }));
+}
+
+/**
+ * edh-d-108 (CR 601.2, 602.2, 404.1; Laboratory Drudge): "you've cast a spell from a graveyard or activated an ability of a card in a graveyard this turn": the controller's turn statistics, one
+ * or more spells cast from a graveyard (any player's) plus abilities activated of cards in a graveyard (`graveyardUsesThisTurn` >= 1). Only the whole phrase: either half alone is not read.
+ */
+function graveyardUsedThisTurn(ctx: HoleCtx, pos: number): Alt[] {
+  const out: Alt[] = [];
+  for (const w of W_GRAVEYARD_USES) {
+    const e = phraseAt(ctx, pos, w);
+    if (e >= 0) out.push({ end: e, value: compare({ q: 'graveyardUsesThisTurn' }, '>=', 1) });
+  }
+  return out;
 }
 
 /** FAST5X E22 (CR 700.11): "you descended this turn" (a turn statistic, current at any time: also readable while a spell or ability is announced). */
@@ -3738,13 +3919,14 @@ function noneOfThoseAttackedYou(ctx: HoleCtx, pos: number): Alt[] {
 }
 
 function atoms(ctx: HoleCtx, pos: number): Alt[] {
-  return [...control(ctx, pos), ...thereAre(ctx, pos), ...cardsInYourGraveyard(ctx, pos) /* edh-c-40 */, ...youMoreCardsThanEachOpponent(ctx, pos) /* edh-c-40 */, ...youHave(ctx, pos), ...lifeAtMostHalfStarting(ctx, pos) /* r5-fxb */, ...lifeAtLeastNAboveStarting(ctx, pos) /* std-rh */, ...misc(ctx, pos), ...matches(ctx, pos), ...compareForm(ctx, pos), ...history(ctx, pos), ...ownAndControl(ctx, pos), ...mostCommon(ctx, pos), ...sharesMostCommon(ctx, pos), ...greatestPowerOrTied(ctx, pos), ...enteredSelf(ctx, pos), ...manaSpent(ctx, pos), ...unspentMana(ctx, pos), ...manaFrom(ctx, pos), ...revealedDistinctManaValuesCond(ctx, pos) /* edh-next-143 */,
+  return [...control(ctx, pos), ...thereAre(ctx, pos), ...cardsInYourGraveyard(ctx, pos) /* edh-c-40 */, ...youMoreCardsThanEachOpponent(ctx, pos) /* edh-c-40 */, ...youHave(ctx, pos), ...lifeAtMostHalfStarting(ctx, pos) /* r5-fxb */, ...lifeAtLeastNAboveStarting(ctx, pos) /* std-rh */, ...misc(ctx, pos), ...matches(ctx, pos), ...compareForm(ctx, pos), ...auraYouControlledWasAttached(ctx, pos) /* edh-e-39 */, ...history(ctx, pos), ...ownAndControl(ctx, pos), ...mostCommon(ctx, pos), ...sharesMostCommon(ctx, pos), ...greatestPowerOrTied(ctx, pos), ...enteredSelf(ctx, pos), ...manaSpent(ctx, pos), ...unspentMana(ctx, pos), ...manaFrom(ctx, pos), ...revealedDistinctManaValuesCond(ctx, pos) /* edh-next-143 */,
     ...excessCondAt(ctx, pos), // FAST5X E16 (CR 120.10, 608.2c): "excess damage was dealt [to that creature] this way"
     ...lostLifeThisWay(ctx, pos), // cloud std-spm (CR 119.3, 608.2c): "you lost life this way"
     ...noLifeLostThisWay(ctx, pos), // edh-d-78 (CR 119.3, 608.2c): "no life is lost this way"
     ...itsGreater(ctx, pos), // edh-d-78 (CR 608.2c): "it's greater"
     ...voteCondAt(ctx, pos), // M12-3 (CR 701.38a-b): "carnage gets more votes [or the vote is tied]"
     ...descended(ctx, pos), // FAST5X E22 (CR 700.11)
+    ...graveyardUsedThisTurn(ctx, pos), // edh-d-108 (CR 601.2, 602.2, 404.1)
     ...indefiniteStatus(ctx, pos), // Cloud std-woe (CR 506.4, 701.26a): "a Rat is attacking"
     ...indefiniteHasKeyword(ctx, pos), // edh-combat-5 (CR 702.1): "a creature you control has first strike"
     ...noOpponentMoreLife(ctx, pos), // cmd1 (CR 119.1, 603.4)
@@ -3782,6 +3964,7 @@ function atoms(ctx: HoleCtx, pos: number): Alt[] {
     ...statGreaterThanEachOther(ctx, pos), // edh-perms-2 (CR 208.1): "its power is greater than each other creature's power"
     ...unannounced(putBySourceCond(ctx, pos)), // edh-perms-9 (CR 608.2): "it wasn't put onto the battlefield with this ability"
     ...aGraveyardHas(ctx, pos), // edh-players-8 (CR 404.1, 102.3): "a graveyard has twenty or more cards in it"
+    ...aLibraryHasFewer(ctx, pos), ...eachPlayerNoHand(ctx, pos), // edhe5 (CR 401.1, 402.1, 102.3): "a library has twenty or fewer cards in it", "each player has no cards in hand"
     ...cardsInSingleGraveyard(ctx, pos), // edh-c-71 (CR 404.1, 102.3): "there are ten or more cards in a single graveyard"
     ...unannounced(rolledExactlyTimes(ctx, pos)), // edh-mana-keywords-10 (CR 706.2): "you rolled 6 exactly seven times"
     ...unannounced(greatestOrTied(ctx, pos)), // edh-next-55 (CR 208.1; parser/holes/edhn55.ts): "it has the greatest power or is tied for greatest power among creatures on the battlefield"
@@ -3799,6 +3982,7 @@ function atoms(ctx: HoleCtx, pos: number): Alt[] {
     ...unannounced(edhd93CondAt(ctx, pos)), // edh-d-93 (CR 208.1, 613.4, 608.2h; parser/holes/edhd93.ts): "its power was different from its base power"
     ...unannounced(edhd89CondAt(ctx, pos)), // edh-d-89 (CR 702.122e, 603.4; parser/holes/edhd89.ts): "it was crewed by exactly two creatures"
     ...unannounced(edhd87CondAt(ctx, pos)), // edh-d-87 (CR 702.122c, 603.4; parser/holes/edhd87.ts): "an Assassin crewed it this turn"
+    ...colorsSpentAtLeast(ctx, pos), // edh-d-112 (CR 601.2h, 106.1; parser/holes/edhd112.ts): "two or more colors of mana were spent to cast it"
   ];
 }
 
@@ -3870,6 +4054,35 @@ function aGraveyardHas(ctx: HoleCtx, pos: number): Alt[] {
     if (end >= 0) out.push({ end, value: compare({ q: 'countPlayers', of: { ref: 'each', who: 'player' }, sizeIs: { zone: 'graveyard', op: '>=', n: c.cmp.value } }, '>=', 1) });
   }
   return out;
+}
+
+const W_A_LIBRARY_HAS = P('a library has'); // edhe5
+const W_EACH_PLAYER_NO_CARDS_IN_HAND = P('each player has no cards in hand'); // edhe5
+
+/**
+ * edhe5 (CR 401.1, 102.3; Shelldock Isle): "a library has twenty or fewer cards in it": at least one player's library (each judged alone) holds that many cards or fewer (`countPlayers`
+ * over every player with `sizeIs`, of 1 or more), as "a graveyard has twenty or more cards in it". Only "or fewer" and a literal number. A library changes during a turn: checked as the ability resolves.
+ */
+function aLibraryHasFewer(ctx: HoleCtx, pos: number): Alt[] {
+  const e = phraseAt(ctx, pos, W_A_LIBRARY_HAS);
+  if (e < 0) return [];
+  const out: Alt[] = [];
+  for (const c of cmpAt(ctx, e)) {
+    if (typeof c.cmp.value !== 'number' || c.cmp.op !== '<=') continue;
+    const end = phraseAt(ctx, c.end, W_CARDS_IN_IT);
+    if (end >= 0) out.push({ end, value: compare({ q: 'countPlayers', of: { ref: 'each', who: 'player' }, sizeIs: { zone: 'library', op: '<=', n: c.cmp.value } }, '>=', 1) });
+  }
+  return out;
+}
+
+/**
+ * edhe5 (CR 402.1, 102.3; Howltooth Hollow): "each player has no cards in hand": no player (you included) has a card in hand (`countPlayers` over every player whose hand holds one card or
+ * more is 0). A hand changes during a turn: checked as the ability resolves.
+ */
+function eachPlayerNoHand(ctx: HoleCtx, pos: number): Alt[] {
+  const e = phraseAt(ctx, pos, W_EACH_PLAYER_NO_CARDS_IN_HAND);
+  if (e < 0) return [];
+  return [{ end: e, value: compare({ q: 'countPlayers', of: { ref: 'each', who: 'player' }, sizeIs: { zone: 'hand', op: '>=', n: 1 } }, '==', 0) }];
 }
 
 const W_THERE_ARE_ONLY = P('there are'); // edh-c-71

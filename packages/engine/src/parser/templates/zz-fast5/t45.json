@@ -209,6 +209,15 @@
             }
           },
           {
+            "@require": {
+              "what.ref": "event",
+              "result": "spell",
+              "count": null,
+              "guard.cond": "exists"
+            },
+            "@withPrevious": true
+          },
+          {
             "count": "@previous.count"
           }
         ],
@@ -226,6 +235,9 @@
       },
       {
         "text": "When you next cast a land spell this turn, copy it twice. You may choose new targets for the copies."
+      },
+      {
+        "text": "When you cast this spell from your hand, copy it if you control a land, then copy it if you control a Goblin. You may choose new targets for the copies."
       }
     ],
     "counterExamples": [

@@ -58,10 +58,14 @@ export interface RefInfo {
   actor?: string | null;
   /** r4-moved ADDITION (optional): the binding records an option of yours whose first instruction searches your library ("If you search your library this way", render/cond.ts). */
   searched?: true;
+  /** edh-e-26 (CR 701.50a, 603.12): the named step is a connive, so a reflexive trigger waiting for it is "when it connives this way" (render/steps-lasting.ts#reflexive). */
+  connived?: true;
   /** std-combat-2 (CR 118.12, 608.2d): a payment made a chosen number of times (`pay.upTo`): its count is "that many" of the modes after it (render/program.ts#modeHeader). */
   paidUpTo?: true;
   /** edh-replace-5 (CR 118.12, 608.2d): a payment of any amount (`pay.anyAmount`): its count is "that much" damage or life (render/steps-life.ts#damageClause). */
   paidAny?: true;
+  /** edh-e-41 (CR 118.12, 119.4; Plunge into Darkness): the payment of any amount was of LIFE (`pay.anyAmount`): its count is also said "that many" in a later count (render/qty.ts, "look at that many cards"). */
+  paidLife?: true;
   /** edh-d-90 (CR 107.3, 608.2h; Campsite Cuisine): the count of this sacrifice is the X of "you may sacrifice X Foods" (parser/lower/edhd90.ts): said "X" after it (render/qty.ts). */
   xWord?: true;
   /** edhn81 (CR 118.12, 603.12): the payment of any amount was written "you may pay {1}{W} any number of times": its reflexive trigger may be "when you pay this cost one or more times" (render/steps-lasting.ts). */
@@ -125,6 +129,8 @@ export interface RefInfo {
   lookedTop?: true;
   /** edh-c-97 ADDITION (optional): the binding is the card a `revealUntil` stopped at (one card), written by steps-cards.ts revealUntil (fold-edhv97.ts). */
   revealedUntilHit?: true;
+  /** edh-d-111 (CR 608.2c; Explosive Revelation): the one card your own reveal until of one "non-" card type stopped at, its description ("nonland card"), said "the nonland card" by render/fold-edhd111.ts only. */
+  untilDesc?: string;
   /**
    * std-rx1 ADDITION (optional): the binding is the cards a choice among a group in a library chose and a reveal then revealed ("You may reveal up to two creature
    * and/or land cards from among them"): they are also "<cards> revealed this way" (fold.ts#putAllRevealedSplit, written by fold.ts#chooseUpToFromGroupThenReveal).
@@ -194,6 +200,8 @@ export interface RenderState {
   ownSubject?: string;
   /** FAST2 T10: the reference being written is what "sacrifice" or "destroy" acts on: a permanent, never a spell or ability (CR 701.8a, 701.21a). */
   permanentOnly?: boolean;
+  /** edh-d-104: the reference being written is what a play or cast permission names: a card, never the object itself while it is a permanent (CR 305.1, 601.2a). */
+  cardOnly?: boolean;
   /** edh-c-62: set while a clause that Oracle also joins with ", and" is being rendered (render/steps-lasting.ts#effect), so it is not wrapped twice. */
   commaAndDone?: true;
   /**

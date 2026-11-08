@@ -160,7 +160,8 @@ export function foldRollTable(seq: Unit[]): void {
     if (counted === undefined || counted['zone'] !== 'graveyard' || counted['owner'] !== 'you') continue;
     u.manual = undefined;
     u.steps = [{ op: 'move', what: { ref: 'each', filter: counted }, to: those[1]!.toLowerCase() === 'the battlefield' ? { zone: 'battlefield', controller: { ref: 'you' } } : { zone: 'hand' } }];
-    u.templates = ['edhn128.dieRow.thoseCounted'];
+    // combined copy: the template that reads the sentence's shape (the lowering resolves only "those cards"); a name that is no template made the coverage report count a template the set lacks
+    u.templates = [those[1]!.toLowerCase() === 'the battlefield' ? 'eff.return.bf' : 'eff.return.hand'];
   }
   // the rows, in order, each with its units
   const rows: { min: number; max: number | null; units: Unit[] }[] = [];

@@ -365,3 +365,38 @@ describe('ComputerGame (New game "The computer")', () => {
     expect(computerDelayMs('normal')).toBeGreaterThan(computerDelayMs('fast'));
   });
 });
+
+/** The seat, except that its first `hangs` actions never get an answer. */
+function hanging(seat: GameConnection, hangs: number): GameConnection {
+  let n = 0;
+  return Object.assign(Object.create(seat) as GameConnection, {
+    act: (a: Action) => (n++ < hangs ? new Promise<never>(() => {}) : seat.act(a)),
+  });
+}
+
+describe('the computer never holds the game up', () => {
+  it('an action that never gets an answer counts as refused, and the computer answers with the fallback instead', async () => {
+    vi.useFakeTimers();
+    const conn = new LocalConnection(config('c6-hang', { startingPlayer: 'p2' }), { seats: ['p1'] });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stop = runComputer(hanging(conn.seat('p2'), 1), { delayMs: 100, seed: 't', choose: (_v, d) => ({ type: 'pass', player: d.player }) });
+    await vi.advanceTimersByTimeAsync(12_000);
+    stop();
+    expect(conn.session.actions.some((a) => a.type !== 'startGame' && 'player' in a && a.player === 'p2')).toBe(true);
+    errors.mockRestore();
+  });
+
+  it('a decision still unanswered after the time limit is answered with the fallback', async () => {
+    vi.useFakeTimers();
+    const conn = new LocalConnection(config('c6-limit', { startingPlayer: 'p2' }), { seats: ['p1'] });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stop = runComputer(hanging(conn.seat('p2'), 1), { delayMs: 100, seed: 't', decisionLimitMs: 3000, choose: (_v, d) => ({ type: 'pass', player: d.player }) });
+    const byP2 = () => conn.session.actions.some((a) => a.type !== 'startGame' && 'player' in a && a.player === 'p2');
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(byP2()).toBe(false); // its first action still has no answer (its own limit is 10 s)
+    await vi.advanceTimersByTimeAsync(1_000);
+    stop();
+    expect(byP2()).toBe(true); // the decision limit answered it (the mulligan: keep)
+    errors.mockRestore();
+  });
+});

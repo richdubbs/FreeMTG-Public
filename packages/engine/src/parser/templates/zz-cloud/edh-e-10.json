@@ -1,0 +1,189 @@
+[
+  {
+    "id": "eff.edhe10.revealUntil.countNonland",
+    "kind": "effect",
+    "since": 40,
+    "status": "stable",
+    "cr": [
+      "CR 701.20a",
+      "CR 701.20b",
+      "CR 401.4",
+      "CR 608.2c",
+      "CR 205.2a"
+    ],
+    "note": "edh-e-10 (Fathom Trawl): \"reveal cards from the top of your library until you reveal three nonland cards\" (a count and the nonland description, which the older count templates do not read); `hit` is the cards it stopped at, `revealed` every card revealed (as eff.r3dig.revealUntil.two). A narrow wording (one card): stable on one golden card plus template tests (design 6.9 deviation, owner's standing rule 2026-10-27).",
+    "pattern": "reveal cards from the top of your library until you reveal three nonland cards",
+    "build": [
+      {
+        "op": "revealUntil",
+        "who": {
+          "ref": "you"
+        },
+        "filter": {
+          "notTypes": [
+            "Land"
+          ]
+        },
+        "count": 3,
+        "as": "hit",
+        "revealed": "revealed"
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "until",
+      "rest",
+      "this way"
+    ],
+    "examples": [
+      {
+        "text": "Reveal cards from the top of your library until you reveal three nonland cards. Put the nonland cards revealed this way into your hand, then put the rest of the revealed cards on the bottom of your library in any order. Draw a card."
+      },
+      {
+        "text": "Reveal cards from the top of your library until you reveal three nonland cards. Put those cards into your hand and the rest on the bottom of your library in a random order."
+      }
+    ],
+    "counterExamples": [
+      "Reveal cards from the top of your library until you reveal three or more nonland cards.",
+      "Reveal cards from the top of target player's library until you reveal three nonland cards.",
+      "Reveal the top three nonland cards of your library."
+    ]
+  },
+  {
+    "id": "eff.edhe10.putNonlandRevealedHand.restBottomAny",
+    "kind": "effect",
+    "since": 40,
+    "status": "stable",
+    "cr": [
+      "CR 701.20a",
+      "CR 401.4",
+      "CR 608.2c",
+      "CR 205.2a"
+    ],
+    "note": "edh-e-10 (Fathom Trawl): after eff.edhe10.revealUntil.countNonland, \"Put the nonland cards revealed this way into your hand, then put the rest of the revealed cards on the bottom of your library in any order.\": the cards the reveal stopped at (`hit`) into your hand and every other revealed card (`revealed`), still in the library, on the bottom in the order you choose. Reads the reveal's names (as d-94's reflexive). A narrow wording (one card): stable on one golden card plus template tests (design 6.9 deviation, owner's standing rule 2026-10-27).",
+    "pattern": "put the nonland cards revealed this way into your hand , then put the rest of the revealed cards on the bottom of your library in any order",
+    "build": [
+      {
+        "op": "move",
+        "what": {
+          "ref": "bound",
+          "name": "hit"
+        },
+        "to": {
+          "zone": "hand"
+        }
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "each",
+          "filter": {
+            "is": {
+              "ref": "bound",
+              "name": "revealed"
+            },
+            "not": {
+              "is": {
+                "ref": "bound",
+                "name": "hit"
+              }
+            },
+            "zone": "library"
+          }
+        },
+        "to": {
+          "zone": "library",
+          "position": "bottom",
+          "order": "chosen"
+        }
+      }
+    ],
+    "subject": "none",
+    "consumes": [
+      "then",
+      "this way",
+      "rest"
+    ],
+    "examples": [
+      {
+        "text": "Reveal cards from the top of your library until you reveal three nonland cards. Put the nonland cards revealed this way into your hand, then put the rest of the revealed cards on the bottom of your library in any order. Draw a card."
+      },
+      {
+        "text": "Reveal cards from the top of your library until you reveal three nonland cards. Put the nonland cards revealed this way into your hand, then put the rest of the revealed cards on the bottom of your library in any order. You gain 2 life."
+      }
+    ],
+    "counterExamples": [
+      "Put the nonland cards revealed this way into your hand, then put the rest of the revealed cards on the bottom of your library in any order.",
+      "Reveal cards from the top of your library until you reveal three nonland cards. Put the nonland cards revealed this way onto the battlefield, then put the rest of the revealed cards on the bottom of your library in any order. Draw a card.",
+      "Reveal cards from the top of your library until you reveal three nonland cards. Put the nonland cards revealed this way into your hand, then put the rest of the revealed cards on the bottom of your library in a random order."
+    ]
+  },
+  {
+    "id": "eff.edhe10.whenRevealNonlandThisWay.damageMv",
+    "kind": "effect",
+    "since": 40,
+    "status": "stable",
+    "cr": [
+      "CR 701.20a",
+      "CR 603.12",
+      "CR 603.12a",
+      "CR 202.3",
+      "CR 120.3",
+      "CR 608.2h"
+    ],
+    "note": "edh-e-10 (Calibrated Blast; ruling 2021-06-18: it goes on the stack without a target, the reflexive ability chooses its target when it triggers): after eff.r3dig.revealUntil (a nonland card, `hit`), \"When you reveal a nonland card this way, ~ deals damage equal to that card's mana value to any target.\": the reflexive ability waits for the reveal until to have found its card (`did` the step that names it, and the `if` that it stopped at a card: with no nonland card in the library nothing was revealed this way) and deals that card's mana value (it is in the library, a hidden zone, where nothing changes it, CR 400.7) to the target it chooses as it triggers. A narrow wording (one card): stable on one golden card plus template tests (design 6.9 deviation, owner's standing rule 2026-10-27).",
+    "pattern": "when you reveal a nonland card this way , {src:Obj} deals damage equal to that card 's mana value to {to:Recipient}",
+    "build": {
+      "op": "reflexive",
+      "when": {
+        "did": "hit",
+        "if": {
+          "cond": "compare",
+          "left": {
+            "q": "count",
+            "of": {
+              "ref": "bound",
+              "name": "hit"
+            }
+          },
+          "op": ">=",
+          "right": 1
+        }
+      },
+      "targets": [],
+      "do": [
+        {
+          "op": "damage",
+          "source": "$src",
+          "to": "$to",
+          "amount": {
+            "q": "stat",
+            "stat": "manaValue",
+            "of": {
+              "ref": "bound",
+              "name": "hit"
+            }
+          }
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "when",
+      "this way"
+    ],
+    "examples": [
+      {
+        "text": "Reveal cards from the top of your library until you reveal a nonland card. Put the revealed cards on the bottom of your library in a random order. When you reveal a nonland card this way, ~ deals damage equal to that card's mana value to any target. Draw a card."
+      },
+      {
+        "text": "Reveal cards from the top of your library until you reveal a nonland card. Put the revealed cards on the bottom of your library in a random order. When you reveal a nonland card this way, ~ deals damage equal to that card's mana value to target creature."
+      }
+    ],
+    "counterExamples": [
+      "When you reveal a nonland card this way, ~ deals damage equal to that card's mana value to any target.",
+      "Reveal cards from the top of your library until you reveal a nonland card. Put the revealed cards on the bottom of your library in a random order. When you reveal a land card this way, ~ deals damage equal to that card's mana value to any target.",
+      "Reveal cards from the top of your library until you reveal a nonland card. Put the revealed cards on the bottom of your library in a random order. When you reveal a nonland card this way, ~ deals damage equal to that card's power to any target."
+    ]
+  }
+]

@@ -46,7 +46,10 @@ export function returnRandomFromGraveyard(list: EffectStep[], i: number, st: Ren
       what = K.np({ ...anyOf[0]!, zone: 'graveyard' }, st, { det: 'a', noZone: true });
       if (!/ card$/.test(what)) what = `${what} card`;
     }
-    bind(st, a.as, { nouns: K.nounsOf(anyOf[0]!), plural: many, hand: toHand });
+    // edh-d-108 (CR 400.7, 608.2c; Kheru Lich Lord): the card chosen at random is a card of your graveyard, so the text may also name it "that card" ("return a creature card at random
+    // from your graveyard to the battlefield. ... Exile that card at the beginning of your next end step"), as it names a target creature card that comes back
+    const nouns = K.nounsOf(anyOf[0]!);
+    bind(st, a.as, { nouns: nouns.includes('card') ? nouns : [...nouns, 'card'], plural: many, hand: toHand });
   } else {
     // edh-mana-keywords-10 (CR 608.2d, 404.1; The Deck of Many Things): one card of any description, "return a card at random from your graveyard to your hand"
     if (a.min === 1 && !toHand) return null;

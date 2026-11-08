@@ -6,13 +6,16 @@
 import type { CardDef } from '@openmtg/engine';
 import type { ArtistHook, BoardCardProps, CardRenderer } from '../board';
 import { CardPicture, cardModelOf, useImageCredit } from '../cards';
+import { useOwnerPrinting } from './printings';
 
 /**
  * `def` null means the card back and nothing else (CR 400.2, 708.2a). A face-down card with `def` set is only ever drawn in its controller's zoom
  * (CR 708.5), where the real card is shown and the board labels it "Face down" outside the image.
  */
-export function BoardCardPicture({ def, face, faceDown, size }: BoardCardProps) {
-  const picture = <CardPicture card={def ? cardModelOf(def) : null} face={face} faceDown={def === null && faceDown} flipped={def?.layout === 'flip' && face === 1} size={size === 'large' ? 'large' : 'normal'} />;
+export function BoardCardPicture({ def, face, faceDown, size, owner }: BoardCardProps) {
+  // deck-art-1: the printing the owner's deck chose.
+  const card = useOwnerPrinting(def ? cardModelOf(def) : null, owner);
+  const picture = <CardPicture card={card} face={face} faceDown={def === null && faceDown} flipped={def?.layout === 'flip' && face === 1} size={size === 'large' ? 'large' : 'normal'} />;
   // CR 710.2: a flipped flip card is turned 180 degrees, so its flipped half reads upright. C4's `shownFace` gives face 1 only for a flipped flip card.
   // The whole picture turns (outside the image box, like C2's Card); nothing is drawn on the image.
   if (def?.layout !== 'flip' || face !== 1) return picture;
@@ -29,4 +32,4 @@ export const renderBoardCard: CardRenderer = (p) => <BoardCardPicture {...p} />;
  * The artist of the picture `renderBoardCard` draws for (`def`, `face`): the Scryfall image's artist while that image is shown
  * (the setting on, no upload for that side), each side of a double-faced card its own; null for uploads, our frames and card backs (`def` null).
  */
-export const useBoardArtist: ArtistHook = (def: CardDef | null, face: number) => useImageCredit(def ? cardModelOf(def) : null, face);
+export const useBoardArtist: ArtistHook = (def: CardDef | null, face: number, owner) => useImageCredit(useOwnerPrinting(def ? cardModelOf(def) : null, owner), face);

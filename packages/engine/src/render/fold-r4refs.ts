@@ -324,13 +324,14 @@ function searchPlayersZonesForChosenName(list: EffectStep[], i: number, st: Rend
   const named = a.filter.sharesWith?.quality === 'name' && a.filter.sharesWith.with.ref !== 'each' ? a.filter.sharesWith.with : undefined;
   // edh-c-38 (Memoricide): "any number of cards with that name" for the chosen name too
   if (named ? a.max !== 'any' : (typeof a.max !== 'number' && a.max !== 'any') || a.filter.chosen?.quality !== 'cardName') return null;
-  if (a.publicRequired === true && !named) return null; // edh-c-32 (CR 701.23b): "for all cards with the same name as <that creature>" is the whole of its wording
+  // edh-c-32 (CR 701.23b): "for all cards with the same name as <that creature>" is the whole of its wording; edh-e-64 (Cranial Extraction): so is "for all cards with that name" for the chosen name
   if (b.what.ref !== 'bound' || b.what.name !== a.as || !same(b.to, { zone: 'exile' }) || b.until !== undefined) return null;
   if (list.slice(i + 2).some((x) => JSON.stringify(x).includes(`"${a.as}"`))) return null;
   // std-r9b (CR 701.24a, 121.1, 608.2h): "That player shuffles, then draws a card for each card exiled from their hand this way": the only reader of what the exile
   // moved is a draw by the same player right after the shuffle, of one card per card that was in a hand as it last existed
   const dr = list[i + 3];
-  const drawsPerHandCard = named !== undefined && b.as !== undefined && dr?.op === 'draw' && same(dr.who, a.owner) && dr.guard === undefined && dr.as === undefined
+  // edh-e-8 (Lost Legacy, The Stone Brain): also after a search for the chosen name
+  const drawsPerHandCard = b.as !== undefined && dr?.op === 'draw' && same(dr.who, a.owner) && dr.guard === undefined && dr.as === undefined
     && same(dr.count, { q: 'resultCount', step: b.as, which: { zone: 'hand', isCard: true } });
   if (b.as !== undefined && (!drawsPerHandCard || list.slice(i + 4).some((x) => JSON.stringify(x).includes(`"${b.as}"`)))) return null;
   const whose = K.player(a.owner, st, 'possessive').text;
@@ -340,6 +341,14 @@ function searchPlayersZonesForChosenName(list: EffectStep[], i: number, st: Rend
   const clauses = [plain(`search ${whose} graveyard, ${alt('hand, and library', 'hand and library')} for ${cards} and exile them`)];
   const shuffles = sh?.op === 'shuffle' && same(sh.who, a.owner) && sh.guard === undefined && sh.as === undefined && sh.ifSearched === undefined;
   if (drawsPerHandCard && !shuffles) return null;
+  // edh-e-64 (CR 701.23a, 701.24a, 201.2; Invasive Surgery; family search-library-of-then-shuffles): the search of one object's name said in one sentence with the owner of the zones after
+  // "of", "Search the graveyard, hand, and library of that spell's controller for any number of cards with the same name as that spell, exile those cards, then that player shuffles."
+  if (shuffles && named && !drawsPerHandCard) {
+    const p = K.player(a.owner, st, 'subject');
+    const split = `${clauses[0]!.imp}. ${alt('then ', '')}${p.text} shuffles`;
+    const inOne = `search the graveyard, hand, and library of ${K.player(a.owner, cloneState(st), 'object').text} for ${cards}, exile those cards, then ${p.text} shuffles`;
+    return { clauses: [plain(alt(split, inOne))], consumed: 3 };
+  }
   if (shuffles) {
     const p = K.player(a.owner, st, 'subject');
     const draws = drawsPerHandCard ? ', then draws a card for each card exiled from their hand this way' : '';

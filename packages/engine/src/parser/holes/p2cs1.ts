@@ -17,7 +17,7 @@ export function kickedWithCost(ctx: HoleCtx, pos: number): { end: number; mark: 
   if (w < 0) return null;
   let p = w;
   let cost = '';
-  while (ctx.toks[p]?.kind === 'MANA' && ctx.toks[p]!.norm !== '{e}') cost += ctx.toks[p++]!.norm;
+  while (ctx.toks[p]?.kind === 'MANA' && ctx.toks[p]!.norm !== '{e}' && ctx.toks[p]!.norm !== '{tk}') cost += ctx.toks[p++]!.norm;
   if (cost === '') return null;
   const k = anyPhraseAt(ctx, p, W_KICKER);
   return k < 0 ? null : { end: k, mark: `${KICKER_MARK}${cost}` };

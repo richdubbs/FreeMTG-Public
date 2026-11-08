@@ -100,6 +100,11 @@ export interface SolveInput {
    */
   anyColorWith?: string;
   /**
+   * edh-e-51 INTERFACE CHANGE (additive), CR 609.4b (Sunglasses of Urza: "You may spend white mana as though it were red mana."): for each pair, an atom that asks for mana of
+   * `to` also accepts mana of `from` (a colored, hybrid or monohybrid symbol of that color; never a generic or colorless atom, which are unchanged). Omit: as before.
+   */
+  spendAs?: readonly { from: ManaType; to: ManaType }[];
+  /**
    * edhc5 INTERFACE CHANGE (additive), CR 118.1, 119.4: "For each {B} in a cost, you may pay 2 life rather than pay that mana" (K'rrik, Son of Yawgmoth), "you may pay 2
    * life ... those spells cost {G} less" (Defiler of Vigor): a symbol that asks for mana of a color in this map (a colored, hybrid, mono-hybrid or colorless-hybrid symbol
    * of that color) may be paid with 2 life instead, like a Phyrexian symbol; the value is how many symbols of that color at most (Infinity: each). Omit: none.
@@ -246,13 +251,24 @@ const anyColorAlt = (a: Alt): Alt => ({ atoms: a.atoms.map((x) => (x.accept !== 
 /** edh-next-140 (CR 609.4b): an atom that asks only for colored mana also accepts mana of the type `t` ("spend blue mana as though it were mana of any color"). */
 const anyColorWithAlt = (a: Alt, t: string): Alt => ({ atoms: a.atoms.map((x) => (x.accept !== null && x.accept.length > 0 && x.accept.every((y) => COLOR_TYPES.has(y)) && !x.accept.includes(t as never) ? { ...x, accept: [...x.accept, t as never] } : x)), life: a.life });
 
+/** edh-e-51 (CR 609.4b): an atom that accepts mana of `to` also accepts mana of `from` ("spend white mana as though it were red mana"). */
+const spendAsAlt = (a: Alt, pairs: readonly { from: ManaType; to: ManaType }[]): Alt => ({
+  atoms: a.atoms.map((x) => {
+    if (x.accept === null || x.accept.length === 0) return x;
+    const extra = pairs.filter((p) => x.accept!.includes(p.to) && !x.accept!.includes(p.from)).map((p) => p.from);
+    return extra.length === 0 ? x : { ...x, accept: [...x.accept, ...extra] };
+  }),
+  life: a.life,
+});
+
 /** `solve` with every provider's units matched on their own. */
 function solveFlat(input: SolveInput): Scored | null {
   const { symbols, providers, life, forceLife } = input;
   const choices: Alt[][] = symbols.map((sym, i) => {
     const own = input.inner?.has(i) === true; // a filter ability's own cost keeps its types
-    const alts = input.anyType === true && !own ? alternativesOf(sym).map(anyTypeAlt) : input.anyColor === true && !own ? alternativesOf(sym).map(anyColorAlt)
+    const base = input.anyType === true && !own ? alternativesOf(sym).map(anyTypeAlt) : input.anyColor === true && !own ? alternativesOf(sym).map(anyColorAlt)
       : input.anyColorWith !== undefined && !own ? alternativesOf(sym).map((a) => anyColorWithAlt(a, input.anyColorWith!)) : alternativesOf(sym); // edh-next-140
+    const alts = input.spendAs !== undefined && input.spendAs.length > 0 && !own && input.anyType !== true && input.anyColor !== true ? base.map((a) => spendAsAlt(a, input.spendAs!)) : base; // edh-e-51
     // edhc5 (CR 118.1): a symbol of a color the player may pay 2 life for is paid with mana as it asks, or with 2 life (no mana) like a Phyrexian symbol
     const lifeFor = !own && lifeColorOf(sym, input.lifeFor) !== null;
     if (lifeFor) alts.push({ atoms: [], life: 2 });

@@ -13,7 +13,7 @@
  * Pure: reads only the trigger patterns and the semantic events. A batch of a combat damage step holds that step's damage only (triggers/normalize.ts
  * starts a batch at every step).
  */
-import type { EventPattern, NumberCmp } from '../types/ability';
+import { isMixedActionList, type EventPattern, type NumberCmp } from '../types/ability';
 import type { SemEvent } from '../types/state';
 import { cmpMatches } from './filters';
 
@@ -177,6 +177,25 @@ export function mixedAttackOccurrences(patterns: readonly EventPattern[], matche
     if (mine.length > 0) groups.push(...byAttackedCount([p], batchOccurrences([p], mine)));
   }
   for (const e of matched) if (!attackHits.includes(e)) groups.push([e]);
+  return groups.sort((a, b) => matched.indexOf(a[0]!) - matched.indexOf(b[0]!));
+}
+
+/**
+ * edh-d-112 (CR 603.2, 603.2c; Lo and Li, Royal Advisors: "Whenever an opponent discards a card or mills one or more cards"): a batch trigger that lists single action events (`single`)
+ * beside "one or more" ones. Each event a single pattern matched is an occurrence of its own (each card discarded); the events of a "one or more" pattern are grouped as a lone such
+ * pattern's are (once for each player's batch, batchOccurrences). An event that both kinds match counts once, as a single one. Null for any other list.
+ */
+export function mixedActionOccurrences(patterns: readonly EventPattern[], matched: readonly SemEvent[], hitsOf: ReadonlyMap<SemEvent, readonly EventPattern[]>): SemEvent[][] | null {
+  if (!isMixedActionList(patterns)) return null;
+  const isSingle = (p: EventPattern): boolean => p.ev === 'action' && p.single === true;
+  const groups: SemEvent[][] = [];
+  const singles = matched.filter((e) => hitsOf.get(e)?.some(isSingle) === true);
+  for (const e of singles) groups.push([e]);
+  for (const p of patterns) {
+    if (isSingle(p)) continue;
+    const mine = matched.filter((e) => !singles.includes(e) && hitsOf.get(e)?.includes(p) === true);
+    if (mine.length > 0) groups.push(...batchOccurrences([p], mine));
+  }
   return groups.sort((a, b) => matched.indexOf(a[0]!) - matched.indexOf(b[0]!));
 }
 

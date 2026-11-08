@@ -27,6 +27,7 @@ const MECH_COUNT = 3;
 const NARROW: Readonly<Record<string, string>> = {
   'eff.p2cf2.becomeBlocked': 'Trap Runner',
   'eff.p2cf2.token.attacking': 'Parhelion II',
+  'eff.p2cf2.becomeBlocked.group': 'Choking Vines', // edh-e-61: promoted on its one golden card (design 6.9 narrow-wording deviation, owner's standing rule 2026-10-27)
 };
 const OPTS = defaultParseOptions({ templates: [...TEMPLATE_SET], capabilities: ENGINE_CAPABILITIES }); // what a decklist card gets (design 5.2; `needs`)
 

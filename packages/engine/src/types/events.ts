@@ -77,7 +77,7 @@ export type GameEvent =
   /** FAST5X E20 INTERFACE CHANGE (additive): `exhaust` (CR 702.177a: an exhaust ability) and `loyalty` (CR 606.3: a loyalty ability), what was activated. */
   /** Standard round 3, r3-trig INTERFACE CHANGE (additive): `loyaltyRemoved`, the loyalty counters the cost of a loyalty ability removed from its source (CR 606.4). */
   /** edh-players-5 INTERFACE CHANGE (additive), CR 109.2, 602.2: `fromZone`, the zone the ability's source was in as it was activated (a cycling ability is activated from a hand, unearth from a graveyard), for "an ability of a creature" (a permanent on the battlefield). */
-  | { type: 'abilityActivated'; objectId: ObjectId; sourceId: ObjectId; player: PlayerId; /** edh-next-74 INTERFACE CHANGE (additive), CR 602.2b, 107.3a, 118.3 (Verrak, Warped Sengir; Magus Lucea Kane): the life the cost paid, and whether the cost had {X}, fixed as the cost was paid. */ lifePaid?: number; xInCost?: true; /** edh-d-50 (CR 602.2b, 106.3): the number of mana spent on the cost, fixed as the cost was paid */ manaSpent?: number; exhaust?: true; loyalty?: true; loyaltyRemoved?: number; fromZone?: string; /** edh-zones-19 INTERFACE CHANGE (additive), CR 702.49a, 702.49d: a ninjutsu ability (commander ninjutsu too) was activated. */ ninjutsu?: true; /** edh-c-104 INTERFACE CHANGE (additive), CR 702.142a: a boast ability was activated. */ boast?: true }
+  | { type: 'abilityActivated'; objectId: ObjectId; sourceId: ObjectId; player: PlayerId; /** edh-next-74 INTERFACE CHANGE (additive), CR 602.2b, 107.3a, 118.3 (Verrak, Warped Sengir; Magus Lucea Kane): the life the cost paid, and whether the cost had {X}, fixed as the cost was paid. */ lifePaid?: number; xInCost?: true; /** edh-d-50 (CR 602.2b, 106.3): the number of mana spent on the cost, fixed as the cost was paid */ manaSpent?: number; exhaust?: true; loyalty?: true; loyaltyRemoved?: number; fromZone?: string; /** edh-zones-19 INTERFACE CHANGE (additive), CR 702.49a, 702.49d: a ninjutsu ability (commander ninjutsu too) was activated. */ ninjutsu?: true; /** edh-c-104 INTERFACE CHANGE (additive), CR 702.142a: a boast ability was activated. */ boast?: true; /** edh-e-43 INTERFACE CHANGE (additive), CR 702.107a: an outlast ability was activated. */ outlast?: true }
   | { type: 'abilityTriggered'; objectId: ObjectId; sourceId: ObjectId; player: PlayerId }
   | { type: 'resolved'; objectId: ObjectId }
   /** edh-cast-6 ADDITION (optional): `by`, the controller of the spell or ability whose instruction countered it (CR 701.6a, 603.2: "Whenever a spell or ability you control counters a spell"). */
@@ -127,7 +127,7 @@ export type GameEvent =
   | { type: 'turnedFaceUp'; objectId: ObjectId; by?: PlayerId }
   /** `instruction` (p2-c-dieroll-1, CR 706.1, 603.2c): the rolls of one instruction share it ("whenever you roll one or more dice" triggers once for them). */
   /** `natural` (edh-next-55, CR 706.2): the die's own result before any modifier (`result` is the result after it): "a die's highest natural result". */
-  | { type: 'dieRolled'; player: PlayerId; sides: number; result: number; instruction?: number; natural?: number }
+  | { type: 'dieRolled'; player: PlayerId; sides: number; result: number; instruction?: number; natural?: number; /** edhe34 (CR 701.52a): the die was rolled to visit its player's Attractions. */ visit?: true }
   | { type: 'coinFlipped'; player: PlayerId; won: boolean }
   | { type: 'spellCopied'; objectId: ObjectId; copyOf: ObjectId }
   | { type: 'abilityCountered'; objectId: ObjectId }

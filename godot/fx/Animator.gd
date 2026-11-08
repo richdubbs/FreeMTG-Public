@@ -1702,7 +1702,8 @@ func _show_draw(jobs: Jobs, gen: int, dest: Dictionary, origin: Dictionary, inde
 	var room := hand_top - area.position.y - 16.0
 	var s := clampf(room / maxf(1.0, dest_size.y), 1.0, 1.8)
 	var w := dest_size.x * s
-	var spot := Vector2(area.end.x - w * 0.5 - area.size.x * 0.13 - index * 28.0, area.position.y + 8.0 + dest_size.y * s * 0.5 + index * 10.0)
+	# Held up over the middle of the board, clear of the prompt on the right.
+	var spot := Vector2(area.get_center().x - index * 28.0, area.position.y + 8.0 + dest_size.y * s * 0.5 + index * 10.0)
 	var s0 := clampf(_size(origin).x / maxf(1.0, dest_size.x), 0.15, 2.0)
 	g.global_position = _center(origin)
 	g.rotation = 0.0

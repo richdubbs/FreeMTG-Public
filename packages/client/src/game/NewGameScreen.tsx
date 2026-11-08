@@ -32,6 +32,7 @@ import { ScreenHeader } from '../app/ScreenHeader';
 import { useNav } from '../app/nav';
 import { LocalConnection } from '../connection/LocalConnection';
 import type { PlayerSleeves } from '../board/sleeves';
+import { seatPrintings, type GamePrintings } from './printings';
 import { DeckBox } from '../decks/chrome';
 import { DeckChooser } from './DeckOptions';
 import { formatOption } from '../decks/formats';
@@ -433,6 +434,11 @@ export function NewGameScreen({
       const config = buildGameConfig({ players, defs: res.defs, seed: services.newSeed(), start, stops: stopSettings(settings.get()), commander: variant });
       // Each player's card backs are in their deck's sleeve (board/sleeves.tsx).
       const playerSleeves: PlayerSleeves = Object.fromEntries(chosen.flatMap((d, i) => (d && sleeves.get(d.id) ? [[PLAYER_IDS[i]!, sleeves.get(d.id)!]] : [])));
+      // deck-art-1: each player's chosen printings, shown for that player's cards (game/printings.ts).
+      const playerPrintings: GamePrintings = Object.fromEntries(chosen.flatMap((d, i) => {
+        const p = d ? seatPrintings(d.deck) : null;
+        return p ? [[PLAYER_IDS[i]!, p]] : [];
+      }));
       rememberNames(settings, seats.map((x, i) => ({ name: trimmed[i]!, by: x.by })));
       const gameSetup: GameSetup = { seats, deckNames: chosen.map((d) => d!.name), format, start };
       const ids = (by: SeatPlayer): PlayerId[] => seats.flatMap((x, i) => (x.by === by ? [PLAYER_IDS[i]!] : []));
@@ -469,7 +475,7 @@ export function NewGameScreen({
         }
         if (started) {
           const again = () => inServer({ ...config, seed: services.newSeed() }, true);
-          nav.go({ screen: 'game', connection: sealConnection(table), rematch: sealedFactory(again), sleeves: playerSleeves, setup: gameSetup });
+          nav.go({ screen: 'game', connection: sealConnection(table), rematch: sealedFactory(again), sleeves: playerSleeves, printings: playerPrintings, setup: gameSetup });
           return;
         }
         console.error('[NewGame] the local server could not run the game; playing in the browser');
@@ -501,7 +507,7 @@ export function NewGameScreen({
         return record(background ? inWorker(c, true) : onPage(c));
       };
       // FXH (audit m5, CR 400.2): the route and the game screen hold only the sealed connection, never the session behind it (sealed.ts).
-      nav.go({ screen: 'game', connection: sealConnection(record(first)), rematch: sealedFactory(again), sleeves: playerSleeves, setup: gameSetup });
+      nav.go({ screen: 'game', connection: sealConnection(record(first)), rematch: sealedFactory(again), sleeves: playerSleeves, printings: playerPrintings, setup: gameSetup });
     } catch (e) {
       if (controller.signal.aborted) return;
       setStarting(false);

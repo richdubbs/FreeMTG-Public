@@ -14,7 +14,7 @@ import type { ManaRestriction } from '../types/ability';
 import type { ObjectId } from '../types/ids';
 import type { ManaSymbol, ManaType } from '../types/mana';
 import { solveBest, trueCost, type Solution } from './solver';
-import { buildProviders, type ManaConverter, type ManaSource, type Provider } from './sources';
+import { buildProviders, type ManaConverter, type ManaSource, type Provider, type SpendAllows } from './sources';
 
 /** At most this many filter abilities are considered for one payment (2^4 sets); the ones after them in battlefield order are left to the player. */
 export const MAX_CONVERTERS = 4;
@@ -37,11 +37,12 @@ export interface ConvertInput {
   life: number;
   forceLife?: ReadonlySet<number>;
   onlyPool?: ReadonlySet<number>;
-  allows?: (r: ManaRestriction, manaSource: ObjectId | undefined) => boolean;
+  allows?: SpendAllows;
   /** FAST5X E29 (CR 609.4b): mana of any type may pay the symbols of the cost being paid (not the filter abilities' own costs). */
   anyType?: boolean;
   anyColor?: boolean; // std-rx32 (CR 609.4b)
   anyColorWith?: string; // edh-next-140 (CR 609.4b): mana of this type as though it were mana of any color
+  spendAs?: readonly { from: ManaType; to: ManaType }[]; // edh-e-51 (CR 609.4b): rules/solver.ts `SolveInput.spendAs`
   lifeFor?: ReadonlyMap<ManaType, number>; // edhc5 (CR 118.1): rules/solver.ts `SolveInput.lifeFor`
 }
 
@@ -97,7 +98,7 @@ export function solveWithConverters(input: ConvertInput): ConverterPlan | null {
     }
     const inner = new Set<number>();
     for (let i = input.symbols.length; i < symbols.length; i++) inner.add(i);
-    const solution = solveBest({ symbols, providers, life: input.life, inner, ...(input.forceLife ? { forceLife: input.forceLife } : {}), ...(input.anyType ? { anyType: true } : {}), ...(input.anyColor ? { anyColor: true } : {}), ...(input.anyColorWith !== undefined ? { anyColorWith: input.anyColorWith } : {}), ...(input.lifeFor ? { lifeFor: input.lifeFor } : {}) });
+    const solution = solveBest({ symbols, providers, life: input.life, inner, ...(input.forceLife ? { forceLife: input.forceLife } : {}), ...(input.anyType ? { anyType: true } : {}), ...(input.anyColor ? { anyColor: true } : {}), ...(input.anyColorWith !== undefined ? { anyColorWith: input.anyColorWith } : {}), ...(input.spendAs ? { spendAs: input.spendAs } : {}), ...(input.lifeFor ? { lifeFor: input.lifeFor } : {}) });
     if (!solution) continue;
     // every filter ability of the set adds mana the cost being paid spends; otherwise a smaller set pays the same way, cheaper
     const spends = (c: ManaConverter): boolean => solution.used.some((u) => u.symbol < input.symbols.length && providers[u.providerId]!.source?.objectId === c.objectId);

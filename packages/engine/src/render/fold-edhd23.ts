@@ -3,7 +3,7 @@
  * when every part is exactly what the idiom says.
  */
 import type { EffectStep } from '../types/ability';
-import { acting } from './clause';
+import { acting, plain } from './clause';
 import type { Folded } from './fold';
 import { K } from './kernel';
 import { groupPool, restOfGroup } from './refs';
@@ -109,7 +109,7 @@ function playerPutsHitThenShufflesRest(list: EffectStep[], i: number, st: Render
   if (rest === null || rest.chosen !== a.what.name || rv.as !== a.what.name) return null;
   const that = K.obj(a.what, st, 'object');
   const restText = K.obj(b.what, st, 'object').text;
-  const text = `puts ${that.text} onto the battlefield, then shuffles ${alt(restText, 'all other cards revealed this way')} into their library`;
+  const text = `puts ${alt(that.text, 'that card')} onto the battlefield, then shuffles ${alt(restText, 'all other cards revealed this way')} into their library`; // edh-e-9: the hit is also "that card" (Blessed Reincarnation)
   const sub = alt(`the player ${text}`, `that player ${text}`);
   return { clauses: [acting('x', sub, sub, { standalone: true })], consumed: 3 };
 }
@@ -134,8 +134,10 @@ function revealUpToOneTopRestBottom(list: EffectStep[], i: number, st: RenderSta
   if (!them.plural) return null;
   const np = K.np({ ...pool.desc, zone: 'library' }, st, { det: 'none', noZone: true });
   const text = `reveal up to one ${np} from among ${them.text}, then put that card on top of your library and the rest on the bottom in ${order}`;
+  // edh-e-9 (family dig-reveal-top-two-sentences): the same four steps are also two sentences, "You may reveal a creature or land card from among them and put it on top of your library. Put the rest on the bottom of your library in a random order." (Silhana Wayfinder)
+  const twoSentences = `you may reveal ${K.np({ ...pool.desc, zone: 'library' }, st, { det: 'a', noZone: true })} from among ${them.text} and put ${alt('it', 'that card')} on top of your library. put the rest on the bottom of your library in ${order}`;
   bind(st, a.as, { nouns: ['card'], plural: false });
-  return { clauses: [acting('you', text, `you ${text}`, { closesScope: true })], consumed: 4 };
+  return { clauses: [plain(alt(text, `you ${text}`, twoSentences), { closesScope: true })], consumed: 4 };
 }
 
 /** The cards of a group a choice left, moved to the bottom of the library in the order its player chooses: the last step of both folds below. */

@@ -276,6 +276,15 @@ export function payPart(g: Game, player: PlayerId, sourceId: ObjectId | null, pa
       g.log(`${name} has ${g.player(opp).name} gain ${part.amount} life (cost of ${label}).`, { rules: ['CR 118.1', 'CR 119.3'], level: 'action' });
       return;
     }
+    case 'eachOtherGainsLife': {
+      // edh-e-16 (CR 118.1, 119.3; Reverent Silence): every other player gains the life; a replacement of the gain still counts as paid (CR 118.3)
+      for (const other of g.s.players.filter((x) => x.id !== player && !x.hasLost).map((x) => x.id)) {
+        if (costGainLifeFunnel) costGainLifeFunnel(g, other, part.amount, `cost of ${label}`);
+        else gainLife(g, other, part.amount, `cost of ${label}`);
+      }
+      g.log(`${name} has each other player gain ${part.amount} life (cost of ${label}).`, { rules: ['CR 118.1', 'CR 119.3'], level: 'action' });
+      return;
+    }
     case 'oneOf':
       // FAST5X E27: a choice between costs is resolved before anything is paid (rules/pay.ts#resolveOneOf); never paid unresolved, never free
       throw new IllegalAction(`Choose which cost of ${label} to pay first (${partText(part)}).`, ['CR 601.2b', 'CR 118.3']);
@@ -343,10 +352,11 @@ export function payPart(g: Game, player: PlayerId, sourceId: ObjectId | null, pa
         const from = g.maybeObj(id)?.zone;
         if (from === undefined) gone(id);
         const nm = g.nameOf(id);
-        const n = moveObject(g, id, 'library', { cause: 'moveCards', position: 'top' });
+        const bottom = part.to === 'libraryBottom'; // edh-e-37 (CR 401.4)
+        const n = moveObject(g, id, 'library', { cause: 'moveCards', position: bottom ? 'bottom' : 'top' });
         if (n === null && g.maybeObj(id)?.zone === from) throw new IllegalAction(`${nm} can't pay for ${label}: that event can't happen.`, ['CR 614.17b', 'CR 118.3']);
         if (n) paid.costObjects.push(n);
-        g.log(`${name} puts ${nm} on top of their library (cost of ${label}).`, { rules: ['CR 401.4', 'CR 118.3'], level: 'info' });
+        g.log(`${name} puts ${nm} on ${bottom ? 'the bottom' : 'top'} of their library (cost of ${label}).`, { rules: ['CR 401.4', 'CR 118.3'], level: 'info' });
       }
       return;
     }

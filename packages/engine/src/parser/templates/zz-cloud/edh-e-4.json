@@ -1,0 +1,360 @@
+[
+  {
+    "id": "eff.edhe4.exileTargets.separateTwoPiles",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 700.3",
+      "CR 700.3a",
+      "CR 701.13a",
+      "CR 115.1",
+      "CR 400.7"
+    ],
+    "note": "edh-e-4 (Split the Spoils): the targets are exiled, then the controller separates exactly those cards into two piles (rider rid.r5dig.opponentChoosesPile gives the chooser; eff.r5dig.putThatPile.andOther the destinations).",
+    "pattern": "exile {o:Targets} and separate them into two piles",
+    "build": [
+      {
+        "op": "move",
+        "what": "$o",
+        "to": {
+          "zone": "exile"
+        },
+        "as": "exiledForPiles"
+      },
+      {
+        "op": "piles",
+        "cards": {
+          "ref": "bound",
+          "name": "exiledForPiles"
+        },
+        "separator": {
+          "ref": "you"
+        },
+        "chosen": "chosenPile",
+        "other": "otherPile"
+      }
+    ],
+    "subject": "none",
+    "examples": [
+      {
+        "text": "Exile up to four target creature cards from your graveyard and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard."
+      },
+      {
+        "text": "Exile up to three target land cards from your graveyard and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard."
+      }
+    ],
+    "counterExamples": [
+      "Exile up to five target permanent cards from your graveyard and separate them into three piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard.",
+      "Destroy up to five target permanent cards from your graveyard and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard."
+    ]
+  },
+  {
+    "id": "eff.edhe4.exileItAndTopN.pile.cloak",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 406.3",
+      "CR 701.58a",
+      "CR 701.58e",
+      "CR 701.24a",
+      "CR 608.2c"
+    ],
+    "note": "edh-e-4 (Become Anonymous): eff.edhd39.exileItAndTop.pile.manifest with cloak and several top cards: the object and the top N cards of your library are exiled face down as one pile, the pile is shuffled, then every card of it is cloaked.",
+    "pattern": "exile {o:Obj} and the top {n:Qty} cards of your library in a face-down pile , shuffle that pile , then cloak those cards",
+    "build": [
+      {
+        "op": "move",
+        "what": "$o",
+        "to": {
+          "zone": "exile",
+          "faceDown": true
+        },
+        "as": "exiledPile"
+      },
+      {
+        "op": "move",
+        "what": {
+          "ref": "topCards",
+          "player": {
+            "ref": "you"
+          },
+          "count": "$n"
+        },
+        "to": {
+          "zone": "exile",
+          "faceDown": true
+        },
+        "as": "exiledTop"
+      },
+      {
+        "op": "action",
+        "action": "cloak",
+        "who": {
+          "ref": "you"
+        },
+        "subject": {
+          "ref": "union",
+          "of": [
+            {
+              "ref": "bound",
+              "name": "exiledPile"
+            },
+            {
+              "ref": "bound",
+              "name": "exiledTop"
+            }
+          ]
+        },
+        "arg": "shuffle"
+      }
+    ],
+    "subject": "none",
+    "needs": [
+      "action:cloak",
+      "feature:action.cloak.shuffle"
+    ],
+    "consumes": [
+      "then"
+    ],
+    "examples": [
+      {
+        "text": "{3}{U}: Exile target creature you control and the top three cards of your library in a face-down pile, shuffle that pile, then cloak those cards."
+      },
+      {
+        "text": "When ~ enters, exile it and the top four cards of your library in a face-down pile, shuffle that pile, then cloak those cards."
+      }
+    ],
+    "counterExamples": [
+      "{3}{U}: Exile target creature you own and the top two cards of your library in a face-up pile, shuffle that pile, then cloak those cards.",
+      "{3}{U}: Exile target creature you own and the top two cards of your library in a face-down pile, shuffle that pile, then manifest those cards."
+    ]
+  },
+  {
+    "id": "rid.edhe4.cloakedCards.enterTapped",
+    "kind": "rider",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 608.2c",
+      "CR 701.58a",
+      "CR 701.58e"
+    ],
+    "note": "edh-e-4 (Become Anonymous): \"..., then cloak those cards. They enter tapped.\": the cards the preceding cloak (or manifest) of exiled cards puts onto the battlefield enter tapped.",
+    "pattern": "they enter tapped",
+    "build": {
+      "$patchPrevious": {
+        "@require": {
+          "action": "cloak",
+          "arg": "shuffle"
+        },
+        "tapped": {
+          "@new": true
+        }
+      }
+    },
+    "attachTo": "action",
+    "consumes": [
+      "enter"
+    ],
+    "examples": [
+      {
+        "text": "{3}{U}: Exile target creature you control and the top three cards of your library in a face-down pile, shuffle that pile, then cloak those cards. They enter tapped."
+      },
+      {
+        "text": "When ~ enters, exile it and the top four cards of your library in a face-down pile, shuffle that pile, then cloak those cards. They enter tapped."
+      }
+    ],
+    "counterExamples": [
+      "{3}{U}: Exile target creature you own and the top two cards of your library in a face-down pile, shuffle that pile, then cloak those cards. They enter untapped.",
+      "{3}{U}: Exile target creature you own and the top two cards of your library in a face-down pile, shuffle that pile, then manifest those cards. They enter tapped."
+    ]
+  },
+  {
+    "id": "eff.edhe4.eachPlayer.secretlyChoosesNumber",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 608.2d",
+      "CR 107.1b",
+      "CR 101.4"
+    ],
+    "note": "edh-e-4 (Menacing Ogre): every player chooses a number without seeing the others' (CR 608.2d); the next sentence, rid.edhe4.thoseNumbersRevealed, reveals them together.",
+    "pattern": "each player secretly chooses a number",
+    "build": {
+      "op": "chooseValue",
+      "who": {
+        "ref": "each",
+        "who": "player"
+      },
+      "what": "number",
+      "min": 0,
+      "secret": true,
+      "as": "secretNumber",
+      "link": "secretNumber"
+    },
+    "subject": "none",
+    "consumes": [
+      "each"
+    ],
+    "needs": [],
+    "examples": [
+      {
+        "text": "At the beginning of your upkeep, Each player secretly chooses a number. Then those numbers are revealed. Each player with the highest number loses that much life."
+      },
+      {
+        "text": "Whenever ~ attacks, Each player secretly chooses a number. Then those numbers are revealed. Each player with the highest number loses that much life."
+      }
+    ],
+    "counterExamples": [
+      "When ~ enters, each opponent secretly chooses a number. Then those numbers are revealed. Each player with the highest number loses that much life.",
+      "When ~ enters, each player chooses a number. Then those numbers are revealed. Each player with the highest number loses that much life."
+    ]
+  },
+  {
+    "id": "eff.edhe4.eachPlayerWithHighestNumber.losesThatMuchLife",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 608.2d",
+      "CR 119.3",
+      "CR 101.4"
+    ],
+    "note": "edh-e-4 (Menacing Ogre): each player who chose the highest of the secretly chosen numbers loses that much life (the highest number is read from the link of the choice, edh-next-120).",
+    "pattern": "each player with the highest number loses that much life",
+    "build": {
+      "op": "loseLife",
+      "who": {
+        "ref": "choseNumber",
+        "link": "secretNumber",
+        "extreme": "highest"
+      },
+      "amount": {
+        "q": "chosenNumber",
+        "link": "secretNumber",
+        "extreme": "highest"
+      }
+    },
+    "subject": "none",
+    "consumes": [
+      "each",
+      "highest",
+      "that much"
+    ],
+    "needs": [
+      "ref:choseNumber",
+      "feature:q.chosenNumber.extreme"
+    ],
+    "examples": [
+      {
+        "text": "At the beginning of your upkeep, Each player secretly chooses a number. Then those numbers are revealed. Each player with the highest number loses that much life."
+      },
+      {
+        "text": "Whenever ~ attacks, Each player secretly chooses a number. Then those numbers are revealed. Each player with the highest number loses that much life. If you are one of those players, put a +1/+1 counter on this creature."
+      }
+    ],
+    "counterExamples": [
+      "When ~ enters, each player secretly chooses a number. Then those numbers are revealed. Each player with the lowest number loses that much life.",
+      "When ~ enters, each player secretly chooses a number. Then those numbers are revealed. Each player with the highest number gains that much life."
+    ]
+  },
+  {
+    "id": "eff.edhe4.ifYouAreOneOfThosePlayers.putCounters",
+    "kind": "effect",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 608.2c",
+      "CR 608.2d",
+      "CR 122.1"
+    ],
+    "note": "edh-e-4 (Menacing Ogre): after the players who chose the highest number lost life, \"If you are one of those players\" is true when you chose that number (cond playerIs `among`).",
+    "pattern": "if you are one of those players , put {n:Qty} {k:CounterKind} ( counter | counters ) on {o:Obj}",
+    "build": {
+      "op": "if",
+      "cond": {
+        "cond": "playerIs",
+        "who": {
+          "ref": "you"
+        },
+        "is": "you",
+        "among": {
+          "ref": "choseNumber",
+          "link": "secretNumber",
+          "extreme": "highest"
+        }
+      },
+      "then": [
+        {
+          "op": "putCounters",
+          "on": "$o",
+          "kind": "$k",
+          "count": "$n"
+        }
+      ]
+    },
+    "subject": "none",
+    "consumes": [
+      "if"
+    ],
+    "needs": [
+      "ref:choseNumber"
+    ],
+    "examples": [
+      {
+        "text": "At the beginning of your upkeep, Each player secretly chooses a number. Then those numbers are revealed. Each player with the highest number loses that much life. If you are one of those players, put a +1/+1 counter on this creature."
+      },
+      {
+        "text": "Whenever ~ attacks, Each player secretly chooses a number. Then those numbers are revealed. Each player with the highest number loses that much life. If you are one of those players, put three +1/+1 counters on this creature."
+      }
+    ],
+    "counterExamples": [
+      "When ~ enters, each player secretly chooses a number. Then those numbers are revealed. Each player with the highest number loses that much life. If you are not one of those players, put two +1/+1 counters on this creature.",
+      "When ~ enters, each player secretly chooses a number. Then those numbers are revealed. Each player with the highest number loses that much life. If you are one of those players, you gain 2 life."
+    ]
+  },
+  {
+    "id": "rid.edhe4.thoseNumbersRevealed",
+    "kind": "rider",
+    "since": 8,
+    "status": "stable",
+    "cr": [
+      "CR 608.2d",
+      "CR 101.4"
+    ],
+    "note": "edh-e-4 (Menacing Ogre): \"Then those numbers are revealed.\" after every player secretly chose a number: the choices are revealed at once (`reveal`, op:chooseValue.secretReveal).",
+    "pattern": "then those numbers are revealed",
+    "build": {
+      "$patchPrevious": {
+        "@require": {
+          "op": "chooseValue",
+          "what": "number",
+          "secret": true,
+          "reveal": null
+        },
+        "reveal": {
+          "@new": true
+        }
+      }
+    },
+    "attachTo": "chooseValue",
+    "consumes": [
+      "then"
+    ],
+    "examples": [
+      {
+        "text": "At the beginning of your upkeep, Each player secretly chooses a number. Then those numbers are revealed. Each player with the highest number loses that much life."
+      },
+      {
+        "text": "Whenever ~ attacks, Each player secretly chooses a number. Then those numbers are revealed. Each player with the highest number loses that much life."
+      }
+    ],
+    "counterExamples": [
+      "When ~ enters, each player secretly chooses a color. Then those numbers are revealed.",
+      "When ~ enters, you gain 2 life. Then those numbers are revealed."
+    ]
+  }
+]

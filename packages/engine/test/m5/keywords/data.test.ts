@@ -155,7 +155,7 @@ describe('statuses follow design 7.4 (implemented only where every mechanism exi
     ]].sort());
     // M6-3: the face-down keywords (actions/cast-opt/face-down.ts, core/special/turn-face-up.ts); M6-4: disturb, more than meets the eye (actions/cast-opt/back-face.ts),
     // nightbound (core/day-night.ts); M6-6: prototype (actions/cast-opt/prototype.ts), read ahead (statics/levels.ts); M6-9: mutate (actions/cast-opt/mutate.ts, core/resolve-parts/mutate.ts)
-    expect(byStatus('native')).toEqual(['bestow' /* std-ry7: actions/cast-opt/bestow.ts */, 'companion' /* CMP1: core/special/companion.ts */, 'compleated' /* edh-top-2: core/zones.ts#enterWithPrintedCounters */, 'disguise', 'disturb', 'flashback', 'foretell' /* cloud r3-mech: core/special/foretell.ts, actions/cast-opt/foretell.ts */, 'megamorph', 'miracle' /* FAST5X E26: triggers/miracle.ts */, 'more than meets the eye', 'morph', 'mutate', 'nightbound', 'plot' /* FAST5X E6 */, 'prototype', 'read ahead']);
+    expect(byStatus('native')).toEqual(['assist' /* edh-e-29: rules/payment-options.ts#applyAssist */, 'bestow' /* std-ry7: actions/cast-opt/bestow.ts */, 'companion' /* CMP1: core/special/companion.ts */, 'compleated' /* edh-top-2: core/zones.ts#enterWithPrintedCounters */, 'disguise', 'disturb', 'flashback', 'foretell' /* cloud r3-mech: core/special/foretell.ts, actions/cast-opt/foretell.ts */, 'megamorph', 'miracle' /* FAST5X E26: triggers/miracle.ts */, 'more than meets the eye', 'morph', 'mutate', 'nightbound', 'plot' /* FAST5X E6 */, 'prototype', 'read ahead']);
     expect(byStatus('implemented').length + byStatus('native').length + byStatus('planned').length).toBe(all.length);
   });
 

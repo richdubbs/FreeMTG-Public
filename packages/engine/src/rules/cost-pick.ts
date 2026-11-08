@@ -24,7 +24,7 @@ import { solveWithConverters } from './convert';
 import { costUseDenial, type CostUse } from './cant';
 import { removableCounters } from './counters';
 import { crewSaddleValue } from '../statics/hooks';
-import { staticAnyColorEverywhere } from '../statics/play-permits';
+import { staticAnyColorEverywhere, staticSpendAsColors } from '../statics/play-permits';
 import { lifeForColors } from './life-for';
 import { colorSymbolCount } from '../types/mana';
 
@@ -172,9 +172,17 @@ export function partCandidates(s: GameState, player: PlayerId, sourceId: ObjectI
         }
         // FAST5X E13: "Exile a creature you control" (CR 118.3): permanents you control
         if (part.zone === 'battlefield') return findObjects(s, { ...(part.filter ?? {}), zone: 'battlefield', controller: 'you' }, ctx).map((o) => o.id);
+        if (part.top === true) { // edhe7 (CR 404.2): the topmost card of your graveyard that fits the filter; edh-d-107: the `count` topmost ones (all of them or none)
+          const fits = new Set(findObjects(s, { ...(part.filter ?? {}), zone: 'graveyard', owner: 'you' }, ctx).map((o) => o.id));
+          const tops = [...(s.zones.graveyard[player] ?? [])].reverse().filter((id) => fits.has(id)).slice(0, Math.max(1, part.count));
+          return tops.length < Math.max(1, part.count) ? [] : tops;
+        }
+        // edh-d-107 (CR 118.3, 404.1; Thelon of Havenwood, Night Soil): "from a graveyard": the cards of the filter in every player's graveyard ("from a single graveyard" keeps them
+        // to one graveyard when they are picked, findAssignment below)
+        if (part.anyGraveyard === true) return findObjects(s, { ...(part.filter ?? {}), zone: 'graveyard' }, ctx).map((o) => o.id);
         return findObjects(s, { ...(part.filter ?? {}), zone: part.zone, owner: 'you' }, ctx).map((o) => o.id);
       case 'moveCards': // edh-d-54 (CR 118.3): cards of the filter in exile (whoever owns them, as the filter says) or in your hand
-        return findObjects(s, part.from === 'hand' ? { ...(part.filter ?? {}), zone: 'hand', owner: 'you' } : { ...(part.filter ?? {}), zone: 'exile', faceDown: false }, ctx).map((o) => o.id); // face-down cards in exile are not looked at (Void Attendant, Ruin Processor rulings): never offered
+        return findObjects(s, part.from === 'hand' || part.from === 'graveyard' /* edh-e-37 */ ? { ...(part.filter ?? {}), zone: part.from, owner: 'you' } : { ...(part.filter ?? {}), zone: 'exile', faceDown: false }, ctx).map((o) => o.id); // face-down cards in exile are not looked at (Void Attendant, Ruin Processor rulings): never offered
       case 'collectEvidence':
         return findObjects(s, { zone: 'graveyard', owner: 'you' }, ctx).map((o) => o.id);
       case 'behold':
@@ -231,6 +239,11 @@ export function pickCandidates(s: GameState, player: PlayerId, sourceId: ObjectI
   return (part.kind === 'tapUntapped' || part.kind === 'tapPower') && plan.tap && sourceId ? cands.filter((id) => id !== sourceId) : cands;
 }
 
+/** edh-d-107 (CR 404.1, 108.3): whose graveyard a card is in (a card in a graveyard is always in its owner's graveyard). */
+function ownerOfCard(s: GameState, id: ObjectId): string {
+  return String(s.objects[id]?.owner ?? `#${id}`);
+}
+
 /** r3-cost (CR 201.2): the name an object has for "with different names" (a nameless object, a face-down one, has none: it differs from every name). */
 function namesOf(s: GameState, id: ObjectId): string {
   const o = s.objects[id];
@@ -246,6 +259,12 @@ export function pickFeasible(s: GameState, player: PlayerId, sourceId: ObjectId 
   const sac = part as PickPart; // edh-next-147: a sacrifice is a threshold part only with `totalPower`, so the type guard above does not rule every sacrifice out
   if (sac.kind === 'sacrifice' && sac.distinctNames === true) return new Set(cands.map((id) => namesOf(s, id))).size >= pickCount(sac); // r3-cost
   if (part.kind === 'discard' && part.distinctNames === true) return new Set(cands.map((id) => namesOf(s, id))).size >= pickCount(part); // edh-next-90 (CR 118.3, 201.2)
+  const ex = part as PickPart; // edh-d-107: an exile part is a threshold part only with a total, so the guard above does not rule every exile out
+  if (ex.kind === 'exileFrom' && ex.singleGraveyard === true) { // edh-d-107 (CR 118.3, 404.1): some one graveyard holds enough of the candidates
+    const by = new Map<string, number>();
+    for (const id of cands) { const o = ownerOfCard(s, id); by.set(o, (by.get(o) ?? 0) + 1); }
+    return [...by.values()].some((n) => n >= pickCount(ex));
+  }
   if (part.kind === 'discard' && part.sameName === true) { // edh-c-111 (CR 118.3, 201.2): some name is shared by enough of the candidates
     const by = new Map<string, number>();
     for (const id of cands) by.set(namesOf(s, id), (by.get(namesOf(s, id)) ?? 0) + 1);
@@ -306,7 +325,7 @@ export function findAssignment(
   const sources = needMana ? manaSources(s, player, undefined, plan.spend) : [];
   const allows = spendAllows(s, player, plan.spend);
   const lifeFor = lifeForColors(s, player, plan.spend); // edhc5 (CR 118.1): K'rrik; the Defilers
-  const anyType = { ...spendOptions(plan.spend, staticAnyColorEverywhere(s, player)), ...(lifeFor ? { lifeFor } : {}) }; // edh-mana-keywords-4: the player's "spend mana as though it were mana of any color"; FAST5X E29 (CR 609.4b); std-rx32: "as though it were mana of any color"
+  const anyType = { ...spendOptions(plan.spend, staticAnyColorEverywhere(s, player), staticSpendAsColors(s, player)), ...(lifeFor ? { lifeFor } : {}) }; // edh-mana-keywords-4: the player's "spend mana as though it were mana of any color"; FAST5X E29 (CR 609.4b); std-rx32: "as though it were mana of any color"
   const bySource = new Map(sources.map((x) => [x.objectId, x]));
   const p = s.players.find((x) => x.id === player)!;
   const life = Math.max(0, lifeBudget(s, player, costKindOf(plan.spend)) - lifeInParts(plan));
@@ -446,6 +465,12 @@ export function findAssignment(
       const names = (ids: ObjectId[]): boolean => new Set(ids.map((id) => namesOf(s, id))).size === ids.length;
       if (!names(fixed)) return false;
       return combos(free, need, (chosen) => names([...fixed, ...chosen]) && take(chosen));
+    }
+    // edh-d-107 (CR 118.3, 404.1; Night Soil): "from a single graveyard": all the cards of one player's graveyard; every combination of the free cards is tried
+    if (named.kind === 'exileFrom' && named.singleGraveyard === true) {
+      const one = (ids: ObjectId[]): boolean => new Set(ids.map((id) => ownerOfCard(s, id))).size <= 1;
+      if (!one(fixed)) return false;
+      return combos(free, need, (chosen) => one([...fixed, ...chosen]) && take(chosen));
     }
     // edh-c-111 (CR 118.3, 201.2): "with the same name": every combination of the free cards is tried (few cards in a hand)
     if (part.kind === 'discard' && part.sameName === true) {

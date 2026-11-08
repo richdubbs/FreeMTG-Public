@@ -245,11 +245,11 @@ function Zoom({ zoom }: { zoom: ZoomState | null }) {
         </div>
       )}
       <div className="zoom-card">
-        <OwnerSleeve owner={o.owner}>{ctx.renderCard({ def, face, chars, size: 'large', faceDown: o.faceDown === true })}</OwnerSleeve>
+        <OwnerSleeve owner={o.owner}>{ctx.renderCard({ def, face, chars, size: 'large', faceDown: o.faceDown === true, owner: o.owner })}</OwnerSleeve>
         {hasOverlay(overlay) && <CardOverlay overlay={overlay} />}
       </div>
       {/* The Scryfall picture's artist, under the picture, never on it */}
-      <BoardCredit def={def} face={face} className="zoom-credit" />
+      <BoardCredit def={def} face={face} className="zoom-credit" owner={o.owner} />
       {/* A partly automated card, in any zone (the battlefield too): it may not work as written */}
       <PartialWarning level={faceDown ? null : def?.automation.level} className="zoom-warning" />
       {lines.length > 0 && (
@@ -265,9 +265,9 @@ function Zoom({ zoom }: { zoom: ZoomState | null }) {
       {def && !faceDown && hasOtherFace(def) && (
         <div className="zoom-other" aria-label={`Other face: ${def.faces[1 - face]?.name ?? ''}`}>
           <div className="zoom-other-label">{face === 1 ? 'Front face' : 'Back face'}</div>
-          <div className="zoom-card zoom-card-other">{ctx.renderCard({ def, face: 1 - face, chars: null, size: 'large', faceDown: false })}</div>
+          <div className="zoom-card zoom-card-other">{ctx.renderCard({ def, face: 1 - face, chars: null, size: 'large', faceDown: false, owner: o.owner })}</div>
           {/* The other face's own artist */}
-          <BoardCredit def={def} face={1 - face} className="zoom-credit" />
+          <BoardCredit def={def} face={1 - face} className="zoom-credit" owner={o.owner} />
         </div>
       )}
     </div>

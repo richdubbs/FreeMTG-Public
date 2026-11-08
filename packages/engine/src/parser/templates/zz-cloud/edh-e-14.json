@@ -1,0 +1,216 @@
+[
+  {
+    "id": "rep.edhe14.enters.counter.kicked.onSelf",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 702.33d",
+      "CR 702.33e",
+      "CR 614.1c",
+      "CR 614.12",
+      "CR 400.7d"
+    ],
+    "pattern": "~ enters with ( a | an ) {k:CounterKind} counter on ~ for each time ~ was kicked",
+    "build": {
+      "kind": "static",
+      "zone": [
+        "stack",
+        "battlefield"
+      ],
+      "effects": [
+        {
+          "s": "replace",
+          "replaces": {
+            "ev": "zoneChange",
+            "subject": {
+              "self": true
+            },
+            "to": "battlefield"
+          },
+          "body": {
+            "b": "enters",
+            "counters": [
+              {
+                "kind": "$k",
+                "count": {
+                  "q": "kickCount"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "consumes": [
+      "each",
+      "each time",
+      "kicked"
+    ],
+    "examples": [
+      {
+        "text": "~ enters with a +1/+1 counter on ~ for each time ~ was kicked."
+      },
+      {
+        "text": "~ enters with a charge counter on ~ for each time ~ was kicked."
+      }
+    ],
+    "counterExamples": [
+      "~ enters with a +1/+1 counter on ~ for each creature you control.",
+      "~ enters with a +1/+1 counter on ~ if ~ was kicked.",
+      "Target creature enters with a +1/+1 counter on ~ for each time ~ was kicked."
+    ]
+  },
+  {
+    "id": "sta.edhe14.pump.all.foreach.counters.self",
+    "kind": "static",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 604.1",
+      "CR 611.3a",
+      "CR 613.4c",
+      "CR 122.1"
+    ],
+    "pattern": "all {f:Filter} get {pt:PT} for each {k:CounterKind} counter on ~",
+    "build": {
+      "s": "continuous",
+      "affects": {
+        "ref": "each",
+        "filter": "$f"
+      },
+      "mods": [
+        {
+          "layer": "7c",
+          "power": {
+            "q": "math",
+            "op": "*",
+            "args": [
+              "$pt.p",
+              {
+                "q": "counters",
+                "on": {
+                  "ref": "self"
+                },
+                "kind": "$k"
+              }
+            ]
+          },
+          "toughness": {
+            "q": "math",
+            "op": "*",
+            "args": [
+              "$pt.t",
+              {
+                "q": "counters",
+                "on": {
+                  "ref": "self"
+                },
+                "kind": "$k"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "consumes": [
+      "all",
+      "each"
+    ],
+    "examples": [
+      {
+        "text": "All creatures get +1/+0 for each charge counter on ~."
+      },
+      {
+        "text": "All Goblins get +2/+2 for each oil counter on ~."
+      }
+    ],
+    "counterExamples": [
+      "All creatures get +1/+0 for each charge counter on it.",
+      "All creatures get +1/+0 until end of turn for each charge counter on ~.",
+      "All creatures get +1/+0 for each charge counter on ~ and have flying."
+    ]
+  },
+  {
+    "id": "rid.edhe14.countered.thatPermanent.cantActivate",
+    "kind": "rider",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 701.6a",
+      "CR 113.7a",
+      "CR 602.5",
+      "CR 608.2c"
+    ],
+    "pattern": "that permanent 's activated abilities can't be activated this turn",
+    "build": {
+      "$patchPrevious": {
+        "@require": {
+          "to": null
+        },
+        "sourceThen": {
+          "@new": {
+            "filter": {},
+            "do": "cantActivate"
+          }
+        }
+      }
+    },
+    "attachTo": "counter",
+    "consumes": [
+      "can't"
+    ],
+    "examples": [
+      {
+        "text": "Counter target activated ability from an artifact, creature, or land. That permanent's activated abilities can't be activated this turn."
+      },
+      {
+        "text": "Counter target activated or triggered ability. That permanent's activated abilities can't be activated this turn."
+      }
+    ],
+    "counterExamples": [
+      "Counter target activated ability from an artifact, creature, or land. That permanent's triggered abilities can't be activated this turn.",
+      "Counter target activated ability from an artifact, creature, or land. That creature's activated abilities can't be activated this turn.",
+      "Draw a card. That permanent's activated abilities can't be activated this turn."
+    ]
+  },
+  {
+    "id": "rid.edhe14.putCounters.maxTotal.self",
+    "kind": "rider",
+    "since": 9,
+    "status": "stable",
+    "cr": [
+      "CR 122.1",
+      "CR 608.2d",
+      "CR 608.2c"
+    ],
+    "pattern": "this ability can't cause the total number of {k:CounterKind} counters on ~ to be greater than {n:Qty}",
+    "build": {
+      "$patchPrevious": {
+        "@require": {
+          "upTo": true,
+          "on.ref": "self",
+          "kind": "$k"
+        },
+        "maxTotal": "$n"
+      }
+    },
+    "attachTo": "putCounters",
+    "consumes": [
+      "can't"
+    ],
+    "examples": [
+      {
+        "text": "{X}, {T}: Put up to X +1/+0 counters on ~. This ability can't cause the total number of +1/+0 counters on ~ to be greater than four."
+      },
+      {
+        "text": "{X}, {T}: Put up to X charge counters on ~. This ability can't cause the total number of charge counters on ~ to be greater than three."
+      }
+    ],
+    "counterExamples": [
+      "{X}, {T}: Put up to X +1/+0 counters on ~. This ability can't cause the total number of +0/+1 counters on ~ to be greater than four.",
+      "{X}, {T}: Put up to X +1/+0 counters on target creature. This ability can't cause the total number of +1/+0 counters on ~ to be greater than four.",
+      "{X}, {T}: Draw a card. This ability can't cause the total number of +1/+0 counters on ~ to be greater than four."
+    ]
+  }
+]

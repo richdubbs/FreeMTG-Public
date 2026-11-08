@@ -4,6 +4,7 @@
  */
 import type { EffectStep } from '../types/ability';
 import { plain } from './clause';
+import { alt, withArticle } from './text';
 import type { Folded } from './fold';
 import { K } from './kernel';
 import { cloneState, type RenderState } from './state';
@@ -29,7 +30,8 @@ function putOrRemoveOne(list: EffectStep[], i: number, st: RenderState): Folded 
   if (put.count !== 1 || put.kind === 'any') return null;
   if (list.slice(i + 3).some((x) => JSON.stringify(x).includes('"counterMode"'))) return null;
   const text = K.steps([put], cloneState(st), {});
-  return { clauses: [plain(`${text} or remove one from ${put.on.ref === 'self' ? 'it' : 'it'}`)], consumed: 3 };
+  // edh-e-13 (CR 122.1, 608.2d; Plague Boiler): the counter removed is also named: "remove a plague counter from it" (same JSON, see the family remove-one-or-named-counter)
+  return { clauses: [plain(alt(`${text} or remove one from it`, `${text} or remove ${withArticle(`${put.kind} counter`)} from it`))], consumed: 3 };
 }
 
 /**

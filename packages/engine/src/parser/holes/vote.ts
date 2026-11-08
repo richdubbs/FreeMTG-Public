@@ -145,6 +145,11 @@ export const thatManyVotes: HoleFn = (ctx, pos) => {
   const e = phraseAt(ctx, pos, P('that many'));
   return e >= 0 ? [{ end: e, value: votesForMarker({ ref: 'bound', name: 'votedObj' }) as never }] : [];
 };
+/** VotedColors: "each color with the most votes or tied for most votes" (edhe35): the vote before the sentence, for color words (the marker lower/conditions.ts#resolveVotes resolves). */
+export const votedColors: HoleFn = (ctx, pos) => {
+  const e = phraseAt(ctx, pos, P('each color with the most votes or tied for most votes'));
+  return e >= 0 ? [{ end: e, value: { step: '', $vote: 'previous' } as never }] : [];
+};
 /** NoVotesReceived: "who received no votes" (Círdan the Shipwright): the votes the player a group instruction is at received (compared with 0 by the template). */
 export const noVotesReceived: HoleFn = (ctx, pos) => {
   const e = phraseAt(ctx, pos, P('who received no votes'));

@@ -34,7 +34,7 @@ function AbilityTile({ item }: { item: StackItem }) {
   if (card) {
     return (
       <div className={`ability-tile ability-${item.kind} has-card`} aria-hidden="true">
-        <div className="ability-card-picture">{renderCard({ def, face, chars: null, size: 'normal', faceDown: false })}</div>
+        <div className="ability-card-picture">{renderCard({ def, face, chars: null, size: 'normal', faceDown: false, ...(o ? { owner: o.owner } : {}) })}</div>
         <span className="ability-band">
           {item.kind === 'triggered' ? '✦' : '⚡︎'} {kind}
         </span>
@@ -182,7 +182,7 @@ export function TableStack({ overlap = true }: { overlap?: boolean }) {
             {item.kind === 'spell' && def ? (
               // M6-11, CR 708.4: a face-down spell is the card back on the table, whoever looks (its controller sees its card in the zoom)
               <div className="board-card-image">
-                {o?.faceDown ? <OwnerSleeve owner={o.owner}>{renderCard({ def: null, face: 0, chars: null, size: 'normal', faceDown: true })}</OwnerSleeve> : renderCard({ def, face: o ? shownFace(def, o) : 0, chars, size: 'normal', faceDown: false })}
+                {o?.faceDown ? <OwnerSleeve owner={o.owner}>{renderCard({ def: null, face: 0, chars: null, size: 'normal', faceDown: true })}</OwnerSleeve> : renderCard({ def, face: o ? shownFace(def, o) : 0, chars, size: 'normal', faceDown: false, ...(o ? { owner: o.owner } : {}) })}
               </div>
             ) : (
               <AbilityTile item={item} />

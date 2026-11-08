@@ -21,6 +21,8 @@ const THIRD = /^then if one or more of the chosen permanents are still on the ba
 const PAIRS: readonly (readonly [RegExp, RegExp])[] = [
   [/^turn the exiled card face up \.$/, /^if it's an? \S+ card , you lose life equal to its mana value \.$/],
   [/^you may put the exiled card onto the battlefield if it's an? \S+ card \.$/, /^if you don't put it onto the battlefield , put it into its owner 's hand \.$/],
+  // edh-e-61 (Clone Shell, Summoner's Egg; CR 607.2a, 406.3, 701.40a): "Turn the exiled card face up. If it's a creature card, put it onto the battlefield under your control." (eff.edhe61.linked.*)
+  [/^turn the exiled card face up \.$/, /^if it's an? \S+ card , put it onto the battlefield under your control \.$/],
 ];
 
 export function joinEdhD101<P extends { tokens: Tok[] }>(pieces: readonly P[]): P[] {

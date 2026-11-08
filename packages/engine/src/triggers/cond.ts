@@ -22,6 +22,7 @@ import { compareNumbers } from '../rules/predicates';
 import { spentAtLeast } from '../types/mana';
 import { lookupObject, objectMatches, playerMatches } from './filters';
 import { conditionEvaluator } from './wiring';
+import { graveyardPosHolds } from '../rules/gy-pos';
 
 /** Who is asking: the object whose ability it is, its controller and the event that triggered it (null for a state trigger). */
 export interface CondEnv {
@@ -121,6 +122,7 @@ function qty(g: Game, q: Quantity, env: CondEnv): number | undefined {
     case 'spellsCastThisTurn': return g.player(env.controller).turnStats.spellsCast;
     case 'lifeGainedThisTurn': return g.player(env.controller).turnStats.lifeGained;
     case 'descendedThisTurn': return g.player(env.controller).turnStats.descended ?? 0; // FAST5X E22 (CR 700.11)
+    case 'graveyardUsesThisTurn': { const ts = g.player(env.controller).turnStats; return (ts.castFromCount?.['graveyard'] ?? 0) + (ts.activatedFromGraveyard ?? 0); } // edh-d-108 (CR 601.2, 602.2, 404.1)
     case 'turnsBegun': return g.player(env.controller).turnsBegun ?? 0; // std-r9 (CR 500.7, 500.11)
     case 'extraTurnsBegun': return g.player(env.controller).extraTurnsBegun ?? 0; // trek-18 (CR 500.7)
     case 'math': {
@@ -175,6 +177,10 @@ export function localCondition(g: Game, c: Condition, env: CondEnv): boolean | u
       const cx = { source: env.source.id, controller: env.controller };
       return os.length > 0 && os.every((o) => objectMatches(g.s, c.filter, o, [o.id], cx));
     }
+    case 'graveyardPos': { // edhe7 (CR 404.2, 113.6m): where the source sits in its owner's graveyard
+      const cx = { source: env.source.id, controller: env.controller };
+      return graveyardPosHolds(g.s, env.source.id, c, (o) => objectMatches(g.s, c.filter, o, [o.id], cx));
+    }
     case 'turnOf': {
       if (c.extra === true && g.s.turn.extra !== true) return false; // edh-next-31 (CR 500.7)
       if (c.step !== undefined && !(Array.isArray(c.step) ? c.step : [c.step]).includes(g.s.turn.step)) return false;
@@ -193,6 +199,7 @@ export function localCondition(g: Game, c: Condition, env: CondEnv): boolean | u
       if (c.xAtLeast !== undefined && (cast.x ?? 0) < c.xAtLeast) return false;
       if (c.by === 'you' && cast.by !== env.controller) return false; // FAST4 T27 (CR 601.2a): "if you cast it"
       if (c.spent !== undefined && !spentAtLeast(cast.costsPaid.manaSpent, c.spent)) return false; // FAST5 T37 (CR 601.2h): adamant
+      if (c.nth !== undefined && (cast.nth !== c.nth || cast.turn !== g.s.turn.number)) return false; // edh-d-111 (CR 601.2i): "if it was the second spell you cast this turn"
       return true;
     }
     case 'happened': {
@@ -215,6 +222,7 @@ export function localCondition(g: Game, c: Condition, env: CondEnv): boolean | u
       return who === undefined ? undefined : who.length > 0 && who.every((p) => d[c.what as 'monarch' | 'initiative'] === p);
     }
     case 'playerIs': { // edh-players-18, CR 102.3
+      if (c.among !== undefined) return undefined; // edh-e-4: a group of choosers exists only while an effect resolves (fail closed)
       const who = playersOf(g, c.who, env);
       return who === undefined ? undefined : who.length > 0 && who.every((p) => (c.is === 'you') === (p === env.controller));
     }
@@ -228,6 +236,9 @@ export function localCondition(g: Game, c: Condition, env: CondEnv): boolean | u
 
 /** A condition at trigger time: the interpreter's evaluator when it knows the condition, this module's otherwise. `undefined` = cannot tell. */
 export function holds(g: Game, c: Condition, env: CondEnv): boolean | undefined {
+  // edh-e-39 (CR 603.4, 603.10a; Dawn Evangel): "an Aura you controlled was attached to it" is judged on last known information (rules/filter.ts#wasAttachedLast: the Aura has a new object id by now),
+  // which the static matcher below cannot read by id; the local reading finds it with the full filter
+  if (JSON.stringify(c).includes('"wasAttachedTo"')) return localCondition(g, c, env);
   const ev = conditionEvaluator();
   if (ev?.knows(c)) return ev.evaluate(triggerCtx(g, env), c);
   return localCondition(g, c, env);

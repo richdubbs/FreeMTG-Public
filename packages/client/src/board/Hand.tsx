@@ -334,7 +334,7 @@ export function HiddenHand({ player }: { player: PlayerId }) {
               onFocus={(e) => setZoom(id, e.currentTarget)}
               onBlur={() => setZoom(null)}
             >
-              <div className="hand-known-card">{renderCard({ def, face: shownFace(def, o), chars: null, size: 'small', faceDown: false })}</div>
+              <div className="hand-known-card">{renderCard({ def, face: shownFace(def, o), chars: null, size: 'small', faceDown: false, owner: o.owner })}</div>
             </div>
           );
         }
