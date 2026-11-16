@@ -1,5 +1,0 @@
-# edh-e-6 (Commander coordinator E, graveyard 1/3; test/cloud/edh-e-6, golden edh-e-6-review.json): an opponent chooses from revealed cards or the top of your graveyard, an opponent may give the revealed cards
-Animal Magnetism
-Murmurs from Beyond
-Covenant of Minds
-Phyrexian Grimoire

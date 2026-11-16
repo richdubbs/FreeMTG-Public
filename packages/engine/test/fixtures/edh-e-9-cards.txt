@@ -1,9 +1,0 @@
-# edh-e-9 (Commander effort, coordinator E, group library 1/3; EDHREC top 30,000). After editing: npm run cards -- fixtures
-Silhana Wayfinder
-Overgrown Pest
-Shatter Assumptions
-Cabal Interrogator
-Blessed Reincarnation
-Insidious Dreams
-Mitotic Manipulation
-Retraced Image

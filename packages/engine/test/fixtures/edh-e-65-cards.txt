@@ -1,2 +1,0 @@
-# edh-e-65 (Commander effort, coordinator E, graveyard/library; EDHREC top 30,000). After editing: npm run cards -- fixtures
-Shape Anew
